@@ -17,12 +17,35 @@ replacements are moved to `~/.coding-harness-backups/<timestamp>` first.
 Run the script again after cloning or pulling this repository. It is safe to
 run repeatedly; already-correct links are left untouched.
 
+## Pi packages
+
+`pi/agent/packages.txt` records the Pi packages this setup expects:
+
+| Package | Source |
+| --- | --- |
+| [pi-worktree-agents](https://github.com/simonamtoft/pi-worktree-agents) | `git:github.com/simonamtoft/pi-worktree-agents` |
+| [pi-status-footer](https://github.com/simonamtoft/pi-status-footer) | `git:github.com/simonamtoft/pi-status-footer` |
+
+Install them with:
+
+```sh
+~/coding-harness/link.sh --packages
+```
+
+This runs `pi install` per entry, which writes the `packages` array in the
+local `~/.pi/agent/settings.json`. Entries already installed are skipped.
+
+When developing one of the plugins, point its settings entry at the local
+checkout instead (for example `../../projects/pi-worktree-agents`, relative to
+`~/.pi/agent`). The install step recognises a checkout by directory name and
+leaves the override in place.
+
 ## Layout
 
 - `shared/`: the common `AGENTS.md`, skills, agents, and prompts linked into
   both harnesses.
-- `pi/agent/`: Pi instructions and extensions. Provider/model configuration is
-  local-only and intentionally ignored by Git.
+- `pi/agent/`: Pi instructions, extensions, and the `packages.txt` manifest.
+  Provider/model configuration is local-only and intentionally ignored by Git.
 - `claude/`: Claude hooks, settings, statusline, and themes.
 
 The shared resources are the single source of truth:

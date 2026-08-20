@@ -1,0 +1,10 @@
+# Pi packages installed into ~/.pi/agent/settings.json by `link.sh --packages`.
+# One package source per line (npm:, git:, or a path). Blank lines and
+# comments are ignored.
+#
+# When developing one of these plugins, replace its entry in settings.json with
+# a local path (for example ../../projects/pi-worktree-agents). The install step
+# detects an existing checkout by directory name and leaves it alone.
+
+git:github.com/simonamtoft/pi-worktree-agents
+git:github.com/simonamtoft/pi-status-footer
