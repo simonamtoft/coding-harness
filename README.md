@@ -19,14 +19,15 @@ run repeatedly; already-correct links are left untouched.
 
 ## Layout
 
-- `shared/`: reusable skills, agents, and prompts linked into both harnesses.
-- `pi/agent/`: Pi instructions, extensions, and non-secret provider
-  configuration.
-- `claude/`: Claude instructions, hooks, settings, statusline, and themes.
+- `shared/`: the common `AGENTS.md`, skills, agents, and prompts linked into
+  both harnesses.
+- `pi/agent/`: Pi extensions and non-secret provider configuration.
+- `claude/`: Claude hooks, settings, statusline, and themes.
 
 The shared resources are the single source of truth:
 
 ```text
+~/coding-harness/shared/AGENTS.md -> ~/.pi/agent/AGENTS.md + ~/.claude/CLAUDE.md
 ~/coding-harness/shared/skills  -> ~/.pi/agent/skills  + ~/.claude/skills
 ~/coding-harness/shared/agents  -> ~/.pi/agent/agents  + ~/.claude/agents
 ~/coding-harness/shared/prompts -> ~/.pi/agent/prompts + ~/.claude/prompts

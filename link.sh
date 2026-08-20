@@ -23,7 +23,7 @@ case "${1:-}" in
 esac
 
 links=(
-  "$repo_dir/pi/agent/AGENTS.md|$HOME/.pi/agent/AGENTS.md"
+  "$repo_dir/shared/AGENTS.md|$HOME/.pi/agent/AGENTS.md"
   "$repo_dir/pi/agent/APPEND_SYSTEM.md|$HOME/.pi/agent/APPEND_SYSTEM.md"
   "$repo_dir/pi/agent/mcp.json|$HOME/.pi/agent/mcp.json"
   "$repo_dir/pi/agent/models.json|$HOME/.pi/agent/models.json"
@@ -33,7 +33,7 @@ links=(
   "$repo_dir/shared/prompts|$HOME/.pi/agent/prompts"
   "$repo_dir/shared/prompts|$HOME/.claude/prompts"
   "$repo_dir/shared/skills|$HOME/.pi/agent/skills"
-  "$repo_dir/claude/CLAUDE.md|$HOME/.claude/CLAUDE.md"
+  "$repo_dir/shared/AGENTS.md|$HOME/.claude/CLAUDE.md"
   "$repo_dir/claude/settings.json|$HOME/.claude/settings.json"
   "$repo_dir/claude/hooks|$HOME/.claude/hooks"
   "$repo_dir/shared/skills|$HOME/.claude/skills"
