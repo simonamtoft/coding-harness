@@ -21,7 +21,8 @@ run repeatedly; already-correct links are left untouched.
 
 - `shared/`: the common `AGENTS.md`, skills, agents, and prompts linked into
   both harnesses.
-- `pi/agent/`: Pi extensions and non-secret provider configuration.
+- `pi/agent/`: Pi instructions and extensions. Provider/model configuration is
+  local-only and intentionally ignored by Git.
 - `claude/`: Claude hooks, settings, statusline, and themes.
 
 The shared resources are the single source of truth:
@@ -37,6 +38,7 @@ Claude discovers shared skills directly from `~/.claude/skills`. The shared
 agents and prompts are kept outside either harness so they can be linked into
 additional harnesses later without moving their canonical location.
 
-Pi's `~/.pi/agent/settings.json` remains local because its package entries use
-paths relative to the native Pi directory. Authentication and generated state
-are also intentionally not versioned.
+Pi's `~/.pi/agent/settings.json` and `~/.pi/agent/models.json` remain local.
+The settings file contains package paths relative to the native Pi directory,
+and the model catalog points at environment-specific providers. Authentication
+and generated state are also intentionally not versioned.

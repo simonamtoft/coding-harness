@@ -26,7 +26,6 @@ links=(
   "$repo_dir/shared/AGENTS.md|$HOME/.pi/agent/AGENTS.md"
   "$repo_dir/pi/agent/APPEND_SYSTEM.md|$HOME/.pi/agent/APPEND_SYSTEM.md"
   "$repo_dir/pi/agent/mcp.json|$HOME/.pi/agent/mcp.json"
-  "$repo_dir/pi/agent/models.json|$HOME/.pi/agent/models.json"
   "$repo_dir/shared/agents|$HOME/.pi/agent/agents"
   "$repo_dir/shared/agents|$HOME/.claude/agents"
   "$repo_dir/pi/agent/extensions|$HOME/.pi/agent/extensions"
