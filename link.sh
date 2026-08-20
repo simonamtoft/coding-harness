@@ -41,14 +41,26 @@ links=(
 for entry in "${links[@]}"; do
   source=${entry%%|*}
   target=${entry#*|}
+  if [[ ! -e "$source" ]]; then
+    echo "Missing canonical path: $source" >&2
+    exit 1
+  fi
+  if [[ -L "$target" && "$(readlink "$target")" == "$source" ]]; then
+    continue
+  fi
+  if [[ ( -e "$target" || -L "$target" ) && "$force" != true ]]; then
+    echo "Refusing existing path: $target (use --force to back it up and replace it)" >&2
+    exit 1
+  fi
+done
+
+for entry in "${links[@]}"; do
+  source=${entry%%|*}
+  target=${entry#*|}
   if [[ -L "$target" && "$(readlink "$target")" == "$source" ]]; then
     continue
   fi
   if [[ -e "$target" || -L "$target" ]]; then
-    if [[ "$force" != true ]]; then
-      echo "Refusing existing path: $target (use --force to back it up and replace it)" >&2
-      exit 1
-    fi
     backup_target="$backup_dir${target#$HOME}"
     mkdir -p "$(dirname "$backup_target")"
     mv "$target" "$backup_target"
