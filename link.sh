@@ -31,6 +31,7 @@ links=(
   "$repo_dir/pi/agent/extensions|$HOME/.pi/agent/extensions"
   "$repo_dir/pi/agent/prompts|$HOME/.pi/agent/prompts"
   "$repo_dir/claude/CLAUDE.md|$HOME/.claude/CLAUDE.md"
+  "$repo_dir/claude/settings.json|$HOME/.claude/settings.json"
   "$repo_dir/claude/hooks|$HOME/.claude/hooks"
   "$repo_dir/claude/skills|$HOME/.claude/skills"
   "$repo_dir/claude/statusline-command.sh|$HOME/.claude/statusline-command.sh"
