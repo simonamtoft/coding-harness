@@ -8,3 +8,6 @@
 
 git:github.com/simonamtoft/pi-worktree-agents
 git:github.com/simonamtoft/pi-status-footer
+
+# Disabled: MCP gateway not in use. Uncomment to reinstate the mcp tools.
+# npm:pi-mcp-adapter
