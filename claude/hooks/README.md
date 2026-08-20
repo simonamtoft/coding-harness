@@ -1,6 +1,6 @@
 # Claude Code hooks
 
-User-global hooks that enforce a small Bash denylist, a per-project edit scope, an end-of-turn verifier, and a secret-file read guard. The first two policies were surfaced by the a prior environment audit (`~/projects/environment-audit/cursor_audit_out/summary.md`); the secret-file guard reinstates protection the host-managed policy silently disabled (see `check-read.sh`).
+User-global hooks that enforce a small Bash denylist, a per-project edit scope, an end-of-turn verifier, and a secret-file read guard. The first two policies were surfaced by a prior environment audit (`~/projects/environment-audit/cursor_audit_out/summary.md`); the secret-file guard reinstates protection the host-managed policy silently disabled (see `check-read.sh`).
 
 ## The rail is the sandbox, not the hook
 

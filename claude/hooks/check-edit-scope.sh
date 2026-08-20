@@ -26,7 +26,7 @@ case "$file_path" in
   *)  abs="${PWD}/${file_path}" ;;
 esac
 
-# Always block writes under ~/Desktop (repeated anti-pattern from the Cursor audit).
+# Always block writes under ~/Desktop (repeated unsafe pattern).
 if [[ "$abs" == "$HOME/Desktop"/* || "$abs" == "$HOME/Desktop" ]]; then
   echo "Hook: edits to ~/Desktop are blocked. Pick a path inside a project repo." >&2
   exit 2
