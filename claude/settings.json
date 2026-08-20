@@ -1,0 +1,162 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "mcp__plugin_playwright_playwright"
+    ],
+    "deny": [
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_run_code_unsafe"
+    ],
+    "defaultMode": "plan"
+  },
+  "model": "opus",
+  "skillOverrides": {
+    "frontend-design:frontend-design": "name-only",
+    "claude-api": "name-only",
+    "create-skill-from-session-data": "name-only",
+    "scaffold-one-off-script": "name-only"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/session-context.sh",
+            "statusMessage": "Loading session context..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/check-bash.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/check-read.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/check-edit-scope.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/verify-turn.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/claude-md-refcheck.py",
+            "statusMessage": "Checking CLAUDE.md references..."
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash $HOME/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "allowWrite": [
+        "~/Library/Application Support/fp"
+      ],
+      "allowRead": [
+        "~/.ssh/id_ed25519.pub",
+        "~/.ssh/allowed_signers",
+        "~/.ssh/known_hosts"
+      ]
+    },
+    "credentials": {
+      "files": [
+        {
+          "path": "~/.ssh",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.aws",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.gnupg",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.azure",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.kube",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/gcloud",
+          "mode": "deny"
+        },
+        {
+          "path": "~/Library/Keychains",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.netrc",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.npmrc",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.pypirc",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.docker/config.json",
+          "mode": "deny"
+        }
+      ]
+    },
+    "excludedCommands": [
+      "gh *",
+      "terraform *",
+      "gcloud *",
+      "docker *",
+      "git commit *"
+    ]
+  },
+  "effortLevel": "medium",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "custom:dd-purple",
+  "editorMode": "normal",
+  "autoMemoryEnabled": false
+}

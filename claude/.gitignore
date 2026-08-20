@@ -1,0 +1,25 @@
+# Allowlist approach: ignore everything by default, then unignore safe config.
+# Safer than denylisting because new Claude Code directories won't leak by default.
+
+/*
+!/.gitignore
+!/CLAUDE.md
+!/settings.json
+!/keybindings.json
+!/hooks/
+!/commands/
+!/skills/
+!/themes/
+!README.md
+!/agents/
+
+# Plugins: keep declarative config, drop caches/clones
+!/plugins/
+/plugins/*
+!/statusline-command.sh
+
+# Explicit blocks for anything sensitive that slips through
+.credentials.json
+*.pem
+*.key
+.DS_Store

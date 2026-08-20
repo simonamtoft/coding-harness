@@ -1,0 +1,7 @@
+{
+  "name": "DD Orange",
+  "base": "dark-daltonized",
+  "overrides": {
+    "promptBorder": "#ff9e3d"
+  }
+}

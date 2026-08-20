@@ -1,0 +1,8 @@
+{
+  "title": "Report title",
+  "subtitle": "Short project or scope label",
+  "footer": "Concise provenance or scope note",
+  "navFile": "/absolute/path/to/agent-final-<report-id>-nav.html",
+  "sectionsFile": "/absolute/path/to/agent-final-<report-id>-sections.html",
+  "outputFile": "/absolute/path/to/agent-final-<report-id>.html"
+}

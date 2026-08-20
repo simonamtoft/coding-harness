@@ -1,0 +1,39 @@
+{
+  "title": "Report title",
+  "subtitle": "Short project or scope label",
+  "footer": "Concise provenance or scope note",
+  "outputFile": "/absolute/path/to/agent-final-<report-id>.html",
+  "outcome": {
+    "label": "Outcome",
+    "title": "One evidence-backed conclusion",
+    "summary": "What changed or was learned."
+  },
+  "sections": [
+    {
+      "type": "prose",
+      "id": "changes",
+      "label": "Changes",
+      "title": "What changed",
+      "context": "Optional compact context",
+      "paragraphs": ["First paragraph.", "Second paragraph."]
+    },
+    {
+      "type": "verification",
+      "id": "verification",
+      "label": "Verification",
+      "title": "Checks performed",
+      "items": [
+        { "label": "Commands", "value": "3 / 3", "summary": "All commands passed.", "tone": "good" }
+      ]
+    },
+    {
+      "type": "limitations",
+      "id": "limitations",
+      "label": "Limitations",
+      "title": "What was not exercised",
+      "items": [
+        { "title": "Browser unavailable", "effect": "The report received static validation only." }
+      ]
+    }
+  ]
+}

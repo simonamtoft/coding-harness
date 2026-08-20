@@ -1,0 +1,7 @@
+{
+  "name": "DD Purple",
+  "base": "dark-daltonized",
+  "overrides": {
+    "promptBorder": "#c084fc"
+  }
+}

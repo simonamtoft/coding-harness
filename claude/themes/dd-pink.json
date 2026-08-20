@@ -1,0 +1,7 @@
+{
+  "name": "DD Pink",
+  "base": "dark-daltonized",
+  "overrides": {
+    "promptBorder": "#ff79c6"
+  }
+}

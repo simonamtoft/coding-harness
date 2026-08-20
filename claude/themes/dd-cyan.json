@@ -1,0 +1,7 @@
+{
+  "name": "DD Cyan",
+  "base": "dark-daltonized",
+  "overrides": {
+    "promptBorder": "#5fd3d3"
+  }
+}

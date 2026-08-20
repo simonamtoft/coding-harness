@@ -1,0 +1,69 @@
+<figure class="visual-example diagram">
+  <div class="diagram-head">
+    <div>
+      <span class="card-label">Backlog execution map</span>
+      <h3>{{MAP_TITLE}}</h3>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="legend-line hard"></i>Hard dependency</span>
+      <span><i class="legend-line suggested"></i>Suggested sequence</span>
+    </div>
+  </div>
+  <svg class="graph ticket-map" viewBox="0 0 960 470" role="img" aria-label="{{MAP_ARIA_LABEL}}">
+    <defs>
+      <marker id="ticket-arrow-hard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--blue)"/>
+      </marker>
+      <marker id="ticket-arrow-suggested" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aaec3"/>
+      </marker>
+    </defs>
+
+    <text class="stage-label" x="260" y="28">Start first</text>
+    <text class="stage-label" x="520" y="28">Then</text>
+    <text class="stage-label" x="780" y="28">If capacity</text>
+
+    <rect class="lane" x="22" y="48" width="916" height="112" rx="12"/>
+    <rect class="lane" x="22" y="174" width="916" height="112" rx="12"/>
+    <rect class="lane optional" x="22" y="300" width="916" height="112" rx="12"/>
+    <text class="lane-label" x="42" y="78">{{LANE_1_LABEL}}</text>
+    <text class="lane-label" x="42" y="204">{{LANE_2_LABEL}}</text>
+    <text class="lane-label" x="42" y="330">{{LANE_3_LABEL}}</text>
+
+    <path class="edge hot" marker-end="url(#ticket-arrow-hard)" d="M340 106 H440"/>
+    <path class="edge suggested" marker-end="url(#ticket-arrow-suggested)" d="M340 232 H440"/>
+    <path class="edge suggested" marker-end="url(#ticket-arrow-suggested)" d="M600 358 H700"/>
+
+    <g transform="translate(180 82)">
+      <rect class="node hot" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_1_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_1_TITLE}}</text>
+    </g>
+    <g transform="translate(440 82)">
+      <rect class="node" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_2_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_2_TITLE}}</text>
+    </g>
+    <g transform="translate(180 208)">
+      <rect class="node hot" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_3_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_3_TITLE}}</text>
+    </g>
+    <g transform="translate(440 208)">
+      <rect class="node" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_4_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_4_TITLE}}</text>
+    </g>
+    <g transform="translate(440 334)">
+      <rect class="node" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_5_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_5_TITLE}}</text>
+    </g>
+    <g transform="translate(700 334)">
+      <rect class="node" width="160" height="50" rx="9"/>
+      <text class="node-title" x="80" y="21">{{TICKET_6_ID}}</text>
+      <text class="node-sub" x="80" y="38">{{TICKET_6_TITLE}}</text>
+    </g>
+  </svg>
+  <figcaption>{{MAP_CAPTION}}</figcaption>
+</figure>
