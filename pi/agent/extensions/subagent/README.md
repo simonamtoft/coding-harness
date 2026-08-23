@@ -2,14 +2,29 @@
 
 Adapted from Pi's bundled `examples/extensions/subagent/` implementation. It exposes a `subagent` tool that launches specialized agents in isolated Pi subprocesses and supports single, parallel, and chained execution.
 
-## Installed review agents
+## Installed agents
 
 Agents are loaded from `~/.pi/agent/agents/*.md`:
 
+- `presenter` — builds and validates final HTML reports
 - `correctness-reviewer` — Claude Sonnet 5, correctness and maintainability findings
 - `security-reviewer` — GPT-5.6 Sol, threat-focused security findings
 
-Both reviewers receive only `read`, `grep`, `find`, and `ls`. They cannot edit files or invoke arbitrary shell commands.
+The reviewers receive only `read`, `grep`, `find`, and `ls`. They cannot edit files or invoke arbitrary shell commands.
+
+## Local model overrides
+
+Set machine-specific agent models in `~/.pi/agent/subagents.json`:
+
+```json
+{
+  "models": {
+    "presenter": "IM-GPT/gpt-5.6-luna"
+  }
+}
+```
+
+A local override takes precedence over an agent's frontmatter model. Without either value, the subagent inherits the active parent model and thinking level. The local file is runtime configuration and is not linked from or committed to this repository.
 
 ## Isolation change from the bundled example
 

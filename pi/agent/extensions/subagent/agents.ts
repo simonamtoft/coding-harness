@@ -38,6 +38,38 @@ type AgentFrontmatter = {
 	model?: unknown;
 };
 
+type SubagentConfig = {
+	models?: Record<string, string>;
+};
+
+function loadModelOverrides(): Record<string, string> {
+	const configPath = path.join(getAgentDir(), "subagents.json");
+	if (!fs.existsSync(configPath)) return {};
+
+	let config: SubagentConfig;
+	try {
+		config = JSON.parse(fs.readFileSync(configPath, "utf-8")) as SubagentConfig;
+	} catch (error) {
+		throw new Error(`Could not read ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	if (!config || typeof config !== "object" || Array.isArray(config)) {
+		throw new Error(`Invalid ${configPath}: expected a JSON object`);
+	}
+	if (config.models === undefined) return {};
+	if (!config.models || typeof config.models !== "object" || Array.isArray(config.models)) {
+		throw new Error(`Invalid ${configPath}: "models" must be an object mapping agent names to provider/model strings`);
+	}
+
+	for (const [name, model] of Object.entries(config.models)) {
+		if (typeof model !== "string" || !/^[^/\s]+\/\S+$/.test(model)) {
+			throw new Error(`Invalid ${configPath}: model override for "${name}" must be a provider/model string`);
+		}
+	}
+
+	return config.models;
+}
+
 /**
  * Normalize a frontmatter `tools` value to a list of tool names.
  *
@@ -128,9 +160,13 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
 	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
+	const modelOverrides = loadModelOverrides();
 
-	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
-	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+	const applyModelOverrides = (agents: AgentConfig[]) =>
+		agents.map((agent) => ({ ...agent, model: modelOverrides[agent.name] ?? agent.model }));
+	const userAgents = scope === "project" ? [] : applyModelOverrides(loadAgentsFromDir(userDir, "user"));
+	const projectAgents =
+		scope === "user" || !projectAgentsDir ? [] : applyModelOverrides(loadAgentsFromDir(projectAgentsDir, "project"));
 
 	const agentMap = new Map<string, AgentConfig>();
 

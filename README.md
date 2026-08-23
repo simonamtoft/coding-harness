@@ -61,7 +61,9 @@ Claude discovers shared skills directly from `~/.claude/skills`. The shared
 agents and prompts are kept outside either harness so they can be linked into
 additional harnesses later without moving their canonical location.
 
-Pi's `~/.pi/agent/settings.json` and `~/.pi/agent/models.json` remain local.
-The settings file contains package paths relative to the native Pi directory,
-and the model catalog points at environment-specific providers. Authentication
-and generated state are also intentionally not versioned.
+Pi's `~/.pi/agent/settings.json`, `~/.pi/agent/models.json`, and
+`~/.pi/agent/subagents.json` remain local. The settings file contains package
+paths relative to the native Pi directory, the model catalog points at
+environment-specific providers, and `subagents.json` optionally maps agent
+names to machine-specific `provider/model` values. Authentication and generated
+state are also intentionally not versioned.
