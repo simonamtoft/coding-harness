@@ -1,11 +1,18 @@
 ---
 name: present
-description: Present substantive completed work as a self-contained HTML report by delegating report construction to an isolated Pi presenter agent. Use for final reports after implementations, investigations, reviews, or plans with enough content to benefit from a structured visual summary. Do not use for quick answers, clarifying questions, progress updates, or trivial changes.
+description: Present substantial completed work as a self-contained HTML report by delegating report construction to an isolated Pi presenter agent. Use only when the work is substantial and a structured report communicates the outcome better than the primary artifact or UI. Do not use when the result is easy to verify directly in the UI, or for quick answers, clarifying questions, progress updates, routine changes, or trivial changes.
 ---
 
 # Present completed work through the presenter agent
 
-Delegate report construction to the user-level `presenter` Pi subagent. Do not build the HTML report in the parent context.
+Use this skill only when both conditions hold:
+
+- the completed work is substantial, such as a multi-part implementation, investigation, review, or plan
+- an HTML report makes the outcome materially easier to understand than the primary artifact, UI, or a concise Markdown response
+
+Do not use it merely because files changed or an implementation was completed. If the result is easy to inspect or verify directly in the UI, return a concise Markdown summary instead.
+
+When these criteria are met, delegate report construction to the user-level `presenter` Pi subagent. Do not build the HTML report in the parent context.
 
 ## Prepare the delivery brief
 

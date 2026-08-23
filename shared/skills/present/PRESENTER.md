@@ -24,6 +24,7 @@ Before creating any artifacts, generate one collision-resistant report ID for th
    - key changes, findings, or decisions
    - verification performed
    - limitations or follow-ups
+   - omit any section whose only purpose is to restate the outcome, describe the report-writing process, or record that no action was taken
 4. Make substantive reports visual-first, not prose with decoration:
    - identify the one or two relationships the reader must understand, then lead with the closest source-grounded visual: an actual capture, before/after comparison, state or data-flow diagram, coverage matrix, compact table, or exact command output
    - if a change concerns lifecycle, lineage, ownership, routing, dependencies, or invalidation, show that structure instead of describing it only in paragraphs
@@ -32,14 +33,18 @@ Before creating any artifacts, generate one collision-resistant report ID for th
    - avoid consecutive prose-only sections when their content can be combined into one visual section
    - do not invent data or add decorative charts, generic icons, or diagrams that merely restate prose; omit a visual when there is no trustworthy structure or evidence to show
 5. Build a clear top-to-bottom reading path rather than a card for every fact:
-   - keep the report hero in one column: label, title, then summary
+   - keep the report hero in one column: label, title, then summary; treat the hero as the single statement of the overall conclusion
+   - every later section must advance, substantiate, qualify, or operationalize that conclusion rather than restating or lightly paraphrasing it
    - keep primary explanatory prose in the main reading path; do not create a competing prose column beside it
    - place supporting visuals or compact evidence beside or below the main content according to what scans best; side content may appear on either side
    - give each section one dominant idea or artifact
    - prefer one primary surface plus at most one supporting surface; use more only for a genuine comparison
    - group related details in prose, a list, or a table instead of separate cards
-   - do not repeat the same outcome in the hero, a decision card, a metric, and a summary
-   - use badges, tags, labels, and metrics only when they encode information, not as decoration
+   - state each claim at the highest-value location and do not repeat it in the hero, section introduction, card, metric, caption, and summary; paraphrasing still counts as repetition
+   - omit optional right-aligned section context by default; include it only when readers need that information to interpret the section and it is not already conveyed by the heading or body
+   - never use section context for generic signposting or process notes such as “recommended progression,” “based on a read of,” or “read-only review”; put consequential provenance in the report footer or review basis instead
+   - omit labels that merely repeat the adjacent heading, and use badges, tags, labels, and metrics only when they encode information
+   - do not turn absence into dashboard content: zero commands, zero edits, or unchanged counts belong only in concise prose when they materially constrain the conclusion
 6. When the implementation has a user-visible visual result, show it near the outcome:
    - run the implemented surface and prefer an actual screenshot or captured output, embedded into the HTML
    - if a screenshot is impractical, use exact rendered text, an existing fixture, or another source-derived capture; reconstruct the result only when it can be mechanically faithful
@@ -71,7 +76,7 @@ Before delivery:
 1. Run `scripts/validate-report.mjs` from this skill directory against the completed report. Fix every unresolved placeholder, duplicate or missing local target, unsynchronized index item, and external runtime dependency it reports.
 2. When the active repository already provides Playwright, run `scripts/render-report.mjs <report-path> ${TMPDIR:-/tmp}/agent-final-<report-id>-captures` from this skill directory while keeping the repository as the working directory. Always pass the ID-scoped capture directory explicitly rather than accepting the script's shared default. The script resolves Playwright from that repository, reports clipping or SVG-boundary problems, and captures the hero plus visually dense sections. Use `--all` only when prose-only section layout also needs inspection. Do not install browser or image dependencies solely to review the report.
 3. Inspect the generated captures before the first delivery, not only after feedback. Check hierarchy, legibility, navigation, arrow direction and meaning, line wrapping, contrast in emphasized surfaces, and whether the first viewport communicates the result. Fix the report and rerun validation after every visual edit. If browser tooling is unavailable, disclose that limitation in the report.
-4. Read the completed HTML report end to end as a reader, not only as source to validate. Remove repetition, unsupported claims, weak examples, decorative modules, and details that obscure the outcome.
+4. Read the completed HTML report end to end as a reader, not only as source to validate. Identify the hero's central claim, then remove every later sentence, label, metric, or caption that merely repeats or paraphrases it. Remove unsupported claims, weak examples, decorative modules, and details that obscure the outcome.
 5. Compare every visual example with the actual capture or source-derived output. If it is not faithful, replace it with better evidence or omit it.
 6. Confirm each section has a clear dominant element, supporting surfaces are necessary, and visual density is proportionate to the amount of information. Narrow-screen optimization is not an acceptance criterion.
 

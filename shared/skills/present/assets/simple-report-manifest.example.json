@@ -14,7 +14,7 @@
       "id": "changes",
       "label": "Changes",
       "title": "What changed",
-      "context": "Optional compact context",
+      "context": "Omit unless essential to interpret this section",
       "paragraphs": ["First paragraph.", "Second paragraph."]
     },
     {
