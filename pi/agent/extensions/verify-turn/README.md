@@ -30,7 +30,9 @@ chmod +x .agent/verify.sh
 
 ## Retry behavior
 
-The extension allows three verification-to-repair rounds. After the third repair attempt, it runs the verifier once more and surfaces any remaining failure without triggering another agent turn. A passing verification resets the counter.
+The extension allows three verification-to-repair rounds. After the third repair attempt, it runs the verifier once more and surfaces any remaining failure without triggering another repair turn.
+
+Assistant output shown before the automatic verifier finishes is provisional. A passing verification resets the counter and triggers one report-only turn so the agent can provide the definitive full task report with the completed verification result. That report-only turn is not verified again, preventing an endless pass-report-verify loop.
 
 Verifier output is capped at Pi's standard 2,000-line/50 KB limit, retaining the tail where test failures usually appear.
 

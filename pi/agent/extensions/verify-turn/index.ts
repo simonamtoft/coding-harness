@@ -68,13 +68,24 @@ function formatFailure(output: string): string {
 export default function verifyTurn(pi: ExtensionAPI) {
   let rounds = 0;
   let verificationRunning = false;
+  let finalReportPending = false;
 
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     rounds = 0;
     verificationRunning = false;
+    finalReportPending = false;
+    ctx.ui.setStatus("verify-turn", undefined);
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    ctx.ui.setStatus("verify-turn", undefined);
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
+    if (finalReportPending) {
+      finalReportPending = false;
+      return;
+    }
     if (verificationRunning || process.env.PI_VERIFY_DISABLE === "1") return;
 
     verificationRunning = true;
@@ -90,6 +101,17 @@ export default function verifyTurn(pi: ExtensionAPI) {
       const result = await pi.exec(verifier.command, verifier.args, { cwd: ctx.cwd });
       if (result.code === 0) {
         rounds = 0;
+        finalReportPending = true;
+        pi.sendMessage(
+          {
+            customType: "verify-turn",
+            content:
+              `Automatic verification passed (${verifier.label}). Now provide the definitive final response for the original task. ` +
+              "Carry forward the complete implementation summary, review outcome, and all verification performed. Do not modify files, call tools, or report only this verification result.",
+            display: true,
+          },
+          { deliverAs: "followUp", triggerTurn: true },
+        );
         return;
       }
 
@@ -105,9 +127,11 @@ export default function verifyTurn(pi: ExtensionAPI) {
       }
 
       const finalAttempt = rounds === MAX_ROUNDS;
+      const reportingReminder =
+        "In your next response, carry forward the complete original-task summary and prior verification; add this repair rather than reporting only the latest failure or fix.";
       const instruction = finalAttempt
-        ? `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). Fix the failure if possible. If the next verification still fails, stop and summarize the remaining problem for the user.`
-        : `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. Fix it before finishing.`;
+        ? `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). Fix the failure if possible. If the next verification still fails, stop and summarize the remaining problem for the user. ${reportingReminder}`
+        : `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. Fix it before finishing. ${reportingReminder}`;
 
       pi.sendMessage(
         {

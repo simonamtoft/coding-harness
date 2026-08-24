@@ -1061,6 +1061,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use review_changes once after implementation and local checks when a task changes security-sensitive code, persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. Skip it for documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
 			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
+			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
 			"Do not call review_changes again solely because you fixed findings from its first pass unless the user asks or those fixes materially changed the design.",
 		],
 		parameters: Type.Object({
@@ -1178,7 +1179,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}`,
+							text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nReporting reminder: If this review is part of an implementation task, the final response must carry forward the complete original-task summary and prior verification, then add the review outcome and any review-driven fixes. Do not report only the latest findings or fixes.`,
 						},
 					],
 					details: makeDetails(completed),
