@@ -1056,10 +1056,11 @@ export default function (pi: ExtensionAPI) {
 		name: "review_changes",
 		label: "Review Changes",
 		description:
-			"Run independent correctness and security reviewers in parallel over the current Git changes. The reviewers are read-only and use isolated Pi contexts.",
-		promptSnippet: "Run independent correctness and security review for a completed non-trivial change",
+			"Run an independent correctness review over the current Git changes, optionally adding a parallel security review. The reviewers are read-only and use isolated Pi contexts.",
+		promptSnippet: "Run independent review for a completed non-trivial change",
 		promptGuidelines: [
-			"Use review_changes once after implementation and local checks when a task changes security-sensitive code, persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. Skip it for documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
+			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
+			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, dependency security, or security configuration, or when the user explicitly requests a full security review.",
 			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
 			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
 			"Do not call review_changes again solely because you fixed findings from its first pass unless the user asks or those fixes materially changed the design.",
@@ -1072,6 +1073,9 @@ export default function (pi: ExtensionAPI) {
 				Type.Array(Type.String(), {
 					description: "Files changed by the current task. Reviewers prioritize these paths while retaining the full patch as context.",
 				}),
+			),
+			security: Type.Optional(
+				Type.Boolean({ description: "Also run the security reviewer in parallel with correctness. Defaults to false." }),
 			),
 		}),
 
@@ -1095,7 +1099,9 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const discovery = discoverAgents(ctx.cwd, "user");
-			const reviewerNames = ["correctness-reviewer", "security-reviewer"];
+			const reviewerNames = params.security
+				? ["correctness-reviewer", "security-reviewer"]
+				: ["correctness-reviewer"];
 			const focus = params.focus?.length ? params.focus.map((file) => `- ${file}`).join("\n") : "- Entire supplied change set";
 			const task = [
 				`Review bundle: ${bundlePath}`,
@@ -1105,7 +1111,7 @@ export default function (pi: ExtensionAPI) {
 				"Follow your configured review methodology. Return findings only and do not edit files.",
 			].join("\n\n");
 			const makeDetails = (results: SingleResult[]): SubagentDetails => ({
-				mode: "parallel",
+				mode: reviewerNames.length > 1 ? "parallel" : "single",
 				agentScope: "user",
 				projectAgentsDir: discovery.projectAgentsDir,
 				results,
@@ -1191,6 +1197,7 @@ export default function (pi: ExtensionAPI) {
 
 		renderCall(args, theme) {
 			let text = theme.fg("toolTitle", theme.bold("review_changes"));
+			if (args.security) text += `\n${theme.fg("dim", "correctness + security")}`;
 			if (args.focus?.length) {
 				text += `\n${theme.fg("dim", `${args.focus.length} focused file${args.focus.length === 1 ? "" : "s"}`)}`;
 			}

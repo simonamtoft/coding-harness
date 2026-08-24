@@ -32,9 +32,10 @@ Child processes include `--no-extensions`. This prevents global parent lifecycle
 
 ## Review workflows
 
-The extension also exposes `review_changes`, which prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, removes it afterward, and dispatches both reviewers in parallel. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
+The extension also exposes `review_changes`, which prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, and removes it afterward. It runs the correctness reviewer by default; passing `security: true` adds the security reviewer in parallel. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
 
-- The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial or risk-sensitive implementation work. It validates the findings and fixes those within the original task scope.
-- Invoke `/review [base-ref]` for an explicit findings-only audit. It reports findings and asks before applying fixes.
+- The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial implementation work. Backlog/task-management-only, documentation-only, formatting-only, generated-only, and obviously trivial changes are excluded.
+- Security review is reserved for changes affecting security-sensitive trust boundaries or explicit user requests.
+- Invoke `/review [base-ref]` for an explicit findings-only correctness and security audit. It reports findings and asks before applying fixes.
 
 Project-local agents remain disabled by default. The generic tool can include them only when explicitly called with `agentScope: "project"` or `"both"`; interactive use asks for confirmation.
