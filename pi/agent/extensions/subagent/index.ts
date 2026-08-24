@@ -296,37 +296,33 @@ async function runSingleAgent(
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
-	if (!agent) {
-		const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-		return {
-			agent: agentName,
-			agentSource: "unknown",
-			task,
-			exitCode: 1,
-			messages: [],
-			stderr: `Unknown agent: "${agentName}". Available agents: ${available}.`,
-			status: "failed",
-			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-			step,
-		};
-	}
-
-	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
-	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
-	const inheritsDispatchConfig = !agent.model;
-	const model = agent.model ?? dispatchDefaults.model;
-	if (model) args.push("--model", model);
-	if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
-		args.push("--thinking", dispatchDefaults.thinkingLevel);
-	}
-	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
-
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
 
+	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
+	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
+
+	if (!agent) {
+		const fallbackPath = path.join(path.dirname(__filename), "fallback.md");
+		const fallbackBody = fs.existsSync(fallbackPath) ? fs.readFileSync(fallbackPath, "utf-8") : "";
+		if (fallbackBody.trim()) {
+			const tmp = await writePromptToTempFile(agentName, fallbackBody);
+			tmpPromptDir = tmp.dir;
+			tmpPromptPath = tmp.filePath;
+		}
+	} else {
+		const inheritsDispatchConfig = !agent.model;
+		const model = agent.model ?? dispatchDefaults.model;
+		if (model) args.push("--model", model);
+		if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
+			args.push("--thinking", dispatchDefaults.thinkingLevel);
+		}
+		if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	}
+
 	const currentResult: SingleResult = {
 		agent: agentName,
-		agentSource: agent.source,
+		agentSource: agent ? agent.source : "unknown" as const,
 		task,
 		exitCode: -1,
 		status: "running",
@@ -334,7 +330,7 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-		model,
+		model: agent?.model ?? dispatchDefaults.model,
 		step,
 	};
 
@@ -349,7 +345,7 @@ async function runSingleAgent(
 
 	try {
 		emitUpdate();
-		if (agent.systemPrompt.trim()) {
+		if (agent?.systemPrompt.trim()) {
 			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
 			tmpPromptDir = tmp.dir;
 			tmpPromptPath = tmp.filePath;
