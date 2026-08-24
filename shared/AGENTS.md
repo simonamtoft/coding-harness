@@ -17,6 +17,8 @@ Before implementing:
 - Do not add features, configuration, or flexibility for hypothetical requirements.
 - Do not introduce an abstraction solely for anticipated reuse. A single-use abstraction must clarify a domain concept, contract, or ownership boundary.
 - Do not add defensive handling for scenarios prevented by types, validation, or another enforced invariant.
+- Name recurring, domain-significant, or specification-defined values. Keep self-explanatory one-off literals inline.
+- Keep new fields, functions, and types private unless a current requirement needs broader access. Treat increased visibility as a public API decision, not a convenience.
 - If the implementation is substantially larger than the problem requires, simplify it.
 - Do not trade away correctness, robustness, or maintainability merely to reduce implementation effort.
 - Keep the main path easy to follow. Prefer guard clauses over deep nesting and name complex domain conditions.
@@ -50,7 +52,7 @@ Rules for the loop itself:
 
 - **Verification is external, not self-asserted.** Actually run the check — test, typecheck, lint, the app, or observability the repo exposes (traces, logs, tools like Langfuse).
 - **Prefer the highest-fidelity check that's practical.** Choose the check closest to the changed user-visible behavior: end-to-end → integration → unit.
-- **Reproduce bugs before fixing them when practical.** If local reproduction is not possible, use the closest observable signal and state the limitation.
+- **Reproduce bugs before fixing them when practical.** Add a regression test first when practical, observe it fail for the reported behavior, then pass after the fix. If local reproduction is not possible, use the closest observable signal and state the limitation.
 - **Characterize behavior before structural refactors.** When changing complex or untested control flow, first cover branches, side effects, ordering, and failure paths with tests.
 - **Feed the specific failure back.** Act on the exact signal — which assertion, which type error, which dependency — not a fresh guess.
 - **Report what was verified.** Name the checks run and disclose anything that could not be tested.
