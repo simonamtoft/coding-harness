@@ -1,2 +1,5 @@
 # Local harness configuration and runtime state
 /pi/agent/models.json
+
+backlog/
+.agent-report*/
