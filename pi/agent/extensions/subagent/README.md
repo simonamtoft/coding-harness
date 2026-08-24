@@ -32,7 +32,7 @@ Child processes include `--no-extensions`. This prevents global parent lifecycle
 
 ## Review workflows
 
-The extension also exposes `review_changes`, which prepares and removes the temporary Git bundle itself and dispatches both reviewers in parallel.
+The extension also exposes `review_changes`, which prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, removes it afterward, and dispatches both reviewers in parallel. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
 
 - The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial or risk-sensitive implementation work. It validates the findings and fixes those within the original task scope.
 - Invoke `/review [base-ref]` for an explicit findings-only audit. It reports findings and asks before applying fixes.

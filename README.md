@@ -46,6 +46,14 @@ leaves the override in place.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
   intentionally ignored by Git.
+
+The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
+It limits model filesystem tools to the session's current directory and its
+children, prompts before direct reads outside that boundary, and pre-approves
+canonical harness `SKILL.md` files plus installed Volta package content. It
+follows symlinks before checking and hard-denies common secret paths everywhere.
+Its Bash protection catches explicit paths; use a container or VM when an
+OS-enforced boundary is required.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the

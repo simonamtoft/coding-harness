@@ -311,7 +311,8 @@ async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions"];
+	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
+	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
 	const inheritsDispatchConfig = !agent.model;
 	const model = agent.model ?? dispatchDefaults.model;
 	if (model) args.push("--model", model);
@@ -1075,7 +1076,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
-			const prepared = await pi.exec(prepareScript, [params.base ?? "AUTO"], {
+			const prepared = await pi.exec(prepareScript, [params.base ?? "AUTO", ctx.cwd], {
 				cwd: ctx.cwd,
 				signal,
 			});

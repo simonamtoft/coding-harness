@@ -48,8 +48,15 @@ base=$(resolve_base) || {
   exit 1
 }
 
-bundle=$(mktemp "${TMPDIR:-/tmp}/pi-review-XXXXXX.md")
+bundle_dir="${2:-${TMPDIR:-/tmp}}"
+bundle=$(mktemp "$bundle_dir/pi-review-XXXXXX")
 chmod 600 "$bundle"
+
+review_pathspec=(.)
+if [[ "$bundle" == "$root/"* ]]; then
+  bundle_relative=${bundle#"$root/"}
+  review_pathspec+=(":(exclude)$bundle_relative")
+fi
 
 {
   printf '# Review bundle\n\n'
@@ -57,9 +64,9 @@ chmod 600 "$bundle"
   printf -- '- Base commit: `%s`\n' "$base"
   printf -- '- Head commit: `%s`\n\n' "$(git rev-parse HEAD 2>/dev/null || printf 'unborn')"
   printf '## Working tree status\n\n```text\n'
-  git status --short
+  git status --short -- "${review_pathspec[@]}"
   printf '```\n\n## Patch from base to working tree\n\n```diff\n'
-  git diff --no-ext-diff --find-renames "$base" -- .
+  git diff --no-ext-diff --find-renames "$base" -- "${review_pathspec[@]}"
   printf '```\n'
 
   while IFS= read -r -d '' file; do
@@ -71,10 +78,10 @@ chmod 600 "$bundle"
     fi
     status=0
     printf '```\n'
-  done < <(git ls-files --others --exclude-standard -z)
+  done < <(git ls-files --others --exclude-standard -z -- "${review_pathspec[@]}")
 } > "$bundle"
 
-if [[ -z "$(git status --short)" && -z "$(git diff --name-only "$base" -- .)" ]]; then
+if [[ -z "$(git status --short -- "${review_pathspec[@]}")" && -z "$(git diff --name-only "$base" -- "${review_pathspec[@]}")" ]]; then
   rm -f "$bundle"
   echo "No changes found relative to $base." >&2
   exit 2
