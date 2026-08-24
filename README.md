@@ -91,3 +91,17 @@ paths relative to the native Pi directory, the model catalog points at
 environment-specific providers, and `subagents.json` optionally maps agent
 names to machine-specific `provider/model` values. Authentication and generated
 state are also intentionally not versioned.
+
+## Session context hygiene
+
+Prefer one focused task per session. In Pi, use `/ctx-monitor` to inspect which
+sources are consuming the context window. When a session grows large, use
+`/handoff` to preserve its decisions and state, then continue in a fresh
+session. Reloading `AGENTS.md` can restore attention to instructions
+temporarily, but it does not remove the accumulated context.
+
+## Resources
+
+- https://github.com/cursor/plugins/tree/main/pstack/skills/
+- https://github.com/mattpocock/skills/tree/main/skills
+- https://fabiensanglard.net/agent.md/index.html
