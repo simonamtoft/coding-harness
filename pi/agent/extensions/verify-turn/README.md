@@ -32,7 +32,11 @@ chmod +x .agent/verify.sh
 
 The extension allows three verification-to-repair rounds. After the third repair attempt, it runs the verifier once more and surfaces any remaining failure without triggering another repair turn.
 
-Assistant output shown before the automatic verifier finishes is provisional. A passing verification resets the counter and triggers one report-only turn so the agent can provide the definitive full task report with the completed verification result. That report-only turn is not verified again, preventing an endless pass-report-verify loop.
+In interactive mode, a project-checks panel names the selected verifier, shows elapsed time, and streams its 12 most recent output lines. This panel covers deterministic project checks only; independent agent review remains a separate `review_changes` step. The panel holds input focus until the verifier exits, so prompts and `!` commands cannot run concurrently with it. Escape cancels verification, waits for the verifier process to stop, and then restores the editor. Cancellation, session shutdown, and normal verifier exit terminate any remaining processes in that verifier's process group, preventing development servers and browser workers from leaking into later checks.
+
+When a verifier is configured, the extension tells the agent that the full project check runs automatically. The agent should still run targeted checks that provide useful feedback while implementing, but should not invoke the full verifier again as its final check.
+
+A passing verification resets the counter and returns control without another model response. A failure still triggers a repair turn.
 
 Verifier output is capped at Pi's standard 2,000-line/50 KB limit, retaining the tail where test failures usually appear.
 
