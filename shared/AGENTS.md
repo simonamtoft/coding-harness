@@ -60,6 +60,10 @@ Rules for the loop itself:
 **Use the smallest representation that exposes the important structure.**
 
 - Keep prose concise and do not repeat what a visual already shows.
+- Lead with the concrete answer. Cut generic introductions, recaps, conclusions, praise, and offers to continue when they add no value.
+- Use plain words and active voice. Prefer specific facts, paths, commands, and measurements over abstract claims.
+- Keep formatting proportional to the content. Avoid excessive headings, bold labels, and repetitive summary sections.
+- Vary sentence structure naturally. Do not force ideas into a fixed number of bullets or reuse the same sentence pattern throughout.
 - Use pseudocode, call trees, component trees, or shallow annotated file trees when they clarify behavior, ownership, or placement.
 - Use types and signatures when contracts matter more than implementation details.
 - Use tables for direct comparisons and conceptual `diff` blocks for structural changes; label non-literal diffs.
