@@ -63,11 +63,11 @@ Write a handoff document so a fresh agent can continue the work without needing 
 
 4. **Redact sensitive data.** Before writing the file, scan for API keys, tokens, passwords, secrets, and personally identifiable information beyond the user's name. Replace each with `[REDACTED]`.
 
-5. **Write the file.** Save to `$TMPDIR` (macOS) or `/tmp` (Linux). Name it `handoff-<YYYY-MM-DD>-<slug>.md` where `<slug>` is a 2–3-word kebab-case summary of the topic. Print the full path when done.
+5. **Write the file.** Save to `$PI_SESSION_TMPDIR` when available, otherwise `$TMPDIR` (macOS) or `/tmp` (Linux). Name it `handoff-<YYYY-MM-DD>-<slug>.md` where `<slug>` is a 2–3-word kebab-case summary of the topic. Print the full path when done.
 
 ## Rules
 
-- **Save to `$TMPDIR`, not the workspace.** Never write inside the current project directory.
+- **Save to `$PI_SESSION_TMPDIR` (falling back to `$TMPDIR`), not the workspace.** Never write inside the current project directory.
 - **Reference artifacts, don't duplicate them.** If a plan file captures the implementation steps, just link it. Don't copy its content into the handoff.
 - **Tailored to Simon.** The document is for the maintainer continuing his own work. Write in second person ("you left off at…", "your next step is…"). Don't explain things Simon already knows about his own project.
 - **No padding.** If a section has nothing real to say, omit it. A short accurate document beats a long padded one.
@@ -76,4 +76,4 @@ Write a handoff document so a fresh agent can continue the work without needing 
 
 ## Done means
 
-A `.md` file exists in `$TMPDIR`, its full path is printed on screen, and the document is ready to paste or attach to a new session.
+A `.md` file exists in the session temp directory, its full path is printed on screen, and the document is ready to paste or attach to a new session.

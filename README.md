@@ -48,10 +48,12 @@ leaves the override in place.
   intentionally ignored by Git.
 
 The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
-It limits model filesystem tools to the session's current directory and its
-children, prompts before direct reads outside that boundary, and pre-approves
-canonical harness `SKILL.md` files, installed Volta package content, and
-collision-resistant final reports in the process temp directory. It
+It limits model filesystem tools to the session's current directory, while also
+providing a private mode-0700 workspace under the process temp directory for
+scratch artifacts. Delivered reports and handoffs in retained private session
+workspaces stay readable, while other retained scratch content prompts and
+writes remain scoped to the current session. Reads elsewhere prompt, apart from
+canonical harness `SKILL.md` files and installed Volta package content. It
 follows symlinks before checking and hard-denies common secret paths everywhere.
 Its Bash protection catches explicit paths; use a container or VM when an
 OS-enforced boundary is required.

@@ -3,25 +3,33 @@
 This extension is loaded from the global Pi extensions directory and applies a
 host-side boundary to model tool calls:
 
-- `read`, `grep`, `find`, and `ls` may access the current working directory and
-  descendants without prompting.
+- `read`, `write`, `edit`, `grep`, `find`, and `ls` may access the current
+  working directory and descendants without prompting.
 - Reads outside that directory prompt with `Allow once`, `Allow for this
   session`, or `Deny`. Non-interactive sessions deny them.
-- Read tools are pre-approved for `SKILL.md` files in the canonical
-  `coding-harness` checkout, installed package content under Volta's
-  `tools/image/packages` directory, and collision-resistant final reports named
-  `agent-final-<12 hex chars>.html` plus their matching `-captures` directories
-  in the process temp directory.
-- `write` and `edit` are always blocked outside the session directory,
+- On POSIX systems, each session gets a private mode-0700 workspace at
+  `${TMPDIR}/pi-agent-<uid>/<session-id>/`. All filesystem tools may read and
+  write there, and Bash may use explicit absolute paths within it. The exact path
+  is exposed as `PI_SESSION_TMPDIR` and added to the agent's system prompt. The
+  extension fails closed when UID ownership cannot be verified. Read tools may
+  also inspect delivered reports, captures, handoffs, and retrospectives in a
+  retained UUID workspace that is still owned by the current user and private;
+  other retained scratch content still prompts, and writes remain limited to the
+  current session.
+- Read tools are also pre-approved for `SKILL.md` files in the canonical
+  `coding-harness` checkout and installed package content under Volta's
+  `tools/image/packages` directory.
+- `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
   the project.
-- Bash is blocked when it contains an explicit path outside the current
-  directory or one of the protected secret patterns; it does not use the read
-  approval prompt.
+- Bash is blocked when it contains an explicit path outside the current or
+  session temp directory, changes its working directory to the session temp
+  directory, or names one of the protected secret patterns. Scratch commands
+  must use absolute paths; Bash does not use the read approval prompt.
 - Subagents inherit this guard, and their requested working directories must
-  remain inside the parent session directory.
+  remain inside the parent project or its private session temp workspace.
 
 This is a tool-call guard, not an OS sandbox. Bash commands using variables,
 redirections, command substitution, or programs that discover paths at runtime
@@ -30,7 +38,11 @@ strong filesystem boundary is required. User-entered `!` commands and
 extensions also remain outside this guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
-Trusted read locations are derived from the extension checkout, `VOLTA_HOME`
-(falling back to `~/.volta`), and the process temp directory. The temp directory
-itself is not trusted: only the collision-resistant report paths above bypass
-the prompt. There is no configurable bypass.
+Trusted locations are derived from the extension checkout, `VOLTA_HOME`
+(falling back to `~/.volta`), the process temp directory, and Pi's session UUID.
+The temp directory itself is not trusted: the current private session workspace
+is fully available, while retained workspaces bypass read prompts only for the
+delivered artifact names above. Only the current session workspace accepts
+writes. Session workspaces are retained after shutdown so delivered links do not
+break; the operating system owns eventual temp cleanup. There is no configurable
+bypass.

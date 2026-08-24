@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -9,6 +9,8 @@ const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
 const CODING_HARNESS_ROOT = resolve(dirname(realpathSync.native(__filename)), "../../../..");
 const TEMP_ROOT = realpathSync.native(tmpdir());
+const CURRENT_UID = typeof process.getuid === "function" ? process.getuid() : undefined;
+const TEMP_PARENT = CURRENT_UID === undefined ? undefined : join(TEMP_ROOT, `pi-agent-${CURRENT_UID}`);
 const PI_PACKAGES_ROOT = resolve(
   process.env.VOLTA_HOME ?? join(process.env.HOME ?? "~", ".volta"),
   "tools/image/packages",
@@ -47,18 +49,55 @@ function isSecret(path: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-function isTrustedTempArtifact(path: string): boolean {
-  if (!isWithin(TEMP_ROOT, path)) return false;
+function ensurePrivateDirectory(path: string, uid: number): void {
+  mkdirSync(path, { mode: 0o700, recursive: true });
+  const stats = lstatSync(path);
+  if (!stats.isDirectory() || stats.isSymbolicLink()) throw new Error(`${path} is not a private directory`);
+  if (stats.uid !== uid) throw new Error(`${path} is owned by another user`);
+  if ((stats.mode & 0o077) !== 0) chmodSync(path, 0o700);
+}
 
-  const [topLevel, ...descendants] = relative(TEMP_ROOT, path).split(sep);
-  if (/^agent-final-[0-9a-f]{12}\.html$/.test(topLevel)) return descendants.length === 0;
-  return /^agent-final-[0-9a-f]{12}-captures$/.test(topLevel);
+function isSessionId(value: string): boolean {
+  return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function createSessionTempDirectory(sessionId: string): string {
+  if (CURRENT_UID === undefined || TEMP_PARENT === undefined) {
+    throw new Error("session temp directories require POSIX ownership checks");
+  }
+  if (!isSessionId(sessionId)) throw new Error("invalid Pi session ID");
+  ensurePrivateDirectory(TEMP_PARENT, CURRENT_UID);
+  const sessionTempDirectory = join(TEMP_PARENT, sessionId);
+  ensurePrivateDirectory(sessionTempDirectory, CURRENT_UID);
+  return realpathSync.native(sessionTempDirectory);
+}
+
+function isTrustedRetainedSessionRead(path: string): boolean {
+  if (CURRENT_UID === undefined || TEMP_PARENT === undefined || !isWithin(TEMP_PARENT, path)) return false;
+  const [sessionId, artifact, ...descendants] = relative(TEMP_PARENT, path).split(sep);
+  if (!isSessionId(sessionId) || !artifact) return false;
+
+  try {
+    const sessionDirectory = join(TEMP_PARENT, sessionId);
+    const stats = lstatSync(sessionDirectory);
+    if (!stats.isDirectory() || stats.isSymbolicLink() || stats.uid !== CURRENT_UID || (stats.mode & 0o077) !== 0) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  if (/^agent-final-[0-9a-f]{12}\.html$/.test(artifact)) return descendants.length === 0;
+  if (/^agent-final-[0-9a-f]{12}-captures$/.test(artifact)) return true;
+  if (/^handoff-\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+){1,2}\.md$/.test(artifact)) {
+    return descendants.length === 0;
+  }
+  return artifact === "repo-session-retrospective.html" && descendants.length === 0;
 }
 
 function isTrustedOutsideRead(path: string): boolean {
   return isWithin(PI_PACKAGES_ROOT, path)
-    || (basename(path) === "SKILL.md" && isWithin(CODING_HARNESS_ROOT, path))
-    || isTrustedTempArtifact(path);
+    || (basename(path) === "SKILL.md" && isWithin(CODING_HARNESS_ROOT, path));
 }
 
 function inspectPath(root: string, rawPath: string): { resolved?: string; reason?: string; outside?: boolean } {
@@ -109,13 +148,39 @@ function shellPathCandidates(command: string): string[] {
   });
 }
 
+function changesDirectoryToSessionTemp(command: string, sessionTempDirectory: string): boolean {
+  return command.split(/&&|\|\||[;|]/).some((segment) => {
+    const tokens = segment
+      .replace(/'([^']*)'/g, "$1")
+      .replace(/"((?:\\.|[^"\\])*)"/g, "$1")
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.replace(/^[({]+|[)}]+$/g, ""));
+    const commandIndex = tokens.findIndex((token) => {
+      const isPrefix = /^(?:if|then|elif|else|do|command|builtin|time|!)$/.test(token)
+        || /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
+      return token !== "" && !isPrefix;
+    });
+    if (commandIndex === -1 || (tokens[commandIndex] !== "cd" && tokens[commandIndex] !== "pushd")) return false;
+    if (segment.includes("PI_SESSION_TMPDIR")) return true;
+    const target = tokens.slice(commandIndex + 1).find((token) => !token.startsWith("-"));
+    if (!target) return false;
+    const expanded = target.startsWith("~") ? join(process.env.HOME ?? "~", target.slice(1)) : target;
+    return isAbsolute(expanded) && isWithin(sessionTempDirectory, realpathForCheck(expanded));
+  });
+}
+
 function block(reason: string) {
   return { block: true, reason: `Sandbox blocked tool call: ${reason}` };
 }
 
-export function createSandboxGuard(cwd = process.cwd()) {
+export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory: () => string | undefined = () => undefined) {
   const root = realpathSync.native(cwd);
   const sessionReadApprovals = new Set<string>();
+  const isSessionTempPath = (path: string) => {
+    const sessionTempDirectory = getSessionTempDirectory();
+    return sessionTempDirectory !== undefined && isWithin(sessionTempDirectory, path);
+  };
 
   return async (event: ToolCallEvent, ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } }) => {
     if (FILE_TOOLS.has(event.toolName)) {
@@ -124,10 +189,10 @@ export function createSandboxGuard(cwd = process.cwd()) {
         const inspection = inspectPath(root, input.path);
         if (inspection.reason && !inspection.outside) return block(`${input.path}: ${inspection.reason}`);
         if (inspection.outside) {
-          if (!READ_TOOLS.has(event.toolName) || !inspection.resolved) {
-            return block(`${input.path}: ${inspection.reason}`);
-          }
-          if (isTrustedOutsideRead(inspection.resolved)) return undefined;
+          if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
+          if (isSessionTempPath(inspection.resolved)) return undefined;
+          if (!READ_TOOLS.has(event.toolName)) return block(`${input.path}: ${inspection.reason}`);
+          if (isTrustedRetainedSessionRead(inspection.resolved) || isTrustedOutsideRead(inspection.resolved)) return undefined;
           if (sessionReadApprovals.has(inspection.resolved)) return undefined;
           if (!ctx.hasUI) return block(`${input.path}: outside reads require interactive approval`);
 
@@ -159,15 +224,23 @@ export function createSandboxGuard(cwd = process.cwd()) {
       for (const requestedCwd of requestedCwds) {
         if (typeof requestedCwd !== "string") continue;
         const inspection = inspectPath(root, requestedCwd);
-        if (inspection.reason) return block(`${requestedCwd}: ${inspection.reason}`);
+        if (inspection.reason && !(inspection.outside && inspection.resolved && isSessionTempPath(inspection.resolved))) {
+          return block(`${requestedCwd}: ${inspection.reason}`);
+        }
       }
     }
 
     if (isToolCallEventType("bash", event)) {
+      const sessionTempDirectory = getSessionTempDirectory();
+      if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory)) {
+        return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
+      }
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);
-        if (inspection.reason) return block(`${candidate}: ${inspection.reason}`);
+        if (inspection.reason && !(inspection.outside && inspection.resolved && isSessionTempPath(inspection.resolved))) {
+          return block(`${candidate}: ${inspection.reason}`);
+        }
       }
     }
 
@@ -176,6 +249,31 @@ export function createSandboxGuard(cwd = process.cwd()) {
 }
 
 export default function sandboxExtension(pi: ExtensionAPI) {
-  const guard = createSandboxGuard();
+  let sessionTempDirectory: string | undefined;
+  const guard = createSandboxGuard(process.cwd(), () => sessionTempDirectory);
+
+  pi.on("session_start", (_event, ctx) => {
+    try {
+      sessionTempDirectory = createSessionTempDirectory(ctx.sessionManager.getSessionId());
+      process.env.PI_SESSION_TMPDIR = sessionTempDirectory;
+    } catch (error) {
+      sessionTempDirectory = undefined;
+      delete process.env.PI_SESSION_TMPDIR;
+      ctx.ui.notify(`Could not create the session temp directory: ${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+  });
+
+  pi.on("before_agent_start", (event) => {
+    if (!sessionTempDirectory) return undefined;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\nSession temporary workspace: ${sessionTempDirectory}\nUse this directory for disposable clones, generated analysis, and other scratch artifacts instead of placing them in the repository root. It is also available to Bash commands as $PI_SESSION_TMPDIR; use absolute paths rather than changing Bash's working directory to it.`,
+    };
+  });
+
+  pi.on("session_shutdown", () => {
+    if (process.env.PI_SESSION_TMPDIR === sessionTempDirectory) delete process.env.PI_SESSION_TMPDIR;
+    sessionTempDirectory = undefined;
+  });
+
   pi.on("tool_call", (event, ctx) => guard(event, ctx));
 }
