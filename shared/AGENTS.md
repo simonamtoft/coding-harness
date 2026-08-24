@@ -19,6 +19,8 @@ Before implementing:
 - Do not add defensive handling for scenarios prevented by types, validation, or another enforced invariant.
 - If the implementation is substantially larger than the problem requires, simplify it.
 - Do not trade away correctness, robustness, or maintainability merely to reduce implementation effort.
+- Keep the main path easy to follow. Prefer guard clauses over deep nesting and name complex domain conditions.
+- Extract a helper only when it forms a cohesive concept with a precise contract; do not merely move branches elsewhere to satisfy a metric.
 
 Document a deliberate limitation only when a future maintainer could reasonably mistake it for an oversight. Use one `shortcut:` comment naming the limitation and the condition that would justify replacing it.
 
@@ -49,6 +51,7 @@ Rules for the loop itself:
 - **Verification is external, not self-asserted.** Actually run the check — test, typecheck, lint, the app, or observability the repo exposes (traces, logs, tools like Langfuse).
 - **Prefer the highest-fidelity check that's practical.** Choose the check closest to the changed user-visible behavior: end-to-end → integration → unit.
 - **Reproduce bugs before fixing them when practical.** If local reproduction is not possible, use the closest observable signal and state the limitation.
+- **Characterize behavior before structural refactors.** When changing complex or untested control flow, first cover branches, side effects, ordering, and failure paths with tests.
 - **Feed the specific failure back.** Act on the exact signal — which assertion, which type error, which dependency — not a fresh guess.
 - **Report what was verified.** Name the checks run and disclose anything that could not be tested.
 
