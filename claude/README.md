@@ -18,12 +18,15 @@ claude() {
   local settings="$HOME/.claude/settings.json"
   local tmp
   tmp=$(mktemp)
-  jq --arg t "custom:$pick" '.theme = $t' "$settings" > "$tmp" && mv "$tmp" "$settings"
+  jq --arg t "custom:$pick" '.theme = $t' "$settings" > "$tmp" && cat "$tmp" > "$settings"
+  rm -f "$tmp"
   command claude "$@"
 }
 ```
 
 Only fires for terminal `claude` launches.
+
+**`cat "$tmp" > "$settings"`, never `mv "$tmp" "$settings"`.** `~/.claude/settings.json` is a symlink into this repo. `mv` onto a symlink path *replaces the symlink* with a regular file rather than writing through it, so the first launch would silently decouple settings from version control — and every later `link.sh` run without `--force` would then refuse to proceed. Redirection writes through the link and keeps `theme` tracked, at the cost of a one-line dirty diff after each launch.
 
 ## Resources
 

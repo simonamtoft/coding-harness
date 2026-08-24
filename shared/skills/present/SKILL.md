@@ -1,6 +1,6 @@
 ---
 name: present
-description: Present substantial completed work as a self-contained HTML report by delegating report construction to an isolated Pi presenter agent. Use only when the work is substantial and a structured report communicates the outcome better than the primary artifact or UI. Do not use when the result is easy to verify directly in the UI, or for quick answers, clarifying questions, progress updates, routine changes, or trivial changes.
+description: Present substantial completed work as a self-contained HTML report by delegating report construction to an isolated presenter subagent. Use only when the work is substantial and a structured report communicates the outcome better than the primary artifact or UI. Do not use when the result is easy to verify directly in the UI, or for quick answers, clarifying questions, progress updates, routine changes, or trivial changes.
 ---
 
 # Present completed work through the presenter agent
@@ -12,7 +12,7 @@ Use this skill only when both conditions hold:
 
 Do not use it merely because files changed or an implementation was completed. If the result is easy to inspect or verify directly in the UI, return a concise Markdown summary instead.
 
-When these criteria are met, delegate report construction to the user-level `presenter` Pi subagent. Do not build the HTML report in the parent context.
+When these criteria are met, delegate report construction to the user-level `presenter` subagent. Do not build the HTML report in the parent context.
 
 ## Prepare the delivery brief
 
@@ -32,14 +32,22 @@ Distinguish observed facts from interpretation. Do not ask the presenter to infe
 
 ## Delegate
 
-Call the `subagent` tool in single-agent mode:
+Dispatch a single `presenter` subagent using whichever delegation tool this harness provides.
+
+With pi's `subagent` tool, in single-agent mode:
 
 - `agent`: `presenter`
 - `task`: ask it to create the final report and include the delivery brief
 - `cwd`: the active repository or working directory
 - `agentScope`: `user`
 
-The presenter owns report ID generation, artifact assembly, validation, optional browser rendering, visual inspection, and final link formatting. It may inspect the repository to verify and enrich the supplied evidence, but the delivery brief remains the source for conversational conclusions and work performed outside the repository.
+With Claude Code's `Task` tool:
+
+- `subagent_type`: `presenter`
+- `prompt`: ask it to create the final report and include the delivery brief
+- the subagent inherits the working directory, so state the intended repository or working directory explicitly in the brief
+
+Either way, dispatch exactly one presenter. The presenter owns report ID generation, artifact assembly, validation, optional browser rendering, visual inspection, and final link formatting. It may inspect the repository to verify and enrich the supplied evidence, but the delivery brief remains the source for conversational conclusions and work performed outside the repository.
 
 Do not invoke another report workflow in parallel. Do not edit the present skill, presenter instructions, templates, or report scripts as part of ordinary report generation.
 

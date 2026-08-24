@@ -15,8 +15,10 @@
 # it can never spin forever.
 #
 # Verifier resolution (per-project, optional), in precedence order:
-#   1. ${CLAUDE_PROJECT_DIR}/.claude/verify.sh  -> verify.sh
+#   1. ${CLAUDE_PROJECT_DIR}/.agent/verify.sh   -> verify.sh
 #   2. a `verify` task in Taskfile.yml/.yaml    -> task verify
+# Both paths are harness-neutral on purpose: pi's verify-turn extension resolves
+# the same two, so one project-level verifier serves both harnesses.
 # Neither present (or `task` not installed) -> no-op. Default-noop mirrors
 # check-edit-scope.sh's default-allow: unrelated repos are unaffected.
 
@@ -44,9 +46,9 @@ label=""
 out=""
 status=0
 
-verify_sh="${project_dir}/.claude/verify.sh"
+verify_sh="${project_dir}/.agent/verify.sh"
 if [[ -x "$verify_sh" ]]; then
-  label=".claude/verify.sh"
+  label=".agent/verify.sh"
   out=$(cd "$project_dir" && "$verify_sh" 2>&1); status=$?
 elif command -v task >/dev/null 2>&1; then
   taskfile=""

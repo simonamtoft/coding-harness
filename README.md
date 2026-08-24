@@ -42,24 +42,37 @@ leaves the override in place.
 
 ## Layout
 
-- `shared/`: the common `AGENTS.md`, skills, agents, and prompts linked into
-  both harnesses.
-- `pi/agent/`: Pi instructions, extensions, and the `packages.txt` manifest.
-  Provider/model configuration is local-only and intentionally ignored by Git.
-- `claude/`: Claude hooks, settings, statusline, and themes.
+- `shared/`: the common `AGENTS.md` and skills linked into both harnesses.
+- `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
+  `packages.txt` manifest. Provider/model configuration is local-only and
+  intentionally ignored by Git.
+- `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
-The shared resources are the single source of truth:
+Only genuinely harness-neutral resources live in `shared/`, and they are the
+single source of truth for both harnesses:
 
 ```text
 ~/coding-harness/shared/AGENTS.md -> ~/.pi/agent/AGENTS.md + ~/.claude/CLAUDE.md
-~/coding-harness/shared/skills  -> ~/.pi/agent/skills  + ~/.claude/skills
-~/coding-harness/shared/agents  -> ~/.pi/agent/agents  + ~/.claude/agents
-~/coding-harness/shared/prompts -> ~/.pi/agent/prompts + ~/.claude/prompts
+~/coding-harness/shared/skills    -> ~/.pi/agent/skills   + ~/.claude/skills
 ```
 
-Claude discovers shared skills directly from `~/.claude/skills`. The shared
-agents and prompts are kept outside either harness so they can be linked into
-additional harnesses later without moving their canonical location.
+Everything else is harness-specific, because the two harnesses disagree on
+format or capability:
+
+| Resource | Why it is not shared |
+| --- | --- |
+| `pi/agent/prompts/` | Pi reads `prompts/`; Claude Code reads `commands/`. `review.md` also calls `review_changes`, a Pi extension tool. |
+| `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `review_changes` drives them. |
+| `claude/agents/` | A Claude-shaped `presenter` so the shared `present` skill works in both harnesses. |
+
+The `present` skill stays shared: its report pipeline (`PRESENTER.md`,
+`scripts/`, `assets/`) is harness-neutral, and only the delegation call differs
+(Pi's `subagent` tool vs Claude Code's `Task` tool). Both are documented in the
+skill.
+
+Per-project verifiers are harness-neutral too. Pi's `verify-turn` extension and
+Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a
+`verify` task in a `Taskfile`, so a repo wires one verifier for both.
 
 Pi's `~/.pi/agent/settings.json`, `~/.pi/agent/models.json`, and
 `~/.pi/agent/subagents.json` remain local. The settings file contains package

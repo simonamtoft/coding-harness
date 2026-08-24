@@ -106,12 +106,14 @@ It runs at the natural "I'm done" boundary — **not after every edit** — so i
 
 Verifier resolution is **optional and per-project**, in precedence order:
 
-1. `${CLAUDE_PROJECT_DIR}/.claude/verify.sh` — run as `verify.sh` (from the project root).
+1. `${CLAUDE_PROJECT_DIR}/.agent/verify.sh` — run as `verify.sh` (from the project root).
 2. else a `verify` task in `Taskfile.yml` / `Taskfile.yaml` at the project root (when the `task` CLI is installed and `task --list-all` shows a `verify` task) — run as `task verify`.
 
 **If neither is present, the hook is a no-op** (default-noop, like `check-edit-scope.sh`'s default-allow), so unrelated repos are unaffected. Because it runs once per turn, a project-wide check (lint + typecheck) is fine here.
 
-Example `.claude/verify.sh`:
+Both locations are harness-neutral on purpose: pi's `verify-turn` extension resolves the same two in the same order, so a project wires **one** verifier that serves both harnesses (the `wire-up-verifier` skill scaffolds it).
+
+Example `.agent/verify.sh`:
 
 ```bash
 #!/usr/bin/env bash

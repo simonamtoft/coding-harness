@@ -12,7 +12,7 @@ import {
 const MAX_ROUNDS = 3;
 
 type Verifier =
-  | { label: ".pi/verify.sh"; command: string; args: string[] }
+  | { label: ".agent/verify.sh"; command: string; args: string[] }
   | { label: "task verify"; command: "task"; args: string[] };
 
 async function isExecutable(path: string): Promise<boolean> {
@@ -25,9 +25,9 @@ async function isExecutable(path: string): Promise<boolean> {
 }
 
 async function resolveVerifier(pi: ExtensionAPI, cwd: string): Promise<Verifier | undefined> {
-  const verifyScript = join(cwd, ".pi", "verify.sh");
+  const verifyScript = join(cwd, ".agent", "verify.sh");
   if (await isExecutable(verifyScript)) {
-    return { label: ".pi/verify.sh", command: verifyScript, args: [] };
+    return { label: ".agent/verify.sh", command: verifyScript, args: [] };
   }
 
   for (const filename of ["Taskfile.yml", "Taskfile.yaml"]) {

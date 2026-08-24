@@ -6,22 +6,26 @@ Runs a project verifier whenever Pi reaches `agent_settled`. A failing verifier 
 
 From the session working directory, in precedence order:
 
-1. Executable `.pi/verify.sh`
+1. Executable `.agent/verify.sh`
 2. A `verify` task in `Taskfile.yml` or `Taskfile.yaml`
 
 If neither exists, the extension is a no-op.
 
+Both locations are deliberately harness-neutral, and Claude Code's `verify-turn.sh` Stop hook
+resolves the same two in the same order. A project therefore wires **one** verifier that serves both
+harnesses. The `wire-up-verifier` skill scaffolds it.
+
 Example:
 
 ```bash
-mkdir -p .pi
-cat > .pi/verify.sh <<'SH'
+mkdir -p .agent
+cat > .agent/verify.sh <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 npm run typecheck
 npm test
 SH
-chmod +x .pi/verify.sh
+chmod +x .agent/verify.sh
 ```
 
 ## Retry behavior
