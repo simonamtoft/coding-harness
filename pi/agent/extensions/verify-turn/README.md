@@ -1,6 +1,6 @@
 # Verify turn
 
-Runs a project verifier whenever Pi reaches `agent_settled`. A failing verifier is fed back to the agent so it can repair the change before handing control back.
+Runs a project verifier whenever Pi reaches `agent_settled` after a completed model run. Cancelling model output does not trigger verification. A failing verifier is fed back to the agent so it can repair the change before handing control back.
 
 ## Verifier discovery
 

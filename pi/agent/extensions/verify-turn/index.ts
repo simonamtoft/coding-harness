@@ -249,6 +249,7 @@ function formatFailure(output: string): string {
 export default function verifyTurn(pi: ExtensionAPI) {
   let rounds = 0;
   let verificationRunning = false;
+  let shouldVerifySettledRun = false;
   let sessionActive = false;
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
@@ -256,6 +257,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     rounds = 0;
     verificationRunning = false;
+    shouldVerifySettledRun = false;
     sessionActive = true;
     guidanceController = undefined;
     verificationController = undefined;
@@ -291,8 +293,16 @@ export default function verifyTurn(pi: ExtensionAPI) {
     };
   });
 
+  pi.on("agent_end", (event) => {
+    const finalAssistant = [...event.messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    shouldVerifySettledRun = finalAssistant !== undefined && finalAssistant.stopReason !== "aborted";
+  });
+
   pi.on("agent_settled", async (_event, ctx) => {
-    if (verificationRunning || process.env.PI_VERIFY_DISABLE === "1") return;
+    if (!shouldVerifySettledRun || verificationRunning || process.env.PI_VERIFY_DISABLE === "1") return;
+    shouldVerifySettledRun = false;
 
     const cwd = ctx.cwd;
     const controller = new AbortController();
