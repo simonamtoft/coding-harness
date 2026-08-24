@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
@@ -7,6 +8,7 @@ import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
 const CODING_HARNESS_ROOT = resolve(dirname(realpathSync.native(__filename)), "../../../..");
+const TEMP_ROOT = realpathSync.native(tmpdir());
 const PI_PACKAGES_ROOT = resolve(
   process.env.VOLTA_HOME ?? join(process.env.HOME ?? "~", ".volta"),
   "tools/image/packages",
@@ -45,9 +47,18 @@ function isSecret(path: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function isTrustedTempArtifact(path: string): boolean {
+  if (!isWithin(TEMP_ROOT, path)) return false;
+
+  const [topLevel, ...descendants] = relative(TEMP_ROOT, path).split(sep);
+  if (/^agent-final-[0-9a-f]{12}\.html$/.test(topLevel)) return descendants.length === 0;
+  return /^agent-final-[0-9a-f]{12}-captures$/.test(topLevel);
+}
+
 function isTrustedOutsideRead(path: string): boolean {
   return isWithin(PI_PACKAGES_ROOT, path)
-    || (basename(path) === "SKILL.md" && isWithin(CODING_HARNESS_ROOT, path));
+    || (basename(path) === "SKILL.md" && isWithin(CODING_HARNESS_ROOT, path))
+    || isTrustedTempArtifact(path);
 }
 
 function inspectPath(root: string, rawPath: string): { resolved?: string; reason?: string; outside?: boolean } {

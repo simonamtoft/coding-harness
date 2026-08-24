@@ -8,8 +8,10 @@ host-side boundary to model tool calls:
 - Reads outside that directory prompt with `Allow once`, `Allow for this
   session`, or `Deny`. Non-interactive sessions deny them.
 - Read tools are pre-approved for `SKILL.md` files in the canonical
-  `coding-harness` checkout and for installed package content under Volta's
-  `tools/image/packages` directory.
+  `coding-harness` checkout, installed package content under Volta's
+  `tools/image/packages` directory, and collision-resistant final reports named
+  `agent-final-<12 hex chars>.html` plus their matching `-captures` directories
+  in the process temp directory.
 - `write` and `edit` are always blocked outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
@@ -28,5 +30,7 @@ strong filesystem boundary is required. User-entered `!` commands and
 extensions also remain outside this guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
-The two trusted read locations above are derived from the extension checkout
-and `VOLTA_HOME` (falling back to `~/.volta`); there is no configurable bypass.
+Trusted read locations are derived from the extension checkout, `VOLTA_HOME`
+(falling back to `~/.volta`), and the process temp directory. The temp directory
+itself is not trusted: only the collision-resistant report paths above bypass
+the prompt. There is no configurable bypass.

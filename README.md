@@ -50,7 +50,8 @@ leaves the override in place.
 The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
 It limits model filesystem tools to the session's current directory and its
 children, prompts before direct reads outside that boundary, and pre-approves
-canonical harness `SKILL.md` files plus installed Volta package content. It
+canonical harness `SKILL.md` files, installed Volta package content, and
+collision-resistant final reports in the process temp directory. It
 follows symlinks before checking and hard-denies common secret paths everywhere.
 Its Bash protection catches explicit paths; use a container or VM when an
 OS-enforced boundary is required.
