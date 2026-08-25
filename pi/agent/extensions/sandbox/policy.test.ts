@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { hasPluginWorkspaceAccess, isProtectedSecretPath, shellPathCandidates } from "./policy.ts";
+
+const harness = "/Users/example/coding-harness";
+const plugins = "/Users/example/pi-plugins";
+const worktreePlugin = `${plugins}/pi-worktree-agents`;
+const statusPlugin = `${plugins}/pi-status-footer`;
+
+test("coding-harness sessions can access local plugins", () => {
+  assert.equal(hasPluginWorkspaceAccess(harness, worktreePlugin, harness, plugins), true);
+  assert.equal(hasPluginWorkspaceAccess(`${harness}/shared`, statusPlugin, harness, plugins), true);
+});
+
+test("plugin sessions can access sibling plugins", () => {
+  assert.equal(hasPluginWorkspaceAccess(worktreePlugin, statusPlugin, harness, plugins), true);
+});
+
+test("sessions outside trusted development roots cannot access local plugins", () => {
+  assert.equal(hasPluginWorkspaceAccess("/Users/example/projects/app", worktreePlugin, harness, plugins), false);
+});
+
+test("trusted sessions do not gain access outside the plugin workspace", () => {
+  assert.equal(hasPluginWorkspaceAccess(harness, "/Users/example/projects/app", harness, plugins), false);
+});
+
+test("secret paths remain protected inside the plugin workspace", () => {
+  assert.equal(isProtectedSecretPath(`${worktreePlugin}/.env.local`), true);
+  assert.equal(isProtectedSecretPath(`${worktreePlugin}/certificates/dev.key`), true);
+  assert.equal(isProtectedSecretPath(`${worktreePlugin}/extensions/index.ts`), false);
+});
+
+test("ordinary Bash commands do not require path inspection", () => {
+  assert.deepEqual(shellPathCandidates("git status && npm test"), []);
+});
+
+test("Bash path inspection still catches explicit and protected paths", () => {
+  assert.deepEqual(shellPathCandidates("cp .env.local ~/pi-plugins/demo/config.ts"), [".env.local", "~/pi-plugins/demo/config.ts"]);
+});

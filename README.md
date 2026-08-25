@@ -50,7 +50,9 @@ leaves the override in place.
 The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
 It limits model filesystem tools to the session's current directory, while also
 providing a private mode-0700 workspace under the process temp directory for
-scratch artifacts. Delivered reports and handoffs in retained private session
+scratch artifacts. Sessions started in this harness or `~/pi-plugins` may also
+edit the user-owned plugin checkouts under `~/pi-plugins`. Delivered reports and
+handoffs in retained private session
 workspaces stay readable, while other retained scratch content prompts and
 writes remain scoped to the current session. Reads elsewhere prompt, apart from
 canonical harness `SKILL.md` files and installed Volta package content. It

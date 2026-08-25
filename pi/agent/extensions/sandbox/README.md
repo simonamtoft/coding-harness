@@ -19,17 +19,23 @@ host-side boundary to model tool calls:
 - Read tools are also pre-approved for `SKILL.md` files in the canonical
   `coding-harness` checkout and installed package content under Volta's
   `tools/image/packages` directory.
+- Sessions started inside the canonical `coding-harness` checkout or
+  `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
+  scoped development exception for user-owned executable package source; it is
+  unavailable to sessions started in other projects.
 - `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
   the project.
-- Bash is blocked when it contains an explicit path outside the current or
-  session temp directory, changes its working directory to the session temp
-  directory, or names one of the protected secret patterns. Scratch commands
-  must use absolute paths; Bash does not use the read approval prompt.
+- Bash is blocked when it contains an explicit path outside the current,
+  permitted plugin workspace, or session temp directory; changes its working
+  directory to the session temp directory; or names a protected secret pattern.
+  Scratch commands must use absolute paths; Bash does not use the read approval
+  prompt.
 - Subagents inherit this guard, and their requested working directories must
-  remain inside the parent project or its private session temp workspace.
+  remain inside the parent project, the scoped plugin workspace, or the private
+  session temp workspace.
 
 This is a tool-call guard, not an OS sandbox. Bash commands using variables,
 redirections, command substitution, or programs that discover paths at runtime
@@ -38,8 +44,10 @@ strong filesystem boundary is required. User-entered `!` commands and
 extensions also remain outside this guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
-Trusted locations are derived from the extension checkout, `VOLTA_HOME`
-(falling back to `~/.volta`), the process temp directory, and Pi's session UUID.
+Trusted locations are derived from the extension checkout, `~/pi-plugins`,
+`VOLTA_HOME` (falling back to `~/.volta`), the process temp directory, and Pi's
+session UUID. Plugin-workspace access is enabled only when that startup cwd is
+inside the extension checkout or plugin workspace.
 The temp directory itself is not trusted: the current private session workspace
 is fully available, while retained workspaces bypass read prompts only for the
 delivered artifact names above. Only the current session workspace accepts

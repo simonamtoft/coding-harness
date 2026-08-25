@@ -1,13 +1,16 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { hasPluginWorkspaceAccess, isProtectedSecretPath, isWithin, shellPathCandidates } from "./policy.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
 const CODING_HARNESS_ROOT = resolve(dirname(realpathSync.native(__filename)), "../../../..");
+const configuredPluginsRoot = resolve(homedir(), "pi-plugins");
+const PI_PLUGINS_ROOT = existsSync(configuredPluginsRoot) ? realpathSync.native(configuredPluginsRoot) : configuredPluginsRoot;
 const TEMP_ROOT = realpathSync.native(tmpdir());
 const CURRENT_UID = typeof process.getuid === "function" ? process.getuid() : undefined;
 const TEMP_PARENT = CURRENT_UID === undefined ? undefined : join(TEMP_ROOT, `pi-agent-${CURRENT_UID}`);
@@ -15,15 +18,6 @@ const PI_PACKAGES_ROOT = resolve(
   process.env.VOLTA_HOME ?? join(process.env.HOME ?? "~", ".volta"),
   "tools/image/packages",
 );
-const SECRET_PATTERNS = [
-  /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
-  /(^|\/)(?:credentials\.json|service-account[^/]*\.json|id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc)$/,
-  /(^|\/)\.config\/gcloud(?:\/|$)/,
-  /(^|\/)Library\/Keychains(?:\/|$)/,
-  /(^|\/)\.docker\/config\.json$/,
-  /\.(?:pem|key)$/,
-];
-
 function realpathForCheck(path: string): string {
   const absolute = isAbsolute(path) ? path : resolve(process.cwd(), path);
   let candidate = absolute;
@@ -37,16 +31,6 @@ function realpathForCheck(path: string): string {
   }
 
   return join(realpathSync.native(candidate), ...suffix);
-}
-
-function isWithin(root: string, path: string): boolean {
-  const distance = relative(root, path);
-  return distance === "" || (distance !== ".." && !distance.startsWith(`..${sep}`) && !isAbsolute(distance));
-}
-
-function isSecret(path: string): boolean {
-  const normalized = normalize(path);
-  return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function ensurePrivateDirectory(path: string, uid: number): void {
@@ -117,35 +101,11 @@ function inspectPath(root: string, rawPath: string): { resolved?: string; reason
   }
 
   const resolved = realpathForCheck(normalizedInput);
-  if (isSecret(resolved)) return { resolved, reason: "protected secret path" };
+  if (isProtectedSecretPath(resolved)) return { resolved, reason: "protected secret path" };
   if (!isWithin(root, resolved)) {
     return { resolved, outside: true, reason: `path resolves outside the session directory (${resolved})` };
   }
   return { resolved };
-}
-
-function shellPathCandidates(command: string): string[] {
-  // This is intentionally conservative. It catches explicit paths while
-  // leaving shell syntax and ordinary command arguments alone.
-  const segments = command.split(/&&|\|\||[;|]/);
-  const looksLikePath = (token: string) => {
-    const unprefixed = token.startsWith("@") ? token.slice(1) : token;
-    return unprefixed === ".." || unprefixed.startsWith("../") || unprefixed.startsWith("./") || unprefixed.startsWith("/") || unprefixed === "~" || unprefixed.startsWith("~/");
-  };
-  const isSystemCommand = (token: string) => /^\/(?:bin|sbin|usr\/(?:bin|sbin|local\/bin)|opt\/homebrew\/(?:bin|sbin))\//.test(token);
-
-  return segments.flatMap((segment) => {
-    const tokens = segment
-      .replace(/'[^']*'/g, (value) => value.slice(1, -1))
-      .replace(/"(?:\\.|[^"\\])*"/g, (value) => value.slice(1, -1))
-      .split(/\s+/)
-      .map((token) => token.replace(/^[([{;,]+|[)\]},;&]+$/g, ""));
-    return tokens.filter((token, index) => {
-      if (!token) return false;
-      if (index === 0 && isSystemCommand(token)) return false;
-      return looksLikePath(token) || isSecret(token);
-    });
-  });
 }
 
 function changesDirectoryToSessionTemp(command: string, sessionTempDirectory: string): boolean {
@@ -177,6 +137,7 @@ function block(reason: string) {
 export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory: () => string | undefined = () => undefined) {
   const root = realpathSync.native(cwd);
   const sessionReadApprovals = new Set<string>();
+  const isPluginWorkspacePath = (path: string) => hasPluginWorkspaceAccess(root, path, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT);
   const isSessionTempPath = (path: string) => {
     const sessionTempDirectory = getSessionTempDirectory();
     return sessionTempDirectory !== undefined && isWithin(sessionTempDirectory, path);
@@ -190,7 +151,7 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
         if (inspection.reason && !inspection.outside) return block(`${input.path}: ${inspection.reason}`);
         if (inspection.outside) {
           if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
-          if (isSessionTempPath(inspection.resolved)) return undefined;
+          if (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved)) return undefined;
           if (!READ_TOOLS.has(event.toolName)) return block(`${input.path}: ${inspection.reason}`);
           if (isTrustedRetainedSessionRead(inspection.resolved) || isTrustedOutsideRead(inspection.resolved)) return undefined;
           if (sessionReadApprovals.has(inspection.resolved)) return undefined;
@@ -224,9 +185,9 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
       for (const requestedCwd of requestedCwds) {
         if (typeof requestedCwd !== "string") continue;
         const inspection = inspectPath(root, requestedCwd);
-        if (inspection.reason && !(inspection.outside && inspection.resolved && isSessionTempPath(inspection.resolved))) {
-          return block(`${requestedCwd}: ${inspection.reason}`);
-        }
+        const permittedOutsidePath = inspection.outside && inspection.resolved
+          && (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved));
+        if (inspection.reason && !permittedOutsidePath) return block(`${requestedCwd}: ${inspection.reason}`);
       }
     }
 
@@ -238,9 +199,9 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);
-        if (inspection.reason && !(inspection.outside && inspection.resolved && isSessionTempPath(inspection.resolved))) {
-          return block(`${candidate}: ${inspection.reason}`);
-        }
+        const permittedOutsidePath = inspection.outside && inspection.resolved
+          && (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved));
+        if (inspection.reason && !permittedOutsidePath) return block(`${candidate}: ${inspection.reason}`);
       }
     }
 
