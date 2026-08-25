@@ -6,10 +6,10 @@ is written in either skill, these rules apply.
 
 ## Match the repo's style
 
-Detect once, then mirror what the repo already does — never introduce a convention it doesn't use:
+Detect once, then mirror what the repo already does — never introduce a convention it doesn't use. Resolve these paths from the directory containing this file:
 
-- `~/.claude/skills/generate-commit-message/scripts/detect_commit_style.sh` → `conventional` | `ticket-prefixed` | `plain`.
-- `~/.claude/skills/_shared/scripts/git_ticket_key.sh` → a ticket key from the branch name. Prepend it **only** when the detected style is `ticket-prefixed`; otherwise drop it.
+- `../generate-commit-message/scripts/detect_commit_style.sh` → `conventional` | `ticket-prefixed` | `plain`.
+- `scripts/git_ticket_key.sh` → a ticket key from the branch name. Prepend it **only** when the detected style is `ticket-prefixed`; otherwise drop it.
 
 ## Write the line
 

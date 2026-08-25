@@ -22,7 +22,7 @@ This is the committing counterpart to `generate-commit-message` (which only prin
 
 2. **Group changes into coherent commits.** Partition the changed files into the smallest set of groups where each group is *one* logical change (a feature, a fix, a refactor, a docs update, a config tweak). Most trees are a single group — that's the fast path, one commit. When changes span unrelated concerns, split them: each concern is its own commit. If a *single file* mixes concerns, stage it by hunk (`git add -p`) or flag it and ask how to split — don't silently lump.
 
-3. **Draft one message per group** by the shared rules in `~/.claude/skills/_shared/commit-message-rules.md` — repo-style detection (the two scripts) plus the one-line format, applied to each group independently.
+3. **Draft one message per group** by the shared rules in `../_shared/commit-message-rules.md`, resolved from this skill directory — repo-style detection (the two scripts) plus the one-line format, applied to each group independently.
 
 4. **Show the plan and get one confirmation.** Present a numbered list, in commit order, each entry showing its files and its message:
 

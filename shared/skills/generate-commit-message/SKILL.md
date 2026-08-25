@@ -22,14 +22,14 @@ Read what's actually staged, match the repo's commit-message style, and produce 
    - If the staged set is **empty**, run `git status --short` to show unstaged and untracked files. Present the list and ask the user which files to stage — offer "all", specific files, or "none / cancel". Wait for their answer before continuing.
      - If they choose files: run `git add <files>` for each, then continue to step 2.
      - If they choose none or cancel: stop here.
-2. **Craft the message** by the shared rules in `~/.claude/skills/_shared/commit-message-rules.md` — repo-style detection (the two scripts) plus the one-line format.
+2. **Craft the message** by the shared rules in `../_shared/commit-message-rules.md`, resolved from this skill directory — repo-style detection (the two scripts) plus the one-line format.
 3. **If the diff spans unrelated changes,** don't write a portmanteau. Say so and suggest a split (e.g. "this looks like two changes — A and B — consider `git restore --staged` for one of them"). Only continue if the user confirms they want a single message anyway. To actually commit such a split, that's `/quick-commit`.
 4. **Output as a single fenced block** so the user can copy-paste. No preamble, no surrounding commentary.
 
 ## Rules
 
 - **Never run `git commit`** — produce the message only. To stage-and-commit, use `/quick-commit`.
-- Message-crafting rules (style match, imperative, ≤72 chars, no emoji/`Co-Authored-By`, what-not-why, no path-restating, no padding) live in `~/.claude/skills/_shared/commit-message-rules.md`.
+- Message-crafting rules (style match, imperative, ≤72 chars, no emoji/`Co-Authored-By`, what-not-why, no path-restating, no padding) live in `../_shared/commit-message-rules.md`, resolved from this skill directory.
 
 ## Done means
 
