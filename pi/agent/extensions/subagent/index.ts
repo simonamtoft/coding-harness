@@ -28,7 +28,15 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import {
+	isReadOnlyTool,
+	type AgentConfig,
+	type AgentScope,
+	discoverAgents,
+	validateAgentDefinition,
+	validateRequestedAgents,
+	validateWriteWorkerCwds,
+} from "./agents.ts";
 import {
 	releaseReviewAfterVerification,
 	requestReview,
@@ -300,6 +308,9 @@ async function runSingleAgent(
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
+	if (!agent) throw new Error(`Unknown agent: ${agentName}`);
+	const definitionError = validateAgentDefinition(agent);
+	if (definitionError) throw new Error(`Invalid agent ${agentName}: ${definitionError}`);
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -307,23 +318,13 @@ async function runSingleAgent(
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
 	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
 
-	if (!agent) {
-		const fallbackPath = path.join(path.dirname(__filename), "fallback.md");
-		const fallbackBody = fs.existsSync(fallbackPath) ? fs.readFileSync(fallbackPath, "utf-8") : "";
-		if (fallbackBody.trim()) {
-			const tmp = await writePromptToTempFile(agentName, fallbackBody);
-			tmpPromptDir = tmp.dir;
-			tmpPromptPath = tmp.filePath;
-		}
-	} else {
-		const inheritsDispatchConfig = !agent.model;
-		const model = agent.model ?? dispatchDefaults.model;
-		if (model) args.push("--model", model);
-		if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
-			args.push("--thinking", dispatchDefaults.thinkingLevel);
-		}
-		if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	const inheritsDispatchConfig = !agent.model;
+	const model = agent.model ?? dispatchDefaults.model;
+	if (model) args.push("--model", model);
+	if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
+		args.push("--thinking", dispatchDefaults.thinkingLevel);
 	}
+	args.push("--tools", agent.tools.join(","));
 
 	const currentResult: SingleResult = {
 		agent: agentName,
@@ -526,6 +527,11 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+			const requestedNames = [
+				...(params.agent ? [params.agent] : []),
+				...(params.tasks ?? []).map((task) => task.agent),
+				...(params.chain ?? []).map((step) => step.agent),
+			];
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -541,6 +547,23 @@ export default function (pi: ExtensionAPI) {
 					results,
 				});
 
+			if (discovery.error) {
+				return {
+					content: [{ type: "text", text: `Agent discovery failed closed: ${discovery.error}` }],
+					details: makeDetails("single")([]),
+					isError: true,
+				};
+			}
+
+			const requestError = validateRequestedAgents(agents, requestedNames);
+			if (requestError) {
+				return {
+					content: [{ type: "text", text: `Agent dispatch failed closed: ${requestError}` }],
+					details: makeDetails("single")([]),
+					isError: true,
+				};
+			}
+
 			if (modeCount !== 1) {
 				const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
 				return {
@@ -551,6 +574,14 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("single")([]),
+				};
+			}
+
+			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && !ctx.hasUI) {
+				return {
+					content: [{ type: "text", text: "Project-local agents require explicit approval in headless mode (set confirmProjectAgents to false only for a trusted project)." }],
+					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+					isError: true,
 				};
 			}
 
@@ -580,6 +611,13 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.chain && params.chain.length > 0) {
+				const writeCwdError = validateWriteWorkerCwds(agents, params.chain, ctx.cwd);
+				if (writeCwdError)
+					return {
+						content: [{ type: "text", text: writeCwdError }],
+						details: makeDetails("chain")([]),
+						isError: true,
+					};
 				const results: SingleResult[] = [];
 				let previousOutput = "";
 
@@ -634,6 +672,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.tasks && params.tasks.length > 0) {
+				const writeCwdError = validateWriteWorkerCwds(agents, params.tasks, ctx.cwd);
+				if (writeCwdError)
+					return {
+						content: [{ type: "text", text: writeCwdError }],
+						details: makeDetails("parallel")([]),
+						isError: true,
+					};
+
 				if (params.tasks.length > MAX_PARALLEL_TASKS)
 					return {
 						content: [
@@ -719,6 +765,16 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (params.agent && params.task) {
+				const singleAgent = agents.find((agent) => agent.name === params.agent);
+				if (singleAgent?.writable) {
+					const writeCwdError = validateWriteWorkerCwds(agents, [{ agent: params.agent, cwd: params.cwd }], ctx.cwd);
+					if (writeCwdError)
+						return {
+							content: [{ type: "text", text: writeCwdError }],
+							details: makeDetails("single")([]),
+							isError: true,
+						};
+				}
 				const result = await runSingleAgent(
 					ctx.cwd,
 					dispatchDefaults,
@@ -1142,6 +1198,13 @@ export default function (pi: ExtensionAPI) {
 			const reviewerNames = params.security
 				? ["correctness-reviewer", "security-reviewer"]
 				: ["correctness-reviewer"];
+			const reviewerValidation = validateRequestedAgents(discovery.agents, reviewerNames);
+			const reviewerHasInvalidScope = reviewerNames.some((name) => {
+				const reviewer = discovery.agents.find((agent) => agent.name === name);
+				return !reviewer || reviewer.source !== "user" || reviewer.writable || reviewer.tools.some((tool) => !isReadOnlyTool(tool));
+			});
+			const reviewerError = discovery.error ?? reviewerValidation ?? (reviewerHasInvalidScope ? "required reviewers must be validated user-level read-only agents" : undefined);
+			if (reviewerError) throw new Error(`Review dispatch failed closed: ${reviewerError}`);
 			const focus = params.focus?.length ? params.focus.map((file) => `- ${file}`).join("\n") : "- Entire supplied change set";
 			const task = [
 				`Review bundle: ${bundlePath}`,
