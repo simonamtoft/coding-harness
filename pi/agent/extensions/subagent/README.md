@@ -2,18 +2,23 @@
 
 Adapted from Pi's bundled `examples/extensions/subagent/` implementation. It exposes a `subagent` tool that launches specialized agents in isolated Pi subprocesses and supports single, parallel, and chained execution.
 
-## Installed agents
+## Bundled and discovered agents
 
-Agents are loaded from `~/.pi/agent/agents/*.md`:
+Bundled definitions live in this repository under `pi/agent/agents/` and are linked to `~/.pi/agent/agents/`. Additional definitions may be discovered at runtime from the user directory and, only when explicitly requested, the nearest project `.pi/agents/` directory.
 
-- `presenter` — builds and validates final HTML reports
+Bundled roles:
+
+- `presenter` — builds and validates final HTML reports; its write tools are limited to report work
 - `repository-scout` — concise repository reconnaissance
 - `documentation-analyst` — concise documentation analysis
 - `test-log-analyst` — concise test and build-log diagnosis
 - `correctness-reviewer` — correctness and maintainability findings
-- `security-reviewer` — GPT-5.6 Sol, threat-focused security findings
+- `security-reviewer` — threat-focused security findings
+- `implementation-worker` — the only writable swarm role; bounded slices require a coordinator-provided isolated cwd
 
-The reviewers receive only `read`, `grep`, `find`, and `ls`. They cannot edit files or invoke arbitrary shell commands.
+Read-only roles receive only `read`, `grep`, `find`, and `ls`. `implementation-worker` receives those plus `bash`, `edit`, and `write`; `presenter` has a separate report-only capability. Unknown tools, malformed frontmatter, duplicate names, unknown agents, and scope mismatches fail closed. User model overrides take precedence over frontmatter models, which take precedence over the parent model; duplicate names across selected user/project scopes are rejected rather than shadowed.
+
+Project agents are trusted only after interactive confirmation. In headless mode they are rejected by default; a caller must explicitly set `confirmProjectAgents: false` for a trusted project. Pi's capabilities and validation are intentionally narrower than Claude's task-role system; this extension provides only the roles and cwd guarantees Pi can enforce.
 
 ## Local model overrides
 
@@ -37,6 +42,10 @@ A local override takes precedence over an agent's frontmatter model. Without eit
 ## Isolation change from the bundled example
 
 Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions.
+
+## Swarm workflow
+
+Invoke the `/swarm` prompt for the thin Pi-native swarm protocol. It requires an explicit frame, done predicate, partition/race/mixed shape, standalone briefs, terminal evidence, and parent-owned aggregation. Read-only workers may share a checkout. Write workers require distinct pre-created worktrees and explicit absolute `cwd` values; the parent owns allocation, merge, and cleanup. Dropouts remain visible as `BLOCKED` rather than receiving a generic fallback.
 
 ## Review workflows
 

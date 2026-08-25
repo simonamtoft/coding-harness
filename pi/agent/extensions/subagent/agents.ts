@@ -8,19 +8,95 @@ import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/
 
 export type AgentScope = "user" | "project" | "both";
 
+export const READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
+export const IMPLEMENTATION_TOOLS = ["read", "grep", "find", "ls", "bash", "edit", "write"] as const;
+const KNOWN_TOOLS = new Set<string>([...READ_ONLY_TOOLS, ...IMPLEMENTATION_TOOLS]);
+const READ_ONLY_TOOL_SET = new Set<string>(READ_ONLY_TOOLS);
+export function isReadOnlyTool(tool: string): boolean {
+	return READ_ONLY_TOOL_SET.has(tool);
+}
+const IMPLEMENTATION_WORKER = "implementation-worker";
+
+type AgentTool = (typeof IMPLEMENTATION_TOOLS)[number];
+type AgentPurpose = "readonly" | "implementation" | "presentation";
+
 export interface AgentConfig {
 	name: string;
 	description: string;
-	tools?: string[];
+	tools: AgentTool[];
 	model?: string;
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
+	writable: boolean;
+	purpose: AgentPurpose;
 }
 
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	projectAgentsDir: string | null;
+	error?: string;
+}
+
+export function validateAgentDefinition(agent: AgentConfig): string | undefined {
+	if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(agent.name)) return "name must be kebab-case";
+	if (!agent.description.trim()) return "description must not be empty";
+	if (!agent.systemPrompt.trim()) return "system prompt must not be empty";
+	if (agent.tools.length === 0) return "tools must be declared explicitly";
+	if (agent.tools.some((tool) => !KNOWN_TOOLS.has(tool))) return "tools contain an unknown capability";
+	if (new Set(agent.tools).size !== agent.tools.length) return "tools contain duplicates";
+	const expectedPurpose: AgentPurpose =
+		agent.name === IMPLEMENTATION_WORKER ? "implementation" : agent.name === "presenter" ? "presentation" : "readonly";
+	if (agent.purpose !== expectedPurpose) return "agent purpose is not permitted for this role";
+	const expectedWritable = expectedPurpose === "implementation";
+	if (agent.writable !== expectedWritable) return "only implementation-worker may be writable";
+	const allowedTools: readonly string[] =
+		expectedPurpose === "implementation"
+			? IMPLEMENTATION_TOOLS
+			: expectedPurpose === "presentation"
+				? ["read", "bash", "write", "edit"]
+				: READ_ONLY_TOOLS;
+	if (agent.tools.some((tool) => !allowedTools.includes(tool))) return "agent has improperly scoped tools";
+	if (expectedPurpose === "readonly" && agent.tools.some((tool) => !READ_ONLY_TOOL_SET.has(tool)))
+		return "read-only agents may not request write tools";
+	return undefined;
+}
+
+export function validateWriteWorkerCwds(
+	agents: AgentConfig[],
+	requests: Array<{ agent: string; cwd?: string }>,
+	defaultCwd: string,
+): string | undefined {
+	const writeRequests = requests.filter((request) => agents.find((agent) => agent.name === request.agent)?.writable);
+	const canonicalParent = realpathOrNull(defaultCwd);
+	if (!canonicalParent) return "the coordinator cwd must exist";
+	const canonicalCwds = writeRequests.map((request) => (request.cwd ? realpathOrNull(request.cwd) : null));
+	if (canonicalCwds.some((cwd) => !cwd || cwd === canonicalParent))
+		return "write workers require distinct coordinator-provided absolute worktree cwd values";
+	if (new Set(canonicalCwds).size !== canonicalCwds.length)
+		return "write workers require distinct worktree cwd values";
+	return undefined;
+}
+
+function realpathOrNull(value: string): string | null {
+	if (!path.isAbsolute(value)) return null;
+	try {
+		return fs.realpathSync(value);
+	} catch {
+		return null;
+	}
+}
+
+export function validateRequestedAgents(agents: AgentConfig[], requestedNames: string[]): string | undefined {
+	const requested = new Set<string>();
+	for (const name of requestedNames) {
+		requested.add(name);
+		const agent = agents.find((candidate) => candidate.name === name);
+		if (!agent) return `unknown agent: ${name}`;
+		const error = validateAgentDefinition(agent);
+		if (error) return `invalid agent ${name}: ${error}`;
+	}
+	return undefined;
 }
 
 /**
@@ -82,12 +158,11 @@ function loadModelOverrides(): Record<string, string> {
  * tools rather than throwing: this runs inside agent discovery, where a single
  * bad file must not take down every other agent in the same directory.
  */
-function parseToolList(value: unknown): string[] | undefined {
-	const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-	const tools = raw
-		.filter((t): t is string => typeof t === "string")
-		.map((t) => t.trim())
-		.filter(Boolean);
+function parseToolList(value: unknown): AgentTool[] | undefined {
+	if (!Array.isArray(value) && typeof value !== "string") return undefined;
+	const raw = Array.isArray(value) ? value : value.split(",");
+	if (raw.some((tool) => typeof tool !== "string" || !KNOWN_TOOLS.has(tool.trim()))) return undefined;
+	const tools = raw.map((tool) => tool.trim() as AgentTool).filter(Boolean);
 	return tools.length > 0 ? tools : undefined;
 }
 
@@ -117,21 +192,32 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content);
-
-		if (typeof frontmatter.name !== "string" || typeof frontmatter.description !== "string") {
+		let frontmatter: AgentFrontmatter;
+		let body: string;
+		try {
+			({ frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content));
+		} catch {
 			continue;
 		}
 
-		agents.push({
-			name: frontmatter.name,
-			description: frontmatter.description,
-			tools: parseToolList(frontmatter.tools),
+		const tools = parseToolList(frontmatter.tools);
+		const candidate: AgentConfig = {
+			name: typeof frontmatter.name === "string" ? frontmatter.name : "",
+			description: typeof frontmatter.description === "string" ? frontmatter.description : "",
+			tools: tools ?? [],
 			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
 			systemPrompt: body,
 			source,
 			filePath,
-		});
+			writable: typeof frontmatter.name === "string" && frontmatter.name === IMPLEMENTATION_WORKER,
+			purpose:
+				typeof frontmatter.name === "string" && frontmatter.name === IMPLEMENTATION_WORKER
+					? "implementation"
+					: frontmatter.name === "presenter"
+						? "presentation"
+						: "readonly",
+		};
+		if (!validateAgentDefinition(candidate)) agents.push(candidate);
 	}
 
 	return agents;
@@ -168,18 +254,16 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	const projectAgents =
 		scope === "user" || !projectAgentsDir ? [] : applyModelOverrides(loadAgentsFromDir(projectAgentsDir, "project"));
 
-	const agentMap = new Map<string, AgentConfig>();
-
-	if (scope === "both") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
-	} else if (scope === "user") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
-	} else {
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
+	const selectedAgents = [...userAgents, ...projectAgents];
+	const seen = new Set<string>();
+	for (const agent of selectedAgents) {
+		if (seen.has(agent.name)) {
+			return { agents: [], projectAgentsDir, error: `duplicate agent definition: ${agent.name}` };
+		}
+		seen.add(agent.name);
 	}
 
-	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+	return { agents: selectedAgents, projectAgentsDir };
 }
 
 export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {
