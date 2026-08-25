@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants as fsConstants, createReadStream } from "node:fs";
+import { access, lstat, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DEFAULT_MAX_BYTES,
@@ -34,6 +35,77 @@ async function isExecutable(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function hashFileContent(
+  path: string,
+  hash: ReturnType<typeof createHash>,
+  signal: AbortSignal,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(path);
+    const onAbort = () => stream.destroy(new Error("Project fingerprint cancelled"));
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.once("end", () => {
+      cleanup();
+      resolve();
+    });
+    stream.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+async function captureProjectFingerprint(
+  pi: ExtensionAPI,
+  cwd: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const listed = await pi.exec(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { cwd, signal, timeout: 10_000 },
+  );
+  if (listed.code !== 0) return undefined;
+
+  const hash = createHash("sha256");
+  const paths = listed.stdout.split("\0").filter(Boolean).sort();
+  try {
+    for (const relativePath of paths) {
+      signal.throwIfAborted();
+      const path = join(cwd, relativePath);
+      let stats;
+      try {
+        stats = await lstat(path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        hash.update(`${relativePath}\0missing\0`);
+        continue;
+      }
+
+      hash.update(`${relativePath}\0${stats.mode & fsConstants.S_IFMT}:${stats.mode & 0o111}\0`);
+      if (stats.isSymbolicLink()) {
+        hash.update(await readlink(path));
+      } else if (stats.isFile()) {
+        await hashFileContent(path, hash, signal);
+      } else if (stats.isDirectory()) {
+        const nested = await captureProjectFingerprint(pi, path, signal);
+        hash.update(nested ?? "directory");
+      } else {
+        hash.update("special");
+      }
+    }
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return undefined;
+  }
+
+  return hash.digest("hex");
 }
 
 async function resolveVerifier(
@@ -253,6 +325,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let sessionActive = false;
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
+  let fingerprintBeforeRun: string | undefined;
 
   pi.on("session_start", (_event, ctx) => {
     rounds = 0;
@@ -261,6 +334,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     sessionActive = true;
     guidanceController = undefined;
     verificationController = undefined;
+    fingerprintBeforeRun = undefined;
     ctx.ui.setStatus("verify-turn", undefined);
   });
 
@@ -282,7 +356,18 @@ export default function verifyTurn(pi: ExtensionAPI) {
       if (!controller.signal.aborted) throw error;
       return;
     }
-    if (!sessionActive || controller.signal.aborted || !verifier) return;
+    if (!sessionActive || controller.signal.aborted || !verifier) {
+      fingerprintBeforeRun = undefined;
+      return;
+    }
+
+    try {
+      fingerprintBeforeRun = await captureProjectFingerprint(pi, ctx.cwd, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+      return;
+    }
+    if (!sessionActive || controller.signal.aborted) return;
 
     return {
       systemPrompt:
@@ -330,6 +415,20 @@ export default function verifyTurn(pi: ExtensionAPI) {
       ctx.ui.setStatus("verify-turn", undefined);
       return;
     }
+
+    const fingerprintAfterRun = await captureProjectFingerprint(pi, cwd, controller.signal);
+    if (!sessionActive || controller.signal.aborted) return;
+    if (
+      rounds === 0 &&
+      fingerprintBeforeRun !== undefined &&
+      fingerprintAfterRun === fingerprintBeforeRun
+    ) {
+      verificationRunning = false;
+      verificationController = undefined;
+      ctx.ui.setStatus("verify-turn", undefined);
+      return;
+    }
+
     ctx.ui.setStatus("verify-turn", "running project checks…");
 
     const runVerification = async (loader?: VerificationLoader) => {

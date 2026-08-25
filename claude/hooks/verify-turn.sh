@@ -4,8 +4,9 @@
 # feedback-loop idea from arXiv 2511.00592 — close the loop with an *external*
 # ground-truth checker rather than the model's self-assessment).
 #
-# Runs at the natural "I'm done" boundary, not after every edit, so intermediate
-# multi-edit states aren't flagged.
+# A UserPromptSubmit invocation snapshots project content before the model runs.
+# The Stop invocation verifies only when tracked or non-ignored untracked content
+# changed, so read-only and commit-only turns do not rerun unchanged checks.
 #
 # Bounded retries: instead of verifying exactly once and then letting any state
 # through (the old `stop_hook_active` short-circuit, which meant a *wrong* fix
@@ -41,42 +42,66 @@ if [[ -z "$project_dir" ]]; then
   exit 0
 fi
 
-# Resolve the verifier to a label + run it. Leaves $label empty if none applies.
+# Resolve the verifier before fingerprinting so globally installed hooks remain
+# cheap no-ops in projects that have not configured project checks.
 label=""
-out=""
-status=0
-
+declare -a verifier_command=()
 verify_sh="${project_dir}/.agent/verify.sh"
 if [[ -x "$verify_sh" ]]; then
   label=".agent/verify.sh"
-  out=$(cd "$project_dir" && "$verify_sh" 2>&1); status=$?
+  verifier_command=("$verify_sh")
 elif command -v task >/dev/null 2>&1; then
   taskfile=""
   [[ -f "${project_dir}/Taskfile.yml" ]] && taskfile="${project_dir}/Taskfile.yml"
   [[ -z "$taskfile" && -f "${project_dir}/Taskfile.yaml" ]] && taskfile="${project_dir}/Taskfile.yaml"
   if [[ -n "$taskfile" ]] && task --taskfile "$taskfile" --list-all 2>/dev/null | grep -qE '^\* verify:'; then
     label="task verify"
-    out=$(cd "$project_dir" && task verify 2>&1); status=$?
+    verifier_command=(task verify)
   fi
 fi
-
-# No verifier in this project -> no-op.
 [[ -z "$label" ]] && exit 0
 
-# Per-session round counter (survives across the verify->fix->stop cycle).
 session_id=$(echo "$input" | jq -r '.session_id // "nosession"')
-counter="${TMPDIR:-/tmp}/claude-verify-${session_id//[^A-Za-z0-9_-]/_}"
+session_key=${session_id//[^A-Za-z0-9_-]/_}
+counter="${TMPDIR:-/tmp}/claude-verify-${session_key}"
+baseline="${TMPDIR:-/tmp}/claude-verify-baseline-${session_key}"
+fingerprint_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project-content-fingerprint.py"
+current_fingerprint=""
+if command -v python3 >/dev/null 2>&1 && [[ -f "$fingerprint_script" ]]; then
+  current_fingerprint=$(python3 "$fingerprint_script" "$project_dir" 2>/dev/null || true)
+fi
 
-# Passed: clear the counter and let the turn end.
+if [[ "${1:-}" == "snapshot" ]]; then
+  if [[ -n "$current_fingerprint" ]]; then
+    printf '%s\n' "$current_fingerprint" > "$baseline"
+  else
+    rm -f "$baseline"
+  fi
+  exit 0
+fi
+
+rounds=0
+[[ -f "$counter" ]] && rounds=$(cat "$counter" 2>/dev/null || echo 0)
+[[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
+
+if (( rounds == 0 )) && [[ -n "$current_fingerprint" && -f "$baseline" ]] &&
+   [[ "$current_fingerprint" == "$(cat "$baseline" 2>/dev/null)" ]]; then
+  exit 0
+fi
+
+out=""
+status=0
+out=$(cd "$project_dir" && "${verifier_command[@]}" 2>&1); status=$?
+
+# Passed: remember this content, clear the counter, and let the turn end.
 if [[ "$status" -eq 0 ]]; then
+  [[ -n "$current_fingerprint" ]] && printf '%s\n' "$current_fingerprint" > "$baseline"
   rm -f "$counter"
   exit 0
 fi
 
-# Failed: bump the round counter.
-rounds=0
-[[ -f "$counter" ]] && rounds=$(cat "$counter" 2>/dev/null || echo 0)
-[[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
+# Failed: bump the round counter. Active repair rounds always rerun the verifier,
+# even when the model did not manage to change project content.
 rounds=$((rounds + 1))
 
 # Past the cap: stop trapping so the turn can't loop forever. Claude was asked

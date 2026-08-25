@@ -62,6 +62,16 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/verify-turn.sh snapshot"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
