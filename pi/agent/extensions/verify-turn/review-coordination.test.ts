@@ -6,7 +6,7 @@ import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
 	type ReviewRequest,
-} from "../review-coordination.ts";
+} from "../shared/review-coordination.ts";
 
 const request: ReviewRequest = {
 	base: "origin/main",

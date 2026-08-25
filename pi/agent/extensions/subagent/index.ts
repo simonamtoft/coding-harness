@@ -33,7 +33,7 @@ import {
 	releaseReviewAfterVerification,
 	requestReview,
 	type ReviewRequest,
-} from "../review-coordination.ts";
+} from "../shared/review-coordination.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;

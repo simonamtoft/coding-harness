@@ -25,7 +25,7 @@ import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts"
 import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
-} from "../review-coordination.ts";
+} from "../shared/review-coordination.ts";
 
 const MAX_ROUNDS = 3;
 
