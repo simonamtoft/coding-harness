@@ -1,7 +1,6 @@
 ---
 name: correctness-reviewer
 description: Independent review of changed code for concrete correctness and maintainability defects
-model: anthropic/claude-sonnet-5
 tools: read, grep, find, ls
 ---
 

@@ -29,6 +29,11 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import {
+	releaseReviewAfterVerification,
+	requestReview,
+	type ReviewRequest,
+} from "../review-coordination.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -485,6 +490,22 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
+	pi.events.on("verify-turn:passed", () => {
+		const request = releaseReviewAfterVerification();
+		if (!request) return;
+		const args = JSON.stringify(request);
+		pi.sendMessage(
+			{
+				customType: "deferred-review",
+				content:
+					`Automatic verification passed. Run review_changes exactly once now with these preserved arguments: ${args}. ` +
+					"This is the deferred review; do not schedule another review after any review-driven fixes.",
+				display: true,
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
+		);
+	});
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
@@ -1055,7 +1076,7 @@ export default function (pi: ExtensionAPI) {
 			"Run an independent correctness review over the current Git changes, optionally adding a parallel security review. The reviewers are read-only and use isolated Pi contexts.",
 		promptSnippet: "Run independent review for a completed non-trivial change",
 		promptGuidelines: [
-			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
+			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. When an automatic verifier is available, an autonomous review request is deferred until it passes; then call review_changes once with the preserved arguments. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
 			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, dependency security, or security configuration, or when the user explicitly requests a full security review.",
 			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
 			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
@@ -1073,9 +1094,32 @@ export default function (pi: ExtensionAPI) {
 			security: Type.Optional(
 				Type.Boolean({ description: "Also run the security reviewer in parallel with correctness. Defaults to false." }),
 			),
+			defer: Type.Optional(
+				Type.Boolean({ description: "Defer an autonomous implementation review until automatic verification passes. Defaults to true." }),
+			),
 		}),
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			const request: ReviewRequest = {
+				base: params.base,
+				focus: params.focus,
+				security: params.security,
+			};
+			const disposition = requestReview(request, params.defer);
+			if (disposition !== "run") {
+				return {
+					content: [
+						{
+							text:
+								disposition === "deferred"
+									? "Review deferred until the automatic verifier passes."
+									: "A review is already deferred until the automatic verifier passes.",
+							},
+					],
+					details: { deferred: true, request },
+				};
+			}
+
 			const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
 			const prepared = await pi.exec(prepareScript, [params.base ?? "AUTO", ctx.cwd], {
 				cwd: ctx.cwd,

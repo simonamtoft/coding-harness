@@ -20,5 +20,9 @@ Use `backlog <command> --help` before running unfamiliar commands. Help shows op
 
 Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use the `backlog` CLI so metadata, relationships, and history stay consistent.
 
+### Cost-conscious task discovery
+
+Prefer `backlog task list --ready --sort priority --limit 10 --plain`, then inspect only the selected task. Avoid bulk task-view loops and broad JSON listings unless the task requires them. Load only the relevant detailed Backlog instruction guide for the lifecycle action you are taking.
+
 </CRITICAL_INSTRUCTION>
 <!-- BACKLOG.MD GUIDELINES END -->

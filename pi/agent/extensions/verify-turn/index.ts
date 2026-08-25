@@ -22,6 +22,10 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
+import {
+	resetReviewCoordination,
+	setAutomaticVerifierAvailable,
+} from "../review-coordination.ts";
 
 const MAX_ROUNDS = 3;
 
@@ -338,6 +342,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let snapshotBeforeRun: ProjectSnapshot | undefined;
 
   pi.on("session_start", (_event, ctx) => {
+    resetReviewCoordination();
     rounds = 0;
     verificationRunning = false;
     shouldVerifySettledRun = false;
@@ -366,7 +371,9 @@ export default function verifyTurn(pi: ExtensionAPI) {
       if (!controller.signal.aborted) throw error;
       return;
     }
-    if (!sessionActive || controller.signal.aborted || !verifier) {
+    const automaticVerifierAvailable = Boolean(verifier) && process.env.PI_VERIFY_DISABLE !== "1";
+    setAutomaticVerifierAvailable(automaticVerifierAvailable);
+    if (!sessionActive || controller.signal.aborted || !automaticVerifierAvailable || !verifier) {
       snapshotBeforeRun = undefined;
       return;
     }
@@ -445,6 +452,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
       if (!sessionActive || controller.signal.aborted) return;
       if (result.code === 0) {
         rounds = 0;
+        pi.events.emit("verify-turn:passed");
         return;
       }
 

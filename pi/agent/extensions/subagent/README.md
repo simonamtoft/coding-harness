@@ -7,7 +7,10 @@ Adapted from Pi's bundled `examples/extensions/subagent/` implementation. It exp
 Agents are loaded from `~/.pi/agent/agents/*.md`:
 
 - `presenter` — builds and validates final HTML reports
-- `correctness-reviewer` — Claude Sonnet 5, correctness and maintainability findings
+- `repository-scout` — concise repository reconnaissance
+- `documentation-analyst` — concise documentation analysis
+- `test-log-analyst` — concise test and build-log diagnosis
+- `correctness-reviewer` — correctness and maintainability findings
 - `security-reviewer` — GPT-5.6 Sol, threat-focused security findings
 
 The reviewers receive only `read`, `grep`, `find`, and `ls`. They cannot edit files or invoke arbitrary shell commands.
@@ -19,7 +22,12 @@ Set machine-specific agent models in `~/.pi/agent/subagents.json`:
 ```json
 {
   "models": {
-    "presenter": "IM-GPT/gpt-5.6-luna"
+    "presenter": "IM-GPT/gpt-5.6-luna",
+    "repository-scout": "IM-GPT/gpt-5.6-luna",
+    "documentation-analyst": "IM-GPT/gpt-5.6-luna",
+    "test-log-analyst": "IM-GPT/gpt-5.6-luna",
+    "correctness-reviewer": "IM-GPT/gpt-5.6-terra",
+    "security-reviewer": "openai-codex/gpt-5.6-sol"
   }
 }
 ```
@@ -34,8 +42,8 @@ Child processes include `--no-extensions`. This prevents global parent lifecycle
 
 The extension also exposes `review_changes`, which prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, and removes it afterward. It runs the correctness reviewer by default; passing `security: true` adds the security reviewer in parallel. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
 
-- The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial implementation work. Backlog/task-management-only, documentation-only, formatting-only, generated-only, and obviously trivial changes are excluded.
+- The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial implementation work. When `verify-turn` discovers an automatic verifier, an autonomous call is deferred and reissued once only after that verifier passes. Review-driven fixes verify normally but do not schedule another review. Backlog/task-management-only, documentation-only, formatting-only, generated-only, and obviously trivial changes are excluded.
 - Security review is reserved for changes affecting security-sensitive trust boundaries or explicit user requests.
-- Invoke `/review [base-ref]` for an explicit findings-only correctness and security audit. It reports findings and asks before applying fixes.
+- Invoke `/review [base-ref]` for an explicit findings-only correctness and security audit. It bypasses automatic deferral, reports findings, and asks before applying fixes.
 
 Project-local agents remain disabled by default. The generic tool can include them only when explicitly called with `agentScope: "project"` or `"both"`; interactive use asks for confirmation.
