@@ -6,7 +6,8 @@
 #
 # A UserPromptSubmit invocation snapshots project content before the model runs.
 # The Stop invocation verifies only when tracked or non-ignored untracked content
-# changed, so read-only and commit-only turns do not rerun unchanged checks.
+# changed outside Markdown files, so read-only, commit-only, and documentation-only
+# turns do not run project checks.
 #
 # Bounded retries: instead of verifying exactly once and then letting any state
 # through (the old `stop_hook_active` short-circuit, which meant a *wrong* fix
@@ -66,14 +67,16 @@ session_key=${session_id//[^A-Za-z0-9_-]/_}
 counter="${TMPDIR:-/tmp}/claude-verify-${session_key}"
 baseline="${TMPDIR:-/tmp}/claude-verify-baseline-${session_key}"
 fingerprint_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project-content-fingerprint.py"
-current_fingerprint=""
+current_snapshot=""
 if command -v python3 >/dev/null 2>&1 && [[ -f "$fingerprint_script" ]]; then
-  current_fingerprint=$(python3 "$fingerprint_script" "$project_dir" 2>/dev/null || true)
+  current_snapshot=$(python3 "$fingerprint_script" "$project_dir" "$baseline" 2>/dev/null || true)
 fi
+current_fingerprint=$(printf '%s' "$current_snapshot" | jq -r '.fingerprint // empty' 2>/dev/null || true)
+change_scope=$(printf '%s' "$current_snapshot" | jq -r '.changeScope // "unknown"' 2>/dev/null || true)
 
 if [[ "${1:-}" == "snapshot" ]]; then
   if [[ -n "$current_fingerprint" ]]; then
-    printf '%s\n' "$current_fingerprint" > "$baseline"
+    printf '%s\n' "$current_snapshot" > "$baseline"
   else
     rm -f "$baseline"
   fi
@@ -84,8 +87,7 @@ rounds=0
 [[ -f "$counter" ]] && rounds=$(cat "$counter" 2>/dev/null || echo 0)
 [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
 
-if (( rounds == 0 )) && [[ -n "$current_fingerprint" && -f "$baseline" ]] &&
-   [[ "$current_fingerprint" == "$(cat "$baseline" 2>/dev/null)" ]]; then
+if (( rounds == 0 )) && [[ "$change_scope" == "unchanged" || "$change_scope" == "markdown-only" ]]; then
   exit 0
 fi
 
@@ -95,7 +97,7 @@ out=$(cd "$project_dir" && "${verifier_command[@]}" 2>&1); status=$?
 
 # Passed: remember this content, clear the counter, and let the turn end.
 if [[ "$status" -eq 0 ]]; then
-  [[ -n "$current_fingerprint" ]] && printf '%s\n' "$current_fingerprint" > "$baseline"
+  [[ -n "$current_fingerprint" ]] && printf '%s\n' "$current_snapshot" > "$baseline"
   rm -f "$counter"
   exit 0
 fi

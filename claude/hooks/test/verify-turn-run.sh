@@ -56,6 +56,23 @@ git -C "$project" commit --allow-empty -qm metadata-only
 invoke
 assert_count 0
 
+invoke snapshot
+mkdir -p "$project/docs"
+printf 'new docs\n' > "$project/docs/guide.md"
+invoke
+assert_count 0
+
+invoke snapshot
+printf 'updated docs\n' > "$project/docs/guide.md"
+invoke
+assert_count 0
+
+invoke snapshot
+rm "$project/docs/guide.md"
+invoke
+assert_count 0
+
+invoke snapshot
 printf 'changed\n' > "$project/example.txt"
 invoke
 assert_count 1
@@ -73,13 +90,20 @@ invoke
 assert_count 3
 
 invoke snapshot
+printf 'mixed docs\n' > "$project/README.md"
+printf 'mixed code\n' > "$project/example.txt"
+invoke
+assert_count 4
+
+invoke snapshot
 printf 'changed again\n' > "$project/example.txt"
 VERIFY_FAIL=1 invoke
 [[ $? -eq 2 ]] || { echo "expected first failed verification to block" >&2; exit 1; }
-assert_count 4
-
-VERIFY_FAIL=1 invoke
-[[ $? -eq 2 ]] || { echo "expected unchanged repair round to rerun" >&2; exit 1; }
 assert_count 5
+
+printf 'repair notes\n' >> "$project/README.md"
+VERIFY_FAIL=1 invoke
+[[ $? -eq 2 ]] || { echo "expected Markdown-only repair round to rerun" >&2; exit 1; }
+assert_count 6
 
 printf 'verify-turn regression checks passed\n'

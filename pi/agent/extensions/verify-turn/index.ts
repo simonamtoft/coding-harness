@@ -21,6 +21,7 @@ import {
   Text,
   type TUI,
 } from "@earendil-works/pi-tui";
+import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
 
 const MAX_ROUNDS = 3;
 
@@ -61,11 +62,11 @@ async function hashFileContent(
   });
 }
 
-async function captureProjectFingerprint(
+async function captureProjectSnapshot(
   pi: ExtensionAPI,
   cwd: string,
   signal: AbortSignal,
-): Promise<string | undefined> {
+): Promise<ProjectSnapshot | undefined> {
   const listed = await pi.exec(
     "git",
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
@@ -73,39 +74,48 @@ async function captureProjectFingerprint(
   );
   if (listed.code !== 0) return undefined;
 
-  const hash = createHash("sha256");
+  const projectHash = createHash("sha256");
+  const files = new Map<string, string>();
   const paths = listed.stdout.split("\0").filter(Boolean).sort();
   try {
     for (const relativePath of paths) {
       signal.throwIfAborted();
       const path = join(cwd, relativePath);
+      const fileHash = createHash("sha256");
       let stats;
       try {
         stats = await lstat(path);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        hash.update(`${relativePath}\0missing\0`);
+        fileHash.update("missing");
+        const digest = fileHash.digest("hex");
+        files.set(relativePath, digest);
+        projectHash.update(`${relativePath}\0${digest}\0`);
         continue;
       }
 
-      hash.update(`${relativePath}\0${stats.mode & fsConstants.S_IFMT}:${stats.mode & 0o111}\0`);
+      fileHash.update(`${stats.mode & fsConstants.S_IFMT}:${stats.mode & 0o111}\0`);
       if (stats.isSymbolicLink()) {
-        hash.update(await readlink(path));
+        fileHash.update(await readlink(path));
       } else if (stats.isFile()) {
-        await hashFileContent(path, hash, signal);
+        await hashFileContent(path, fileHash, signal);
       } else if (stats.isDirectory()) {
-        const nested = await captureProjectFingerprint(pi, path, signal);
-        hash.update(nested ?? "directory");
+        const nested = await captureProjectSnapshot(pi, path, signal);
+        fileHash.update(nested?.fingerprint ?? "directory");
       } else {
-        hash.update("special");
+        fileHash.update("special");
       }
+
+      const digest = fileHash.digest("hex");
+      files.set(relativePath, digest);
+      projectHash.update(`${relativePath}\0${digest}\0`);
     }
   } catch (error) {
     if (signal.aborted) throw error;
     return undefined;
   }
 
-  return hash.digest("hex");
+  return { fingerprint: projectHash.digest("hex"), files };
 }
 
 async function resolveVerifier(
@@ -325,7 +335,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let sessionActive = false;
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
-  let fingerprintBeforeRun: string | undefined;
+  let snapshotBeforeRun: ProjectSnapshot | undefined;
 
   pi.on("session_start", (_event, ctx) => {
     rounds = 0;
@@ -334,7 +344,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     sessionActive = true;
     guidanceController = undefined;
     verificationController = undefined;
-    fingerprintBeforeRun = undefined;
+    snapshotBeforeRun = undefined;
     ctx.ui.setStatus("verify-turn", undefined);
   });
 
@@ -357,12 +367,12 @@ export default function verifyTurn(pi: ExtensionAPI) {
       return;
     }
     if (!sessionActive || controller.signal.aborted || !verifier) {
-      fingerprintBeforeRun = undefined;
+      snapshotBeforeRun = undefined;
       return;
     }
 
     try {
-      fingerprintBeforeRun = await captureProjectFingerprint(pi, ctx.cwd, controller.signal);
+      snapshotBeforeRun = await captureProjectSnapshot(pi, ctx.cwd, controller.signal);
     } catch (error) {
       if (!controller.signal.aborted) throw error;
       return;
@@ -416,13 +426,10 @@ export default function verifyTurn(pi: ExtensionAPI) {
       return;
     }
 
-    const fingerprintAfterRun = await captureProjectFingerprint(pi, cwd, controller.signal);
+    const snapshotAfterRun = await captureProjectSnapshot(pi, cwd, controller.signal);
     if (!sessionActive || controller.signal.aborted) return;
-    if (
-      rounds === 0 &&
-      fingerprintBeforeRun !== undefined &&
-      fingerprintAfterRun === fingerprintBeforeRun
-    ) {
+    const changeScope = classifyProjectChanges(snapshotBeforeRun, snapshotAfterRun);
+    if (rounds === 0 && (changeScope === "unchanged" || changeScope === "markdown-only")) {
       verificationRunning = false;
       verificationController = undefined;
       ctx.ui.setStatus("verify-turn", undefined);
