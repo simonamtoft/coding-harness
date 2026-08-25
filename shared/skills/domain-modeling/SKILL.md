@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, or when another skill (e.g. wayfinder, to-spec, to-tickets) needs to maintain the domain model.
+description: Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, when stateful logic, repeated branching, correlated fields, or invalid combinations reveal an unresolved domain model, or when another skill (e.g. wayfinder, to-spec, to-tickets) needs to maintain the domain model.
 ---
 
 # Domain Modeling
@@ -53,6 +53,23 @@ When the user uses vague or overloaded terms, propose a precise canonical term. 
 
 When domain relationships are being discussed, stress-test them with specific scenarios. Invent scenarios that probe edge cases and force the user to be precise about the boundaries between concepts.
 
+When stateful logic exposes a modeling problem, include scenarios for valid transitions, invalid combinations, and the dominant reads or updates. Use them to identify the invariant the model must preserve, then check that the proposed model handles each scenario without scattered special cases.
+
+### Model structure only when it removes real complexity
+
+Repeated branching, correlated fields that must change together, duplicated shape assumptions, and representable-but-invalid states can signal missing domain structure. First check whether the code is already local and clear; if so, leave it alone.
+
+Otherwise, choose the simplest structure that fits the scenarios and centralizes the relevant domain knowledge:
+
+- a **state machine** when allowed transitions are the core concern
+- a **sum type** when each case has different valid data and illegal combinations should be unrepresentable
+- a **reducer** when many events update one state under shared transition rules
+- a **registry** when behavior or metadata is repeatedly selected by a stable key
+- a **collection** when membership, uniqueness, ordering, or aggregate operations carry the invariant
+- an **ownership boundary** when one concept should control changes that are currently coordinated across modules
+
+These are options, not required abstractions. Prefer the existing representation when a new structure would only rename or relocate simple logic. Domain modeling owns the scenarios, invariants, and vocabulary; hand detailed API, type-signature, and module design to the architecture workflow rather than designing them here.
+
 ### Cross-reference with code
 
 When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible — which is right?"
@@ -61,7 +78,7 @@ When the user states how something works, check whether the code agrees. If you 
 
 When a term is resolved, update `CONTEXT.md` right there. Don't batch these up — capture them as they happen. Use the format in [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md).
 
-`CONTEXT.md` should be totally devoid of implementation details. Do not treat `CONTEXT.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
+`CONTEXT.md` should be totally devoid of implementation details. Do not treat `CONTEXT.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else. Structural choices such as state machines, reducers, types, registries, collections, APIs, and module boundaries do not belong there.
 
 ### Offer ADRs sparingly
 
