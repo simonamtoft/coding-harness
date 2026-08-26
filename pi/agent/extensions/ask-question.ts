@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-const CLARIFICATION_GATE = `Clarification gate (mandatory): Before using any tool, decide whether the request leaves unresolved choices that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If it does, collect all closely related blocking questions into one ask_question call before acting. That response must contain only the ask_question call—do not batch it with other tool calls. Provide concrete options when useful, while always allowing a free-text answer. Do not silently choose a reasonable default. Do not ask when repository inspection can resolve the choice.`;
+const CLARIFICATION_GATE = `Clarification gate (mandatory): Before using any tool, decide whether the request leaves unresolved choices that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If it does, collect all closely related blocking questions into one ask_question call before acting. Before the ask_question call, write a concise context block in the same assistant response that states what decision is needed and includes the key facts or proposal the question refers to. The user must be able to understand the question and options without relying on hidden reasoning. If asking approval of a plan, include the plan. Apart from that context block, the response must contain only the ask_question call—do not batch it with other tool calls. Provide concrete options when useful, while always allowing a free-text answer. Do not silently choose a reasonable default. Do not ask when repository inspection can resolve the choice.`;
 
 const QuestionSchema = Type.Object({
   question: Type.String({ description: "The specific question to ask the user" }),
@@ -36,9 +36,10 @@ export default function askQuestionExtension(pi: ExtensionAPI) {
     label: "Ask Question",
     description:
       "Ask the user one or more blocking clarification questions before work continues. Each question may offer choices and always permits a free-text answer.",
-    promptSnippet: "Ask one or more blocking clarification questions with optional choices",
+    promptSnippet: "Give the decision context, then ask one or more blocking clarification questions with optional choices",
     promptGuidelines: [
       "Call ask_question before acting when unresolved choices could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria.",
+      "Immediately before ask_question, write a concise visible context block in the same assistant response. State the decision needed and the key facts or proposal behind the options; if asking approval of a plan, include the plan.",
       "When clarification is required, collect all closely related blocking questions into one ask_question call, and do not batch it with edit, write, bash, or other tool calls.",
       "Before using ask_question, inspect the repository when it can answer the questions.",
       "For each question, offer at most three concrete options, recommend one when possible, and allow the user to write a different answer.",
