@@ -29,11 +29,11 @@ The two branches produce very different artifacts — getting this wrong wastes 
 
 The _answer_ is the only thing worth keeping from a prototype. Capture it somewhere durable along with the question it was answering. If the user is around, that capture is a quick conversation; if not, leave the placeholder so they (or you, on the next pass) can fill in the verdict before deleting the prototype.
 
-If this prototype is resolving a `/wayfinder` prototype-type ticket (or any FP issue), that's where the answer belongs: attach the artifact and record the verdict on the ticket —
+If this prototype resolves a `/wayfinder` prototype task or another Backlog task, record the verdict there through the CLI. Read `backlog instructions task-execution` before adding progress notes and `backlog instructions task-finalization` before completing the task. Reference a preserved artifact with `--add-ref`; never edit the task Markdown directly.
 
 ```bash
-fp attach <artifact-file>          # ingest the prototype/asset, prints a markdown reference
-fp comment add <id> "Verdict: <which option won and why>"
+backlog task edit <id> --append-notes "Prototype verdict: <which option won and why>" --plain
+backlog task edit <id> --add-ref <durable-artifact-path-or-url> --plain
 ```
 
-Otherwise a commit message, an ADR (`/domain-modeling`), or a `NOTES.md` next to the prototype all work.
+Omit the reference when the prototype is deleted rather than preserved. Otherwise capture the answer in a commit message, an ADR (`/domain-modeling`), or a `NOTES.md` next to the prototype.
