@@ -18,8 +18,7 @@
   "skillOverrides": {
     "frontend-design:frontend-design": "name-only",
     "claude-api": "name-only",
-    "create-skill-from-session-data": "name-only",
-    "scaffold-one-off-script": "name-only"
+    "create-skill-from-session-data": "name-only"
   },
   "hooks": {
     "SessionStart": [
