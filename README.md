@@ -55,8 +55,11 @@ edit the user-owned plugin checkouts under `~/pi-plugins`. Delivered reports and
 handoffs in retained private session
 workspaces stay readable, while other retained scratch content prompts and
 writes remain scoped to the current session. Reads elsewhere prompt, apart from
-canonical harness `SKILL.md` files and installed Volta package content. It
-follows symlinks before checking and hard-denies common secret paths everywhere.
+direct reads in the canonical shared tree (including installed Pi skills that
+resolve there) and read-tool access to installed Volta package content.
+Recursive tools do not receive the shared-tree exception. The sandbox follows
+symlinks before checking and hard-denies common secret paths
+everywhere.
 Its Bash protection catches explicit paths; use a container or VM when an
 OS-enforced boundary is required.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.

@@ -14,6 +14,14 @@ export function isWithin(root: string, path: string): boolean {
   return distance === "" || (distance !== ".." && !distance.startsWith(`..${sep}`) && !isAbsolute(distance));
 }
 
+export function hasTrustedSharedReadAccess(
+  toolName: string,
+  targetPath: string,
+  codingHarnessSharedRoot: string,
+): boolean {
+  return toolName === "read" && isWithin(codingHarnessSharedRoot, targetPath);
+}
+
 export function hasPluginWorkspaceAccess(
   sessionRoot: string,
   targetPath: string,

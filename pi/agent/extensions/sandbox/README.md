@@ -16,9 +16,14 @@ host-side boundary to model tool calls:
   retained UUID workspace that is still owned by the current user and private;
   other retained scratch content still prompts, and writes remain limited to the
   current session.
-- Read tools are also pre-approved for `SKILL.md` files in the canonical
-  `coding-harness` checkout and installed package content under Volta's
-  `tools/image/packages` directory.
+- Direct `read` calls are also pre-approved for the canonical
+  `coding-harness/shared` tree. Existing symlinks are resolved before this
+  check, so reads via the installed `~/.pi/agent/skills` link are checked
+  against the shared tree and remain readable without prompting. Recursive
+  tools such as `grep` and `find` do not receive this exception, preventing a
+  trusted directory root from exposing protected descendants. All read tools
+  may inspect installed package content under Volta's `tools/image/packages`
+  directory.
 - Sessions started inside the canonical `coding-harness` checkout or
   `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
   scoped development exception for user-owned executable package source; it is
@@ -45,9 +50,9 @@ extensions also remain outside this guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
 Trusted locations are derived from the extension checkout, `~/pi-plugins`,
-`VOLTA_HOME` (falling back to `~/.volta`), the process temp directory, and Pi's
-session UUID. Plugin-workspace access is enabled only when that startup cwd is
-inside the extension checkout or plugin workspace.
+`VOLTA_HOME` (falling back to `~/.volta`), the process temp
+directory, and Pi's session UUID. Plugin-workspace access is enabled only when
+that startup cwd is inside the extension checkout or plugin workspace.
 The temp directory itself is not trusted: the current private session workspace
 is fully available, while retained workspaces bypass read prompts only for the
 delivered artifact names above. Only the current session workspace accepts

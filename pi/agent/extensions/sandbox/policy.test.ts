@@ -1,11 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasPluginWorkspaceAccess, isProtectedSecretPath, shellPathCandidates } from "./policy.ts";
+import {
+  hasPluginWorkspaceAccess,
+  hasTrustedSharedReadAccess,
+  isProtectedSecretPath,
+  shellPathCandidates,
+} from "./policy.ts";
 
 const harness = "/Users/example/coding-harness";
 const plugins = "/Users/example/pi-plugins";
 const worktreePlugin = `${plugins}/pi-worktree-agents`;
 const statusPlugin = `${plugins}/pi-status-footer`;
+
+test("shared harness resources are trusted for reads", () => {
+  const shared = `${harness}/shared`;
+
+  assert.equal(hasTrustedSharedReadAccess("read", `${shared}/skills/_shared/rules.md`, shared), true);
+  assert.equal(hasTrustedSharedReadAccess("grep", shared, shared), false);
+  assert.equal(hasTrustedSharedReadAccess("find", `${shared}/skills`, shared), false);
+  assert.equal(hasTrustedSharedReadAccess("read", `${harness}/pi/agent/extensions/index.ts`, shared), false);
+  assert.equal(hasTrustedSharedReadAccess("read", `${harness}/shared-other/rules.md`, shared), false);
+});
 
 test("coding-harness sessions can access local plugins", () => {
   assert.equal(hasPluginWorkspaceAccess(harness, worktreePlugin, harness, plugins), true);
@@ -26,6 +41,7 @@ test("trusted sessions do not gain access outside the plugin workspace", () => {
 
 test("secret paths remain protected inside the plugin workspace", () => {
   assert.equal(isProtectedSecretPath(`${worktreePlugin}/.env.local`), true);
+  assert.equal(isProtectedSecretPath(`${harness}/shared/skills/example/.env`), true);
   assert.equal(isProtectedSecretPath(`${worktreePlugin}/certificates/dev.key`), true);
   assert.equal(isProtectedSecretPath(`${worktreePlugin}/extensions/index.ts`), false);
 });

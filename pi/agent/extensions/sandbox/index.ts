@@ -1,14 +1,21 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { hasPluginWorkspaceAccess, isProtectedSecretPath, isWithin, shellPathCandidates } from "./policy.ts";
+import {
+  hasPluginWorkspaceAccess,
+  hasTrustedSharedReadAccess,
+  isProtectedSecretPath,
+  isWithin,
+  shellPathCandidates,
+} from "./policy.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
 const CODING_HARNESS_ROOT = resolve(dirname(realpathSync.native(__filename)), "../../../..");
+const CODING_HARNESS_SHARED_ROOT = join(CODING_HARNESS_ROOT, "shared");
 const configuredPluginsRoot = resolve(homedir(), "pi-plugins");
 const PI_PLUGINS_ROOT = existsSync(configuredPluginsRoot) ? realpathSync.native(configuredPluginsRoot) : configuredPluginsRoot;
 const TEMP_ROOT = realpathSync.native(tmpdir());
@@ -79,9 +86,9 @@ function isTrustedRetainedSessionRead(path: string): boolean {
   return artifact === "repo-session-retrospective.html" && descendants.length === 0;
 }
 
-function isTrustedOutsideRead(path: string): boolean {
+function isTrustedOutsideRead(toolName: string, path: string): boolean {
   return isWithin(PI_PACKAGES_ROOT, path)
-    || (basename(path) === "SKILL.md" && isWithin(CODING_HARNESS_ROOT, path));
+    || hasTrustedSharedReadAccess(toolName, path, CODING_HARNESS_SHARED_ROOT);
 }
 
 function inspectPath(root: string, rawPath: string): { resolved?: string; reason?: string; outside?: boolean } {
@@ -153,7 +160,8 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
           if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
           if (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved)) return undefined;
           if (!READ_TOOLS.has(event.toolName)) return block(`${input.path}: ${inspection.reason}`);
-          if (isTrustedRetainedSessionRead(inspection.resolved) || isTrustedOutsideRead(inspection.resolved)) return undefined;
+          if (isTrustedRetainedSessionRead(inspection.resolved)
+            || isTrustedOutsideRead(event.toolName, inspection.resolved)) return undefined;
           if (sessionReadApprovals.has(inspection.resolved)) return undefined;
           if (!ctx.hasUI) return block(`${input.path}: outside reads require interactive approval`);
 
