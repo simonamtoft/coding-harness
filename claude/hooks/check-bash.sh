@@ -262,12 +262,13 @@ _hard_denied() {
 
   # Pipe-to-shell: `… | sh` reading a script off stdin. A pipe into
   # `bash script.sh` (an explicit file) is fine and is not matched.
-  if [[ "$scan" =~ \|[[:space:]]*(sudo[[:space:]]+)?(sh|bash|zsh)([[:space:]]+-[^[:space:]]+)*[[:space:]]*($|\||\;|\&) ]]; then
+  if [[ "$scan" =~ \|[[:space:]]*((sudo|/usr/bin/sudo|/bin/sudo)[[:space:]]+)?(/(usr/)?bin/)?(sh|bash|zsh)([[:space:]]+-[^[:space:]]+)*[[:space:]]*($|\||\;|\&) ]]; then
     _deny_reason="pipe-to-shell — executes piped code unreviewed."; return 0
   fi
 
   # Force-push. --force-with-lease is deliberately NOT matched: it is the safe form.
-  if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+push([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+(--force|-f)([[:space:]]|$) ]]; then
+  if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+push([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+(-[[:alnum:]]*f[[:alnum:]]*|--force)([[:space:]]|$) ]] \
+    || [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+push([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+\+[^[:space:]\;\|\&]+:[^[:space:]\;\|\&]+ ]]; then
     _deny_reason="\`git push --force\` — use --force-with-lease instead."; return 0
   fi
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  deniedBashCommandReason,
   hasPluginWorkspaceAccess,
   hasTrustedSharedReadAccess,
   isProtectedSecretPath,
@@ -48,6 +49,18 @@ test("secret paths remain protected inside the plugin workspace", () => {
 
 test("ordinary Bash commands do not require path inspection", () => {
   assert.deepEqual(shellPathCandidates("git status && npm test"), []);
+});
+
+test("session temporary workspaces permit cleanup", () => {
+  assert.equal(
+    deniedBashCommandReason(
+      "rm -rf /private/var/folders/example/T/pi-agent-501/session/output",
+      "/Users/example/project",
+      "/Users/example",
+      "/private/var/folders/example/T/pi-agent-501/session",
+    ),
+    undefined,
+  );
 });
 
 test("Bash path inspection still catches explicit and protected paths", () => {

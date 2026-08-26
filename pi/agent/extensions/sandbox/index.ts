@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from "no
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import {
+  deniedBashCommandReason,
   hasPluginWorkspaceAccess,
   hasTrustedSharedReadAccess,
   isProtectedSecretPath,
@@ -201,6 +202,9 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
 
     if (isToolCallEventType("bash", event)) {
       const sessionTempDirectory = getSessionTempDirectory();
+      const denyReason = deniedBashCommandReason(event.input.command, root, undefined, sessionTempDirectory);
+      if (denyReason) return block(denyReason);
+
       if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory)) {
         return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
       }

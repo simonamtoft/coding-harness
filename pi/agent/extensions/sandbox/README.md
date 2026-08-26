@@ -33,7 +33,12 @@ host-side boundary to model tool calls:
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
   the project.
-- Bash is blocked when it contains an explicit path outside the current,
+- Bash hard-denies the cross-harness command-safety contract in
+  `shared/command-safety.tsv`: privilege escalation, pipe-to-shell execution,
+  force pushes, destructive Git history changes, `chmod 777`, deletion outside
+  the workspace or temporary directories, and protected-secret access. It
+  returns an actionable reason; `git push --force-with-lease` remains permitted.
+- Bash is also blocked when it contains an explicit path outside the current,
   permitted plugin workspace, or session temp directory; changes its working
   directory to the session temp directory; or names a protected secret pattern.
   Scratch commands must use absolute paths; Bash does not use the read approval
@@ -42,11 +47,12 @@ host-side boundary to model tool calls:
   remain inside the parent project, the scoped plugin workspace, or the private
   session temp workspace.
 
-This is a tool-call guard, not an OS sandbox. Bash commands using variables,
-redirections, command substitution, or programs that discover paths at runtime
-can bypass a lexical command check. Use a container, VM, or OS sandbox when a
-strong filesystem boundary is required. User-entered `!` commands and
-extensions also remain outside this guard.
+This is a tool-call guard, not an OS sandbox. The command-safety policy uses
+lexical inspection: shell syntax it cannot prove or programs that discover paths
+at runtime can bypass it. Bash commands using variables, redirections, or command
+substitution can likewise evade the filesystem check. Use a container, VM, or OS
+sandbox when a strong filesystem boundary is required. User-entered `!` commands
+and extensions also remain outside this guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
 Trusted locations are derived from the extension checkout, `~/pi-plugins`,

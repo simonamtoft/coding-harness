@@ -42,13 +42,15 @@ leaves the override in place.
 
 ## Layout
 
-- `shared/`: the common `AGENTS.md` and skills linked into both harnesses.
+- `shared/`: the common `AGENTS.md`, skills, and command-safety regression contract consumed by both harnesses.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
   intentionally ignored by Git.
 
 The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
-It limits model filesystem tools to the session's current directory, while also
+It hard-denies the high-risk Bash commands in `shared/command-safety.tsv` (such
+as Git force-push, destructive Git rewrites, `sudo`, pipe-to-shell execution,
+and unsafe deletion), then limits model filesystem tools to the session's current directory, while also
 providing a private mode-0700 workspace under the process temp directory for
 scratch artifacts. Sessions started in this harness or `~/pi-plugins` may also
 edit the user-owned plugin checkouts under `~/pi-plugins`. Delivered reports and
@@ -60,8 +62,9 @@ resolve there) and read-tool access to installed Volta package content.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
 everywhere.
-Its Bash protection catches explicit paths; use a container or VM when an
-OS-enforced boundary is required.
+Its Bash protections are lexical checks, so they catch explicit paths and known
+high-risk commands but do not constitute an OS-enforced sandbox; use a container
+or VM when that boundary is required.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the
@@ -70,6 +73,7 @@ single source of truth for both harnesses:
 ```text
 ~/coding-harness/shared/AGENTS.md -> ~/.pi/agent/AGENTS.md + ~/.claude/CLAUDE.md
 ~/coding-harness/shared/skills    -> ~/.pi/agent/skills   + ~/.claude/skills
+~/coding-harness/shared/command-safety.tsv -> shared command-deny regression contract
 ```
 
 Everything else is harness-specific, because the two harnesses disagree on
