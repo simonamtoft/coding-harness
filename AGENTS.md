@@ -6,6 +6,7 @@ This repository is the canonical, version-controlled source for the user's Pi an
 
 - `shared/AGENTS.md` and `shared/skills/` are only for behavior one implementation can serve to both harnesses. Keep divergent formats and capabilities in their harness directory; do not duplicate shared resources there.
 - `pi/agent/` owns Pi-only instructions, agents, extensions, prompts, MCP configuration, and the package manifest.
+- Keep test files out of `pi/agent/extensions/` root. Pi auto-loads every root `*.ts`; colocate tests inside extension subdirectories, where only `index.ts` is auto-discovered.
 - `claude/` owns Claude-only agents, hooks, settings, statusline, and themes.
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.

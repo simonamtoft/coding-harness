@@ -9,7 +9,7 @@ mock.module("typebox", () => ({
   },
 }));
 
-const { default: askQuestionExtension } = await import("./ask-question.ts");
+const { default: askQuestionExtension } = await import("./index.ts");
 
 describe("ask_question prompt guidance", () => {
   test("requires visible decision context before opening the question UI", () => {
