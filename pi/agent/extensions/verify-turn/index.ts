@@ -22,6 +22,7 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
+import { formatVerificationLiveness } from "./liveness.ts";
 import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
@@ -254,9 +255,11 @@ class VerificationLoader extends Container {
   private readonly tui: TUI;
   private readonly loader: CancellableLoader;
   private readonly output: Text;
+  private readonly liveness: Text;
   private readonly startedAt = Date.now();
   private readonly timer: NodeJS.Timeout;
   private readonly verifierLabel: string;
+  private lastOutputAt: number | undefined;
   private recentOutput = "";
 
   constructor(tui: TUI, theme: Theme, verifierLabel: string) {
@@ -271,9 +274,11 @@ class VerificationLoader extends Container {
       `Project checks · ${verifierLabel} · 0s elapsed`,
     );
     this.output = new Text(theme.fg("dim", "Waiting for output…"), 1, 0);
+    this.liveness = new Text(theme.fg("muted", this.livenessText()), 1, 0);
 
     this.addChild(new DynamicBorder(borderColor));
     this.addChild(this.loader);
+    this.addChild(this.liveness);
     this.addChild(new Spacer(1));
     this.addChild(this.output);
     this.addChild(new Spacer(1));
@@ -282,12 +287,13 @@ class VerificationLoader extends Container {
     this.addChild(new DynamicBorder(borderColor));
 
     this.timer = setInterval(() => {
-      this.updateHeading();
+      this.updateStatus();
       tui.requestRender();
     }, 1_000);
   }
 
   appendOutput(chunk: string): void {
+    this.lastOutputAt = Date.now();
     const safeChunk = stripTerminalSequences(chunk)
       .replace(/\r(?!\n)/g, "\n")
       .replace(/[^\t\n\x20-\x7E\u00A0-\u{10FFFF}]/gu, "");
@@ -295,6 +301,7 @@ class VerificationLoader extends Container {
     const lines = this.recentOutput.split("\n");
     const visibleLines = lines.slice(-12).join("\n").trim();
     this.output.setText(visibleLines || "Waiting for output…");
+    this.updateStatus();
     this.tui.requestRender();
   }
 
@@ -311,9 +318,14 @@ class VerificationLoader extends Container {
     this.loader.dispose();
   }
 
-  private updateHeading(): void {
+  private livenessText(): string {
+    return formatVerificationLiveness(this.startedAt, this.lastOutputAt, Date.now());
+  }
+
+  private updateStatus(): void {
     const elapsedSeconds = Math.floor((Date.now() - this.startedAt) / 1_000);
     this.loader.setMessage(`Project checks · ${this.verifierLabel} · ${elapsedSeconds}s elapsed`);
+    this.liveness.setText(this.livenessText());
   }
 }
 
