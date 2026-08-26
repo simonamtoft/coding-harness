@@ -1,6 +1,6 @@
 # Backlog dependency maps
 
-When a report exposes tickets from `backlog.md`, make a dependency map the section's primary artifact instead of presenting the tickets only as a flat ordered list or table. Start from [../assets/backlog-dependency-map.html](../assets/backlog-dependency-map.html), then add, remove, and position lanes, nodes, and edges to fit the actual work.
+When a report needs to explain multiple tickets, their dependencies, or scheduling, make a dependency map the section's primary artifact instead of presenting the tickets only as a flat ordered list or table. Do not create one for a single completed ticket without dependencies. Start from [../assets/backlog-dependency-map.html](../assets/backlog-dependency-map.html), then add, remove, and position lanes, nodes, and edges to fit the actual work.
 
 ## Encode the work
 

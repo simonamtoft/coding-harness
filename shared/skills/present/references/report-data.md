@@ -15,7 +15,7 @@ Normalize only the fields the report needs. Keep this as a compact scratch struc
       { "name": "task typecheck", "status": "passed", "unit": "command" }
     ],
     "testSuites": [
-      { "name": "browser", "passed": 46, "failed": 1, "unit": "test" }
+      { "name": "browser", "status": "passed", "unit": "test" }
     ],
     "probes": [
       { "name": "seed integrity", "run": 9, "violations": 0, "unit": "probe" }
@@ -41,7 +41,7 @@ Rules:
 
 - Keep commands, test cases, and probes in separate collections. Never put counts with different units in one numerator or label.
 - Record exact commands and source paths in the data even when the visual uses shorter labels.
-- Derive metrics mechanically from the normalized collections; do not count from prose.
+- Retain exact counts only when they are needed for later analysis; delivery reports should state check status rather than test-case totals unless a count materially supports the conclusion.
 - Separate `suggestedStage` and lane position from `dependsOn`. Suggested order is not a hard dependency.
 - Preserve parallel work by assigning the same stage to tickets that should start together.
 - Omit empty collections. Any scratch data is temporary reasoning input, not a repository artifact or report attachment.

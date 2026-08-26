@@ -23,7 +23,7 @@
       "label": "Verification",
       "title": "Checks performed",
       "items": [
-        { "label": "Commands", "value": "3 / 3", "summary": "All commands passed.", "tone": "good" }
+        { "label": "Checks", "value": "Passed", "summary": "Typecheck, tests, and lint passed.", "tone": "good" }
       ]
     },
     {
