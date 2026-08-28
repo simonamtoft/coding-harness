@@ -1,9 +1,9 @@
 ---
-name: architecture-design
+name: technical-design
 description: Design consequential technical changes before implementation. Use for explicit architecture or design requests, or when choosing a hard-to-reverse interface, schema, ownership boundary, concurrency model, or public API; do not use for routine coding.
 ---
 
-# Architecture design
+# Technical design
 
 Use this workflow to make a consequential technical decision legible before code commits the system to it. The outcome is a concise design artifact and an explicit decision point, not an implementation plan by default.
 

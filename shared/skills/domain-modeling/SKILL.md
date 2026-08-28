@@ -68,7 +68,7 @@ Otherwise, choose the simplest structure that fits the scenarios and centralizes
 - a **collection** when membership, uniqueness, ordering, or aggregate operations carry the invariant
 - an **ownership boundary** when one concept should control changes that are currently coordinated across modules
 
-These are options, not required abstractions. Prefer the existing representation when a new structure would only rename or relocate simple logic. Domain modeling owns the scenarios, invariants, and vocabulary; hand detailed API, type-signature, and module design to the architecture workflow rather than designing them here.
+These are options, not required abstractions. Prefer the existing representation when a new structure would only rename or relocate simple logic. Domain modeling owns the scenarios, invariants, and vocabulary; hand detailed API, type-signature, and module design to `/technical-design` rather than designing them here.
 
 ### Cross-reference with code
 
