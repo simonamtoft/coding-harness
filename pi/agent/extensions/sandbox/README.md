@@ -30,6 +30,12 @@ host-side boundary to model tool calls:
   unavailable to sessions started in other projects.
 - `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
+- Agent control-plane writes are restricted to sessions started inside the
+  canonical `coding-harness` checkout. Elsewhere, file tools cannot change
+  `AGENTS.md`/`CLAUDE.md`, `.pi` or `.agents` resources, `.agent/verify.sh`,
+  Git config/hooks, or plugin checkout content. Bash calls that explicitly name
+  those paths are also blocked; indirect Bash mutation remains subject to the
+  lexical-boundary limitation below.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
   the project.
@@ -46,6 +52,9 @@ host-side boundary to model tool calls:
 - Subagents inherit this guard, and their requested working directories must
   remain inside the parent project, the scoped plugin workspace, or the private
   session temp workspace.
+- On session startup, the extension changes the Pi agent directory and retained
+  session directories to mode 0700, and session transcripts plus local
+  credential/configuration JSON files to mode 0600. Symlinks are not followed.
 
 This is a tool-call guard, not an OS sandbox. The command-safety policy uses
 lexical inspection: shell syntax it cannot prove or programs that discover paths

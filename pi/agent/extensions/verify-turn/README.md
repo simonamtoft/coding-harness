@@ -9,7 +9,7 @@ From the session working directory, in precedence order:
 1. Executable `.agent/verify.sh`
 2. A `verify` task in `Taskfile.yml` or `Taskfile.yaml`
 
-If neither exists, the extension is a no-op.
+If neither exists, the extension is a no-op. Discovery and execution require Pi project trust plus a separate, explicit verifier approval for the current session. The approval is bound to the verifier file's content; changing it stops automatic execution until a later turn is approved again. Headless sessions fail closed, and verifier symlinks resolving outside the project cannot be approved. This separate gate is necessary because repositories without `.pi` resources are otherwise treated as trusted automatically by Pi.
 
 Both locations are deliberately harness-neutral, and Claude Code's `verify-turn.sh` Stop hook
 resolves the same two in the same order. A project therefore wires **one** verifier that serves both

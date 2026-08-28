@@ -38,11 +38,39 @@ export function isProtectedSecretPath(path: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function isProjectControlPath(path: string): boolean {
+  const normalized = normalize(path);
+  const segments = normalized.split(sep);
+  const basename = segments.at(-1) ?? "";
+  if (/^(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(basename)) return true;
+  if (segments.includes(".pi") || segments.includes(".agents")) return true;
+
+  const agentIndex = segments.lastIndexOf(".agent");
+  if (agentIndex !== -1 && segments[agentIndex + 1] === "verify.sh") return true;
+
+  const gitIndex = segments.lastIndexOf(".git");
+  return gitIndex !== -1 && (segments[gitIndex + 1] === "config" || segments[gitIndex + 1] === "hooks");
+}
+
+export function isControlPlaneWriteBlocked(
+  sessionRoot: string,
+  targetPath: string,
+  codingHarnessRoot: string,
+  pluginWorkspaceRoot: string,
+): boolean {
+  if (isWithin(codingHarnessRoot, sessionRoot)) return false;
+  return isWithin(pluginWorkspaceRoot, targetPath) || isProjectControlPath(targetPath);
+}
+
 export function shellPathCandidates(command: string): string[] {
   const segments = command.split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
-    return unprefixed === ".." || unprefixed.startsWith("../") || unprefixed.startsWith("./") || unprefixed.startsWith("/") || unprefixed === "~" || unprefixed.startsWith("~/");
+    const isRelativeControlPath = /(?:^|\/)(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(unprefixed)
+      || /(?:^|\/)(?:\.pi|\.agents)(?:\/|$)/.test(unprefixed)
+      || /(?:^|\/)\.agent\/verify\.sh$/.test(unprefixed)
+      || /(?:^|\/)\.git\/(?:config|hooks)(?:\/|$)/.test(unprefixed);
+    return unprefixed === ".." || unprefixed.startsWith("../") || unprefixed.startsWith("./") || unprefixed.startsWith("/") || unprefixed === "~" || unprefixed.startsWith("~/") || isRelativeControlPath;
   };
   const isSystemCommand = (token: string) => /^\/(?:bin|sbin|usr\/(?:bin|sbin|local\/bin)|opt\/homebrew\/(?:bin|sbin))\//.test(token);
 
@@ -80,6 +108,7 @@ function removesOutsideWorkspace(command: string, cwd: string, home: string, ses
   for (const match of matches) {
     for (const token of match[1].trim().split(/\s+/)) {
       if (!token || token === "--" || token.startsWith("-") || token === "{}" || token.includes("$") || token === "__SINGLE_QUOTED__") continue;
+      if (token.startsWith("~") && token !== "~" && !token.startsWith("~/")) return true;
       const target = token === "~" || token.startsWith("~/")
         ? resolve(home, token.slice(2))
         : resolve(cwd, token);
@@ -105,8 +134,11 @@ export function deniedBashCommandReason(
   if (commandMatches(command, /(^|[^A-Za-z0-9_-])(?:sudo|\/(?:usr\/bin|bin)\/sudo)(?=\s|$)/)) {
     return "`sudo` is never run by Pi";
   }
-  if (commandMatches(command, /\|\s*(?:(?:sudo|\/(?:usr\/bin|bin)\/sudo)\s+)?(?:\/(?:usr\/)?bin\/)?(?:sh|bash|zsh)(?:\s+-\S+)*\s*(?:$|[;|&])/)) {
+  if (/\|\s*(?:(?:sudo|\/(?:usr\/bin|bin)\/sudo)\s+)?(?:\/(?:usr\/)?bin\/)?(?:sh|bash|zsh)\b/.test(masked)) {
     return "pipe-to-shell executes unreviewed code";
+  }
+  if (/(^|[^A-Za-z0-9_-])(?:\/(?:usr\/)?bin\/)?(?:sh|bash|zsh)\s+(?:-[A-Za-z]*c[A-Za-z]*|--command)(?=\s|$)/.test(command)) {
+    return "nested shell command strings bypass command safety inspection";
   }
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+push\b[^;|&]*(?:\s--force|\s-[A-Za-z]*f[A-Za-z]*)(?=\s|$)/)
     || commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+push\b[^;|&]*\s\+\S+:\S+/)) {

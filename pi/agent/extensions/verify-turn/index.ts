@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants as fsConstants, createReadStream } from "node:fs";
-import { access, lstat, readlink } from "node:fs/promises";
+import { lstat, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DEFAULT_MAX_BYTES,
@@ -27,21 +27,10 @@ import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
 } from "../shared/review-coordination.ts";
+import { VerifierTrustGate } from "./verifier-trust.ts";
+import { resolveVerifier, type Verifier } from "./verifier.ts";
 
 const MAX_ROUNDS = 3;
-
-type Verifier =
-  | { label: ".agent/verify.sh"; command: string; args: string[] }
-  | { label: "task verify"; command: "task"; args: string[] };
-
-async function isExecutable(path: string): Promise<boolean> {
-  try {
-    await access(path, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function hashFileContent(
   path: string,
@@ -121,38 +110,6 @@ async function captureProjectSnapshot(
   }
 
   return { fingerprint: projectHash.digest("hex"), files };
-}
-
-async function resolveVerifier(
-  pi: ExtensionAPI,
-  cwd: string,
-  signal: AbortSignal,
-): Promise<Verifier | undefined> {
-  const verifyScript = join(cwd, ".agent", "verify.sh");
-  if (await isExecutable(verifyScript)) {
-    return { label: ".agent/verify.sh", command: verifyScript, args: [] };
-  }
-
-  for (const filename of ["Taskfile.yml", "Taskfile.yaml"]) {
-    const taskfile = join(cwd, filename);
-    try {
-      await access(taskfile);
-    } catch {
-      continue;
-    }
-
-    signal.throwIfAborted();
-    const listed = await pi.exec("task", ["--taskfile", taskfile, "--list-all"], {
-      cwd,
-      signal,
-      timeout: 10_000,
-    });
-    if (listed.code === 0 && /^\* verify:/m.test(listed.stdout)) {
-      return { label: "task verify", command: "task", args: ["--taskfile", taskfile, "verify"] };
-    }
-  }
-
-  return undefined;
 }
 
 function terminateProcessTree(pid: number): void {
@@ -352,6 +309,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
   let snapshotBeforeRun: ProjectSnapshot | undefined;
+  let verifierTrustGate = new VerifierTrustGate();
 
   pi.on("session_start", (_event, ctx) => {
     resetReviewCoordination();
@@ -362,6 +320,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = undefined;
     verificationController = undefined;
     snapshotBeforeRun = undefined;
+    verifierTrustGate = new VerifierTrustGate();
     ctx.ui.setStatus("verify-turn", undefined);
   });
 
@@ -378,7 +337,9 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = controller;
     let verifier: Verifier | undefined;
     try {
-      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal);
+      const verifierTrusted = ctx.isProjectTrusted()
+        && await verifierTrustGate.requestApproval(ctx.cwd, ctx.hasUI, (title, message) => ctx.ui.confirm(title, message));
+      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal, verifierTrusted);
     } catch (error) {
       if (!controller.signal.aborted) throw error;
       return;
@@ -426,7 +387,8 @@ export default function verifyTurn(pi: ExtensionAPI) {
 
     let verifier: Verifier | undefined;
     try {
-      verifier = await resolveVerifier(pi, cwd, controller.signal);
+      const verifierTrusted = ctx.isProjectTrusted() && verifierTrustGate.isApproved(cwd);
+      verifier = await resolveVerifier(pi, cwd, controller.signal, verifierTrusted);
     } catch (error) {
       if (verificationController === controller) {
         verificationRunning = false;

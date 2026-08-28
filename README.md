@@ -61,7 +61,9 @@ direct reads in the canonical shared tree (including installed Pi skills that
 resolve there) and read-tool access to installed Volta package content.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
-everywhere.
+everywhere. Agent control files and plugin source are write-protected unless Pi
+was started inside this canonical `coding-harness` checkout. Session transcripts
+and local Pi configuration are normalized to owner-only permissions at startup.
 Its Bash protections are lexical checks, so they catch explicit paths and known
 high-risk commands but do not constitute an OS-enforced sandbox; use a container
 or VM when that boundary is required.
@@ -92,7 +94,9 @@ skill.
 
 Per-project verifiers are harness-neutral too. Pi's `verify-turn` extension and
 Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a
-`verify` task in a `Taskfile`, so a repo wires one verifier for both.
+`verify` task in a `Taskfile`, so a repo wires one verifier for both. Pi discovers
+and executes these repository-controlled commands only after Pi project trust
+and a separate content-bound verifier approval for the current session.
 
 Pi's `~/.pi/agent/settings.json`, `~/.pi/agent/models.json`, and
 `~/.pi/agent/subagents.json` remain local. The settings file contains package

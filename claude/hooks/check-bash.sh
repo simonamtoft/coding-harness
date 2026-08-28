@@ -210,6 +210,9 @@ _rm_scope() {
     if [[ "$arg" == *'$'* || "$arg" == *__QSTR__* || "$arg" == *__SUBST__* ]]; then
       unresolvable=1; continue
     fi
+    if [[ "$arg" == "~"* && "$arg" != "~" && "$arg" != "~/"* ]]; then
+      printf 'out'; return
+    fi
     found=1
     resolved=$(_resolve "$arg")
     if [[ "$resolved" != "$PWD" && "$resolved" != "$PWD/"* \
@@ -260,10 +263,17 @@ _hard_denied() {
     _deny_reason="\`sudo\` — privilege escalation is never auto-run."; return 0
   fi
 
-  # Pipe-to-shell: `… | sh` reading a script off stdin. A pipe into
-  # `bash script.sh` (an explicit file) is fine and is not matched.
-  if [[ "$scan" =~ \|[[:space:]]*((sudo|/usr/bin/sudo|/bin/sudo)[[:space:]]+)?(/(usr/)?bin/)?(sh|bash|zsh)([[:space:]]+-[^[:space:]]+)*[[:space:]]*($|\||\;|\&) ]]; then
+  # Any pipe into a shell can execute stdin, including `bash -s` with
+  # positional arguments. Keep the rule conservative and deny the whole class.
+  if [[ "$scan" =~ \|[[:space:]]*((sudo|/usr/bin/sudo|/bin/sudo)[[:space:]]+)?(/(usr/)?bin/)?(sh|bash|zsh)([[:space:]]|$) ]]; then
     _deny_reason="pipe-to-shell — executes piped code unreviewed."; return 0
+  fi
+
+  # A nested shell command string hides its payload inside an argument that the
+  # normal quote masking deliberately removes. The outer Bash tool already
+  # provides a shell, so require direct commands or an explicit script file.
+  if [[ "$cmd" =~ (^|[^[:alnum:]_-])(/(usr/)?bin/)?(sh|bash|zsh)[[:space:]]+(-[[:alpha:]]*c[[:alpha:]]*|--command)([[:space:]]|$) ]]; then
+    _deny_reason="nested shell command string — bypasses command safety inspection."; return 0
   fi
 
   # Force-push. --force-with-lease is deliberately NOT matched: it is the safe form.

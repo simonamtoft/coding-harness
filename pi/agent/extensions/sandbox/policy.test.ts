@@ -4,6 +4,7 @@ import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
   hasTrustedSharedReadAccess,
+  isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   shellPathCandidates,
 } from "./policy.ts";
@@ -47,6 +48,19 @@ test("secret paths remain protected inside the plugin workspace", () => {
   assert.equal(isProtectedSecretPath(`${worktreePlugin}/extensions/index.ts`), false);
 });
 
+test("control-plane writes are allowed only from coding-harness sessions", () => {
+  const project = "/Users/example/projects/app";
+
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/AGENTS.md`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.pi/extensions/demo.ts`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/verify.sh`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.git/hooks/pre-commit`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(worktreePlugin, `${worktreePlugin}/extensions/index.ts`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(harness, `${harness}/pi/agent/extensions/sandbox/index.ts`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(`${harness}/shared`, `${worktreePlugin}/extensions/index.ts`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/src/index.ts`, harness, plugins), false);
+});
+
 test("ordinary Bash commands do not require path inspection", () => {
   assert.deepEqual(shellPathCandidates("git status && npm test"), []);
 });
@@ -65,4 +79,6 @@ test("session temporary workspaces permit cleanup", () => {
 
 test("Bash path inspection still catches explicit and protected paths", () => {
   assert.deepEqual(shellPathCandidates("cp .env.local ~/pi-plugins/demo/config.ts"), [".env.local", "~/pi-plugins/demo/config.ts"]);
+  assert.deepEqual(shellPathCandidates("cp payload nested/.agent/verify.sh"), ["nested/.agent/verify.sh"]);
+  assert.deepEqual(shellPathCandidates("printf x > docs/AGENTS.md"), ["docs/AGENTS.md"]);
 });

@@ -3,15 +3,17 @@ import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
-import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
   hasTrustedSharedReadAccess,
+  isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   isWithin,
   shellPathCandidates,
 } from "./policy.ts";
+import { hardenPiPermissions } from "./permissions.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
@@ -156,6 +158,11 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
       const input = event.input as { path?: unknown };
       if (typeof input.path === "string") {
         const inspection = inspectPath(root, input.path);
+        const isWrite = !READ_TOOLS.has(event.toolName);
+        if (isWrite && inspection.resolved
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          return block(`${input.path}: agent control-plane writes require a coding-harness session`);
+        }
         if (inspection.reason && !inspection.outside) return block(`${input.path}: ${inspection.reason}`);
         if (inspection.outside) {
           if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
@@ -211,6 +218,10 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);
+        if (inspection.resolved
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          return block(`${candidate}: Bash access to the agent control plane requires a coding-harness session`);
+        }
         const permittedOutsidePath = inspection.outside && inspection.resolved
           && (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved));
         if (inspection.reason && !permittedOutsidePath) return block(`${candidate}: ${inspection.reason}`);
@@ -226,6 +237,12 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   const guard = createSandboxGuard(process.cwd(), () => sessionTempDirectory);
 
   pi.on("session_start", (_event, ctx) => {
+    try {
+      hardenPiPermissions(getAgentDir());
+    } catch (error) {
+      ctx.ui.notify(`Could not harden Pi file permissions: ${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+
     try {
       sessionTempDirectory = createSessionTempDirectory(ctx.sessionManager.getSessionId());
       process.env.PI_SESSION_TMPDIR = sessionTempDirectory;
