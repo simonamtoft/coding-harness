@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, normalize, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 const SECRET_PATTERNS = [
   /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
@@ -50,7 +50,7 @@ function isProjectControlPath(path: string): boolean {
   if (segments.includes(".pi") || segments.includes(".agents")) return true;
 
   const agentIndex = segments.lastIndexOf(".agent");
-  if (agentIndex !== -1 && segments[agentIndex + 1] === "verify.sh") return true;
+  if (agentIndex !== -1 && ["verify.sh", "diagnostics.sh"].includes(segments[agentIndex + 1] ?? "")) return true;
 
   const gitIndex = segments.lastIndexOf(".git");
   return gitIndex !== -1 && (segments[gitIndex + 1] === "config" || segments[gitIndex + 1] === "hooks");
@@ -68,13 +68,44 @@ export function isControlPlaneWriteBlocked(
   return isProjectControlPath(targetPath);
 }
 
+/** Playwright's managed browser cache, which read tools may inspect without prompting. */
+export function playwrightBrowsersRoot(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home = homedir(),
+): string {
+  const configured = env.PLAYWRIGHT_BROWSERS_PATH;
+  if (configured && isAbsolute(configured)) return resolve(configured);
+  return platform === "darwin"
+    ? join(home, "Library", "Caches", "ms-playwright")
+    : join(home, ".cache", "ms-playwright");
+}
+
+const INLINE_EVAL_BODY =
+  /(?:^|[\s;|&(])(?:\S*\/)?(?:node|bun|deno|python|python3|perl|ruby)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:-e|--eval|-c|-p|--print)\s+("(?:\\.|[^"\\])*"|'[^']*')/g;
+
+/**
+ * Inline interpreter code is not a list of filesystem arguments: quoted fragments such as a
+ * concatenated `'/name.png'` are literals, not paths. Lexical extraction there produces false
+ * denials without adding protection, since the equivalent script file is never inspected.
+ */
+function stripInlineEvalBodies(command: string): string {
+  return command.replace(INLINE_EVAL_BODY, (match, body: string) => match.slice(0, match.length - body.length));
+}
+
+/** String literals inside inline interpreter code, which are still checked against secret paths. */
+function inlineEvalStringLiterals(command: string): string[] {
+  return [...command.matchAll(INLINE_EVAL_BODY)].flatMap(([, body]) =>
+    [...body.slice(1, -1).matchAll(/'([^']*)'|"((?:\\.|[^"\\])*)"/g)].map(([, single, double]) => single ?? double));
+}
+
 export function shellPathCandidates(command: string): string[] {
-  const segments = command.split(/&&|\|\||[;|]/);
+  const segments = stripInlineEvalBodies(command).split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
     const isRelativeControlPath = /(?:^|\/)(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(unprefixed)
       || /(?:^|\/)(?:\.pi|\.agents)(?:\/|$)/.test(unprefixed)
-      || /(?:^|\/)\.agent\/verify\.sh$/.test(unprefixed)
+      || /(?:^|\/)\.agent\/(?:verify|diagnostics)\.sh$/.test(unprefixed)
       || /(?:^|\/)\.git\/(?:config|hooks)(?:\/|$)/.test(unprefixed);
     return unprefixed === ".." || unprefixed.startsWith("../") || unprefixed.startsWith("./") || unprefixed.startsWith("/") || unprefixed === "~" || unprefixed.startsWith("~/") || isRelativeControlPath;
   };
@@ -136,7 +167,8 @@ export function deniedBashCommandReason(
 ): string | undefined {
   const masked = maskSingleQuotedStrings(command);
 
-  if (shellPathCandidates(masked).some(isProtectedSecretPath)) return "touches a protected secret path";
+  const secretCandidates = [...shellPathCandidates(masked), ...inlineEvalStringLiterals(command)];
+  if (secretCandidates.some(isProtectedSecretPath)) return "touches a protected secret path";
   if (commandMatches(command, /(^|[^A-Za-z0-9_-])(?:sudo|\/(?:usr\/bin|bin)\/sudo)(?=\s|$)/)) {
     return "`sudo` is never run by Pi";
   }

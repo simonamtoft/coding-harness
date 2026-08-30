@@ -58,7 +58,8 @@ handoffs in retained private session
 workspaces stay readable, while other retained scratch content prompts and
 writes remain scoped to the current session. Reads elsewhere prompt, apart from
 direct reads in the canonical shared tree (including installed Pi skills that
-resolve there) and read-tool access to installed Volta package content.
+resolve there) and read-tool access to installed Volta package content and
+Playwright's managed browser cache.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
 everywhere. Agent control files and plugin source are write-protected unless Pi
@@ -66,7 +67,9 @@ was started inside this canonical `coding-harness` checkout. Session transcripts
 and local Pi configuration are normalized to owner-only permissions at startup.
 Its Bash protections are lexical checks, so they catch explicit paths and known
 high-risk commands but do not constitute an OS-enforced sandbox; use a container
-or VM when that boundary is required.
+or VM when that boundary is required. Quoted bodies passed to inline interpreter
+evaluation are treated as code rather than path arguments, so they are not
+inspected for paths, though secret literals inside them are still denied.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the

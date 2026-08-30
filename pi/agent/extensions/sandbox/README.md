@@ -23,7 +23,10 @@ host-side boundary to model tool calls:
   tools such as `grep` and `find` do not receive this exception, preventing a
   trusted directory root from exposing protected descendants. All read tools
   may inspect installed package content under Volta's `tools/image/packages`
-  directory.
+  directory, and Playwright's managed browser cache
+  (`PLAYWRIGHT_BROWSERS_PATH` when absolute, otherwise
+  `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`). Write, edit,
+  and Bash access to those roots is unchanged.
 - Sessions started inside the canonical `coding-harness` checkout or
   `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
   scoped development exception for user-owned executable package source; it is
@@ -59,7 +62,13 @@ host-side boundary to model tool calls:
 
 This is a tool-call guard, not an OS sandbox. The command-safety policy uses
 lexical inspection: shell syntax it cannot prove or programs that discover paths
-at runtime can bypass it. Bash commands using variables, redirections, or command
+at runtime can bypass it. Quoted bodies given to an inline interpreter
+evaluation flag (`node`, `bun`, `deno`, `python`, `perl`, `ruby` with `-e`,
+`--eval`, `-c`, `-p`, or `--print`) are code, not path arguments, so they are
+excluded from path extraction; the equivalent script file was never inspected
+either. String literals inside those bodies are still matched against the
+protected secret patterns, so inline code that names credentials is denied.
+Nested `sh`, `bash`, and `zsh` command strings remain denied outright. Bash commands using variables, redirections, or command
 substitution can likewise evade the filesystem check. Use a container, VM, or OS
 sandbox when a strong filesystem boundary is required. User-entered `!` commands
 and extensions also remain outside this guard.

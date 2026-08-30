@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import {
@@ -11,6 +11,7 @@ import {
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   isWithin,
+  playwrightBrowsersRoot,
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
@@ -28,6 +29,7 @@ const PI_PACKAGES_ROOT = resolve(
   process.env.VOLTA_HOME ?? join(process.env.HOME ?? "~", ".volta"),
   "tools/image/packages",
 );
+const PLAYWRIGHT_BROWSERS_ROOT = playwrightBrowsersRoot();
 function realpathForCheck(path: string): string {
   const absolute = isAbsolute(path) ? path : resolve(process.cwd(), path);
   let candidate = absolute;
@@ -36,7 +38,7 @@ function realpathForCheck(path: string): string {
   while (!existsSync(candidate)) {
     const parent = dirname(candidate);
     if (parent === candidate) return normalize(absolute);
-    suffix.unshift(candidate.slice(parent.length + 1));
+    suffix.unshift(basename(candidate));
     candidate = parent;
   }
 
@@ -91,6 +93,7 @@ function isTrustedRetainedSessionRead(path: string): boolean {
 
 function isTrustedOutsideRead(toolName: string, path: string): boolean {
   return isWithin(PI_PACKAGES_ROOT, path)
+    || isWithin(PLAYWRIGHT_BROWSERS_ROOT, path)
     || hasTrustedSharedReadAccess(toolName, path, CODING_HARNESS_SHARED_ROOT);
 }
 
