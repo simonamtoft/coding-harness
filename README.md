@@ -118,3 +118,4 @@ temporarily, but it does not remove the accumulated context.
 - https://github.com/cursor/plugins/tree/main/pstack/skills/
 - https://github.com/mattpocock/skills/tree/main/skills
 - https://fabiensanglard.net/agent.md/index.html
+- https://github.com/amosblomqvist/pi-config/tree/main

@@ -22,7 +22,7 @@ Keep these neighboring workflows under their existing owners:
 - Use `compare-implementations` when the primary request is to enumerate differences between two artifacts.
 - Use `code-review` or the harness review mechanism when the primary request is to find defects in a prepared change. Do not introduce findings or architecture critique into an explanation unless separately requested and clearly separated.
 - Use `technical-writing` when the requested product is a technical document or a structural review of one.
-- Use `repo-session-retrospective` when the evidence subject is a completed agent session and the goal is durable process improvement.
+- Use `analyze-sessions` in **repository retrospective** mode when the evidence subject is a completed agent session and the goal is durable process improvement.
 
 ## Evidence contract for every mode
 
