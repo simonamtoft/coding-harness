@@ -38,11 +38,15 @@ export function isProtectedSecretPath(path: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function isProjectInstructionPath(path: string): boolean {
+  const basename = normalize(path).split(sep).at(-1) ?? "";
+  return /^(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(basename);
+}
+
 function isProjectControlPath(path: string): boolean {
   const normalized = normalize(path);
   const segments = normalized.split(sep);
-  const basename = segments.at(-1) ?? "";
-  if (/^(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(basename)) return true;
+  if (isProjectInstructionPath(path)) return true;
   if (segments.includes(".pi") || segments.includes(".agents")) return true;
 
   const agentIndex = segments.lastIndexOf(".agent");
@@ -59,7 +63,9 @@ export function isControlPlaneWriteBlocked(
   pluginWorkspaceRoot: string,
 ): boolean {
   if (isWithin(codingHarnessRoot, sessionRoot)) return false;
-  return isWithin(pluginWorkspaceRoot, targetPath) || isProjectControlPath(targetPath);
+  if (isWithin(pluginWorkspaceRoot, targetPath)) return true;
+  if (isProjectInstructionPath(targetPath) && isWithin(sessionRoot, targetPath)) return false;
+  return isProjectControlPath(targetPath);
 }
 
 export function shellPathCandidates(command: string): string[] {

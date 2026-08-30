@@ -48,10 +48,19 @@ test("secret paths remain protected inside the plugin workspace", () => {
   assert.equal(isProtectedSecretPath(`${worktreePlugin}/extensions/index.ts`), false);
 });
 
-test("control-plane writes are allowed only from coding-harness sessions", () => {
+test("project-local instruction files remain writable", () => {
   const project = "/Users/example/projects/app";
 
-  assert.equal(isControlPlaneWriteBlocked(project, `${project}/AGENTS.md`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/CLAUDE.md`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/AGENTS.md`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/docs/AGENTS.override.md`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, "/Users/example/projects/other/CLAUDE.md", harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, "/Users/example/projects/other/AGENTS.md", harness, plugins), true);
+});
+
+test("other control-plane writes are allowed only from coding-harness sessions", () => {
+  const project = "/Users/example/projects/app";
+
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.pi/extensions/demo.ts`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/verify.sh`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.git/hooks/pre-commit`, harness, plugins), true);
