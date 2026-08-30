@@ -1,5 +1,6 @@
 ---
 name: present
+disable-model-invocation: true
 description: Present substantial completed work as a self-contained HTML report by delegating report construction to an isolated presenter subagent. Use only when the work is substantial and a structured report communicates the outcome better than the primary artifact or UI. Do not use when the result is easy to verify directly in the UI, or for quick answers, clarifying questions, progress updates, routine changes, or trivial changes.
 ---
 
