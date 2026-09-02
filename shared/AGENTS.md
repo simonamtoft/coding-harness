@@ -71,4 +71,4 @@ Rules for the loop itself:
 - Use tables for direct comparisons and conceptual `diff` blocks for structural changes; label non-literal diffs.
 - Prefer text or ASCII diagrams. Use Mermaid only when it is clearer and the output surface can render it. Do not add a visual when a sentence is clearer.
 
-For substantive completed work, use the `present` skill to deliver the final report as an HTML report. Use plain Markdown for quick answers, clarifying questions, progress updates, and trivial changes.
+Use plain Markdown for final delivery by default. Use the `present` skill to generate an HTML report only when the user explicitly requests it; it remains an opt-in workflow while it is being refined.
