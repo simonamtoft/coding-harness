@@ -45,9 +45,10 @@ host-side boundary to model tool calls:
   the project.
 - Bash hard-denies the cross-harness command-safety contract in
   `shared/command-safety.tsv`: privilege escalation, pipe-to-shell execution,
-  force pushes, destructive Git history changes, `chmod 777`, deletion outside
-  the workspace or temporary directories, and protected-secret access. It
-  returns an actionable reason; `git push --force-with-lease` remains permitted.
+  Git author-identity queries, force pushes, destructive Git history changes,
+  `chmod 777`, deletion outside the workspace or temporary directories, and
+  protected-secret access. It returns an actionable reason; `git push
+  --force-with-lease` remains permitted.
 - Bash is also blocked when it contains an explicit path outside the current,
   permitted plugin workspace, or session temp directory; changes its working
   directory to the session temp directory; or names a protected secret pattern.

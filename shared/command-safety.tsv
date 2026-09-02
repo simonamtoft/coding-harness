@@ -35,6 +35,18 @@ deny	/bin/rm -rf /etc
 permit	rm -f /tmp/scratch.txt
 permit	rm -rf ./build
 
+# Git author identity
+deny	git config user.email
+deny	git config user.name
+deny	git config --get user.email
+deny	git config --global --get user.name
+deny	git config --list
+deny	git config -l
+deny	git config --get-regexp '^user\\.(name|email)$'
+deny	git var GIT_AUTHOR_IDENT
+deny	git var GIT_COMMITTER_IDENT
+permit	git config --get core.editor
+
 # Protected secrets
 deny	cat ~/.ssh/id_rsa
 deny	cat /Users/example/.aws/credentials

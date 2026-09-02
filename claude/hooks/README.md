@@ -49,7 +49,7 @@ If you ever do need a specific socket: the path must be **symlink-resolved** (`/
 
 This replaced a default-deny allowlist that blocked ~220–250 commands over four weeks (see `CLAUDE-decisions.md` for the measured baseline). An allowlist for a general-purpose tool can only ever lag: the space of legitimate commands is unbounded. A denylist enumerates a small, stable set instead.
 
-**Hard-deny list.** `sudo`; pipe-to-shell (`… | sh`, but not `… | bash script.sh`); `git push --force`, force-bearing short options, or `+` refspecs (**not** `--force-with-lease`); `git reset --hard`; `git filter-branch`/`filter-repo`; `git clean -f`; `chmod 777`; `rm` provably outside `$PWD` / `/tmp` / `~/.claude/plans`; any segment touching a protected secret path.
+**Hard-deny list.** `sudo`; pipe-to-shell (`… | sh`, but not `… | bash script.sh`); Git author-identity queries; `git push --force`, force-bearing short options, or `+` refspecs (**not** `--force-with-lease`); `git reset --hard`; `git filter-branch`/`filter-repo`; `git clean -f`; `chmod 777`; `rm` provably outside `$PWD` / `/tmp` / `~/.claude/plans`; any segment touching a protected secret path.
 
 **Allow list.** Readonly utilities; `git` read subcommands plus `add`/`commit`, **with global flags normalized away** so `git -C /repo status` and `git --no-pager diff` match; `gh` read subcommands and `gh api` without a write method; `--version`/`--help` probes; and the verify-loop toolchains — `npm|pnpm|yarn|bun run|test`, `uv run`, `task`, `terraform fmt|validate|plan`, `az … list|show`, `docker ps|logs|images|inspect`, `kubectl get|describe|logs`, `pdftotext`/`pdfinfo`. Blocking the verifier was the worst failure of the old design, since `CLAUDE.md` §4 mandates external verification.
 

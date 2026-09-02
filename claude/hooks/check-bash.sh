@@ -286,6 +286,14 @@ _hard_denied() {
   if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+reset([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+--hard ]]; then
     _deny_reason="\`git reset --hard\` — discards work irrecoverably."; return 0
   fi
+
+  # Git resolves author identity from user or repository configuration. Do not
+  # expose it to the agent; listing config can reveal it as well.
+  if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+config([^\;\|\&])*(user\.(name|email)|--(list|name-only|get-regexp)|-l) ]] \
+    || [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+var[[:space:]]+GIT_(AUTHOR|COMMITTER)_IDENT ]]; then
+    _deny_reason="Git author identity queries are blocked."; return 0
+  fi
+
   if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+(filter-branch|filter-repo) ]]; then
     _deny_reason="git history rewrite."; return 0
   fi

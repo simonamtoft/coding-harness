@@ -185,6 +185,10 @@ export function deniedBashCommandReason(
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+reset\b[^;|&]*\s--hard(?=\s|$)/)) {
     return "`git reset --hard` discards work irrecoverably";
   }
+  if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+config\b[^;|&]*(?:\buser\.(?:name|email)\b|--(?:list|name-only|get-regexp)\b|-l\b)/)
+    || commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+var\s+GIT_(?:AUTHOR|COMMITTER)_IDENT\b/)) {
+    return "Git author identity queries are blocked";
+  }
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+(?:filter-branch|filter-repo)\b/)) return "Git history rewrites are blocked";
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+clean\b[^;|&]*\s-[^\s;|&]*f/)) return "`git clean -f` deletes untracked files irrecoverably";
   if (commandMatches(command, /\bchmod(?:\s+-\S+)*\s+(?:0)?777(?=\s|$)/)) return "`chmod 777` makes files world-writable";
