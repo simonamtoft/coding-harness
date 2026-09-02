@@ -46,6 +46,11 @@ leaves the override in place.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
   intentionally ignored by Git.
+- `DECISIONS.md` and `decisions/`: the decision ledger — approaches this
+  repository rejected or reversed, standing constraints, and rationale the code
+  does not carry. `DECISIONS.md` is the index and entry format; each area keeps
+  its own file under `decisions/` so agents read only the area they touch, and
+  append to it when a direction is refused.
 
 The Pi sandbox extension is enabled automatically from `pi/agent/extensions/`.
 It hard-denies the high-risk Bash commands in `shared/command-safety.tsv` (such

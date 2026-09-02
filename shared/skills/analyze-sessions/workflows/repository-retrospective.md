@@ -17,6 +17,7 @@ Use one direct review by default. Parallel reviewers are optional only for unusu
    - **Unsupported**, **One-off**, **Already covered**, or **Not worth encoding**: route to **No change**.
    - **Accepted reusable lesson**: route it below.
 5. Route each accepted lesson to the first suitable owner: **Backlog follow-up**, **Script or lint**, **Runtime enforcement**, **Skill**, **Project guidance**, or **Shared guidance**. Use the narrowest owner and prefer reliable enforcement over prose.
+6. Route separately to the repository's decision ledger, if it maintains one, any approach the session rejected or reversed and any rationale the resulting code does not carry. A ledger entry records why a direction was refused; it does not replace an owner for lessons that need enforcement.
 
 ## Report and output
 

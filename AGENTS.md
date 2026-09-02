@@ -14,6 +14,13 @@ This repository is the canonical, version-controlled source for the user's Pi an
 - Do not commit credentials, authentication state, provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`.
 - Update `README.md` with changes to link behavior, layout, installation, or ownership boundaries.
 
+## Decision ledger
+
+`DECISIONS.md` indexes the ledger of rejected approaches, reversals, standing constraints, and rationale that the code does not carry. Entries live in per-area files under `decisions/`.
+
+- Use the index to find the area file matching your change, read that file before proposing the change, and do not re-propose an approach an entry refuses unless its `Revisit if` condition is met. Read only the areas you touch.
+- Append an entry to the matching area file when finalizing work that rejected or reversed an approach, when the user overrules a design direction, or when accepted rationale would otherwise be lost. Follow the entry format, id rule, and exclusions stated in `DECISIONS.md`.
+
 ## Verification
 
 Run checks for the changed component:
