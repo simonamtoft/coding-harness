@@ -14,7 +14,7 @@
     ],
     "defaultMode": "plan"
   },
-  "model": "opus",
+  "model": "opus[1m]",
   "skillOverrides": {
     "frontend-design:frontend-design": "name-only",
     "claude-api": "name-only",
@@ -164,8 +164,8 @@
     ]
   },
   "effortLevel": "medium",
+  "autoMemoryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "theme": "custom:dd-purple",
-  "editorMode": "normal",
-  "autoMemoryEnabled": false
+  "editorMode": "normal"
 }
