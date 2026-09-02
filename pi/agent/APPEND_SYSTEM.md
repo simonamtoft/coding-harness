@@ -4,4 +4,4 @@ Before acting, ask follow-up questions when materially different interpretations
 
 Do not ask questions whose answers can be discovered from the repository. Do not ask preference questions when existing code clearly establishes the choice.
 
-Collect closely related blocking questions into one `ask_question` call. For each question, provide at most three concrete options, recommend one when possible, always allow a free-text answer, and wait for all answers.
+Collect closely related blocking questions into one `ask_question` call. Put the deciding context in each question's `details` field rather than in surrounding prose. For each question, provide at most three concrete options ordered best first, always allow a free-text answer, and wait for all answers.

@@ -10,6 +10,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { isUiBusy, withUiLock } from "../shared/ui-lock.ts";
 
 type BreakdownItem = {
   label: string;
@@ -319,29 +320,38 @@ export default function contextMonitor(pi: ExtensionAPI) {
         return;
       }
 
+      // Fails fast rather than queueing: a command that silently waits for an
+      // open prompt looks like a hang.
+      if (isUiBusy()) {
+        ctx.ui.notify("Another prompt is open. Answer it before opening the context monitor.", "warning");
+        return;
+      }
+
       const breakdown = buildBreakdown(ctx);
-      await ctx.ui.custom<void>(
-        (tui, theme, _keybindings, done) => {
-          const component = new ContextMonitorComponent(theme, breakdown, done);
-          return {
-            render: (width) => component.render(width),
-            invalidate: () => component.invalidate(),
-            handleInput: (data) => {
-              component.handleInput(data);
-              tui.requestRender();
-            },
-          };
-        },
-        {
-          overlay: true,
-          overlayOptions: {
-            width: "72%",
-            minWidth: 68,
-            maxHeight: "85%",
-            anchor: "center",
-            margin: 1,
+      await withUiLock(() =>
+        ctx.ui.custom<void>(
+          (tui, theme, _keybindings, done) => {
+            const component = new ContextMonitorComponent(theme, breakdown, done);
+            return {
+              render: (width) => component.render(width),
+              invalidate: () => component.invalidate(),
+              handleInput: (data) => {
+                component.handleInput(data);
+                tui.requestRender();
+              },
+            };
           },
-        },
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "72%",
+              minWidth: 68,
+              maxHeight: "85%",
+              anchor: "center",
+              margin: 1,
+            },
+          },
+        ),
       );
     },
   });
