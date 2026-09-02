@@ -106,6 +106,12 @@ Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a
 and executes these repository-controlled commands only after Pi project trust
 and a separate content-bound verifier approval for the current session.
 
+Pi's optional fast diagnostics are also project-owned: an executable
+`.agent/diagnostics.sh` receives the changed path after each successful Pi edit or
+write and reports advisory feedback. It is separate from the full end-of-turn
+verifier, requires a session-scoped content-bound approval, and is documented in
+`pi/agent/extensions/diagnostics/README.md`.
+
 Pi's `~/.pi/agent/settings.json`, `~/.pi/agent/models.json`, and
 `~/.pi/agent/subagents.json` remain local. The settings file contains package
 paths relative to the native Pi directory, the model catalog points at

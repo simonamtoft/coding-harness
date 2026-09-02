@@ -16,8 +16,19 @@ A verifier is resolved in this precedence order, and is a **no-op** if neither e
 1. `<repo root>/.agent/verify.sh` — must be **executable**, takes no args, run from repo root.
 2. A `verify` task in `Taskfile.yml` / `Taskfile.yaml`.
 
-Exit `0` = pass; non-zero = fail. On failure the verifier's stderr is fed back for up to 3 fix
+Exit `0` = pass; non-zero = fail. On failure the verifier's output is fed back for up to 3 fix
 rounds. So the verifier must aggregate the repo's checks and **exit non-zero on the first failure**.
+
+## Scope
+
+This verifier is the authoritative **end-of-turn**, full-project gate. Use it for the repository's
+established syntax, type, lint, formatting, and test commands. A non-zero result starts the repair
+loop, so include style or formatting rules only when the repository treats them as required.
+
+Keep language rules and preferences in the repository's existing tool configuration. The verifier
+only orchestrates those commands; it does not install tooling or create policy. Do not generate
+per-edit hooks here. Pi's separate optional `.agent/diagnostics.sh` contract provides advisory,
+fast per-edit feedback when a project wants it.
 
 Both locations are harness-neutral: they are resolved identically by Claude Code's `verify-turn.sh`
 Stop hook and by pi's `verify-turn` extension. Scaffold one verifier per repo, never one per
