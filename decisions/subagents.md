@@ -56,3 +56,17 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Decision:** Rejected changing presenter delegation to fix a reported parent-model switch. No change made.
 **Why:** The timeline showed the parent switched models before dispatching the presenter, and live probes left both tested parent sessions unchanged.
 **Revisit if:** A reproducible probe shows a presenter child mutating the parent session.
+
+### SUB-10 · Subagent runs remain ephemeral
+`accepted` · 2026-09-03 · `01a06634`
+**Decision:** Keep `--no-session` on every subagent and reviewer subprocess. Surface child usage through the parent subagent tool result rather than retaining child session files.
+**Why:** Persistent child sessions would help only with occasional forensic analysis. The parent already presents per-run and aggregate tokens and cost; persistence would not merge those provider calls into the parent session's native accounting, while it would accumulate disposable and potentially sensitive run histories.
+**Revisit if:** Full child-run forensic inspection becomes a recurring operational need, or Pi gains supported parent-session cost aggregation.
+**Evidence:** "I don't really care about resumable child-sessions"
+
+### SUB-11 · Quick-commit analysis belongs to the cheap planner
+`accepted` · 2026-09-03 · `01a06624`
+**Decision:** The `commit-planner` alone reads the private working-tree snapshot and decides grouping, messages, and safety disposition; the parent only presents the result, obtains confirmation, and performs exact Git mutations.
+**Why:** Having both the parent and planner read the diff duplicates large context in an expensive model without improving the commit plan. The parent retains the irreversible actions and user-facing safety gate.
+**Revisit if:** Planner errors or unresolvable ambiguity make parent diff inspection necessary often enough to outweigh the context savings.
+**Evidence:** "Let's now do the move to Luna"
