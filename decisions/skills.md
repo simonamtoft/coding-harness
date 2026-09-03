@@ -106,3 +106,9 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** Both skills shared the same root-cause-first contract and differed primarily in the order dictated by the symptom.
 **Revisit if:** One mode acquires a materially different safety or output contract.
 
+### SKL-18 · Retire unused or trivial workflow skills
+`accepted` · 2026-09-03 · `01a0670d`
+**Decision:** Removed `execute-plan` and `shortcut-ledger`. `execute-plan` was not part of Wayfinder and had no invocation in 546 retained Pi sessions or 24 retained top-level Claude sessions; its todo and command restrictions no longer matched either harness. The shortcut ledger wrapped a repository search while depending on an obsolete comment format.
+**Why:** Neither skill carries a current, recurring workflow that justifies its own contract.
+**Revisit if:** Approved external plan handoffs recur with a stable cross-harness lifecycle, or shortcut reporting requires more than repository search.
+
