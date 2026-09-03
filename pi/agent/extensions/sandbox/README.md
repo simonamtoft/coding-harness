@@ -52,6 +52,8 @@ host-side boundary to model tool calls:
 - Bash is also blocked when it contains an explicit path outside the current,
   permitted plugin workspace, or session temp directory; changes its working
   directory to the session temp directory; or names a protected secret pattern.
+  The exact POSIX null device path is exempt so commands can safely discard output
+  or compare against an empty source; neighboring device paths remain blocked.
   Scratch commands must use absolute paths; Bash does not use the read approval
   prompt.
 - Subagents inherit this guard, and their requested working directories must

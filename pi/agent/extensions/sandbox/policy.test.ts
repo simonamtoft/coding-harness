@@ -76,6 +76,13 @@ test("ordinary Bash commands do not require path inspection", () => {
   assert.deepEqual(shellPathCandidates("git status && npm test"), []);
 });
 
+test("the POSIX null device does not require path inspection", () => {
+  assert.deepEqual(shellPathCandidates("git diff --no-index -- /dev/null file.txt"), []);
+  assert.deepEqual(shellPathCandidates("command > /dev/null"), []);
+  assert.deepEqual(shellPathCandidates("cat /dev/zero"), ["/dev/zero"]);
+  assert.deepEqual(shellPathCandidates("cat /dev/null/child"), ["/dev/null/child"]);
+});
+
 test("session temporary workspaces permit cleanup", () => {
   assert.equal(
     deniedBashCommandReason(

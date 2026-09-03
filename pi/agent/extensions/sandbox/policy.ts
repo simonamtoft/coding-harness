@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
+const POSIX_NULL_DEVICE = "/dev/null";
+
 const SECRET_PATTERNS = [
   /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
   /(^|\/)(?:credentials\.json|service-account[^/]*\.json|id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc)$/,
@@ -103,6 +105,8 @@ export function shellPathCandidates(command: string): string[] {
   const segments = stripInlineEvalBodies(command).split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
+    if (unprefixed === POSIX_NULL_DEVICE) return false;
+
     const isRelativeControlPath = /(?:^|\/)(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(unprefixed)
       || /(?:^|\/)(?:\.pi|\.agents)(?:\/|$)/.test(unprefixed)
       || /(?:^|\/)\.agent\/(?:verify|diagnostics)\.sh$/.test(unprefixed)
