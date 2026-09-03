@@ -18,35 +18,39 @@ This is the committing counterpart to `generate-commit-message` (which only prin
 
 ## Procedure (in this order)
 
-1. **See the whole working tree.** Run `git status --short`, `git diff` (unstaged), and `git diff --staged`. Read the actual diffs, not just filenames — a rename, a behaviour change, and a reformat look identical from the outside. Also collect the repository-style evidence required by `../_shared/commit-message-rules.md`, resolved from this skill directory.
+1. **Create a private working-tree snapshot.** Create a mode-0700 temporary directory under `${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}`. Write any user-stated scope, `git status --short`, `git diff` (unstaged), `git diff --staged`, and the repository-style evidence required by `../_shared/commit-message-rules.md`, resolved from this skill directory, to a mode-0600 snapshot file. For every nonignored untracked path, include its type and byte size; include regular-file contents as a diff against an empty temporary file. Mark unreadable, nonregular, or binary files whose contents cannot be captured as requiring a warning and exclusion from automatic staging. Do **not** read the snapshot or emit the diff into the parent context. The command may report only whether the status is empty; if it is, report no work and stop.
 
-2. **Delegate the plan.** Unless the working tree is empty, create a mode-0700 temporary directory under `${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}` and write the complete status, staged and unstaged diffs, repository-style evidence, and any user-stated scope to a mode-0600 snapshot file. Dispatch exactly one cheap, read-only `commit-planner` subagent with the snapshot's absolute path — never put the full diff in the delegation prompt. It must return proposed commit groups, exact paths, messages, mixed-file warnings, and material that must not be committed. Remove the temporary directory after it returns. The parent retains all staging, committing, pushing, and user confirmation.
+2. **Delegate all diff analysis.** Dispatch exactly one cheap, read-only `commit-planner` subagent with the snapshot's absolute path — never put the full diff in the delegation prompt. The planner is the sole reader of the working-tree evidence. It returns either a ready commit plan or a blocking clarification. Retain the temporary directory until the planner returns a ready plan or the user cancels; then remove it. The parent retains all staging, committing, pushing, and user confirmation.
 
    - **Pi:** invoke `subagent` with `agent: commit-planner`, `agentScope: user`, and `cwd` set to the snapshot directory, so its read-only tools can access the snapshot. The task contains only its filename and the requested output.
    - **Claude Code:** invoke `Task` with `subagent_type: commit-planner` and a prompt containing the snapshot path, requested output, and active working directory.
 
-3. **Validate the proposed groups.** Partition the changed files into the smallest set of groups where each group is *one* logical change (a feature, a fix, a refactor, a docs update, a config tweak). Most trees are a single group — that's the fast path, one commit. When changes span unrelated concerns, split them: each concern is its own commit. If a *single file* mixes concerns, stage it by hunk (`git add -p`) or flag it and ask how to split — don't silently lump. Check the planner's messages against the shared commit-message rules before presenting them.
+3. **Resolve a blocking clarification.** If the planner returns one, call `ask_question` exactly once with its `question`, plain-text `details`, and up to three labelled options. The details must show the safe groups, proposed messages, and the specific ambiguity; the options describe the resolution paths. Do not read the snapshot to second-guess the planner or silently fold material into a group. After the user answers, re-dispatch the planner with that answer and the same snapshot. Repeat only if it returns another blocking clarification. Present the commit plan only after it returns ready.
 
-4. **Show the plan and get one confirmation.** Present a numbered list, in commit order, each entry showing its files and its message:
+4. **Surface non-blocking warnings.** If a ready plan reports a mixed-concern file, possible secrets, credentials, client data, generated material, uncaptured or nonregular untracked paths, or unrelated pre-existing staged changes, surface the concern and ask the user how to proceed. Otherwise, use the returned groups and messages unchanged for the confirmation plan.
+
+5. **Show the plan and get one confirmation.** Call `ask_question` exactly once. Its `question` asks whether to commit the plan; its plain-text `details` contains the complete numbered plan in commit order, including every message and exact path:
 
    ```
-   1. [message]   ← file-a.ts, file-b.ts
-   2. [message]   ← docs/readme.md
+   1. [message]
+      ← file-a.ts, file-b.ts
+   2. [message]
+      ← docs/readme.md
    ```
 
-   Ask the user to confirm, re-group, or edit any message. A single confirmation covers the whole plan — don't ask per commit. This is the gate before any mutation.
+   Include any non-blocking warning in the details. Never replace this plan with a generic summary. Offer confirmation, re-grouping, and message-editing as the options. A single confirmation covers the whole plan — don't ask per commit. This is the gate before any mutation.
 
-5. **Commit each group in order.** For each group: `git add <exact paths for this group>` then `git commit -m "<message>"`. Stage precisely per group — **never `git add -A`** across groups, since precise staging is what keeps the commits separate.
+6. **Commit each group in order.** For each group: `git add <exact paths for this group>` then `git commit -m "<message>"`. Stage precisely per group — **never `git add -A`** across groups, since precise staging is what keeps the commits separate.
 
-6. **Push only if asked.** Pushing is outward-facing. If the user said "and push", confirm the remote/branch and run `git push`. If they didn't mention push, stop after committing and offer it — don't push unprompted.
+7. **Push only if asked.** Pushing is outward-facing. If the user said "and push", confirm the remote/branch and run `git push`. If they didn't mention push, stop after committing and offer it — don't push unprompted.
 
-7. **Report.** Show the result with `git log --oneline -n <number of commits made>`.
+8. **Report.** Show the result with `git log --oneline -n <number of commits made>`.
 
 ## Rules
 
 - **Never bundle unrelated changes into one commit.** Honouring commit boundaries is the whole point of this skill over a blind `git add -A && git commit`.
 - **Confirm before committing; confirm again before pushing.** One confirmation for the commit plan, a separate one for the push. Committing is reversible (`git reset`), pushing is not.
-- **Read the diff before grouping.** Filenames lie — a rename, a behaviour change, and a reformat look identical from outside. The `commit-planner` is mandatory for non-empty working trees, but the parent validates its proposal before presenting it.
+- **Delegate diff reading.** Filenames lie — a rename, a behaviour change, and a reformat look identical from outside. For non-empty working trees, only the mandatory `commit-planner` reads the working-tree snapshot; the parent presents its result or surfaces its warnings.
 - **Guard what gets committed.** If a group would stage secrets, credentials, client data, or a large generated blob, stop and flag it rather than committing — surface it and ask. Respect `.gitignore` and any standing "don't commit X" instruction.
 - **Leave pre-existing staged changes alone unless they're in scope.** If the index already holds unrelated staged files the user didn't mention, surface them and ask before folding them into a commit.
 
