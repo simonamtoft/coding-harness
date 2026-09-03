@@ -2,6 +2,26 @@
 
 This repository is the canonical, version-controlled source for the user's Pi and Claude coding-agent setup. `link.sh` deploys it into each harness's native directory; credentials and runtime state remain local. `README.md` is the human setup guide and design explanation. Keep this file to agent-facing operating constraints.
 
+## Repository map
+
+```text
+AGENTS.md                         repository-wide ownership and verification rules
+shared/
+  AGENTS.md                       global runtime instructions linked into both harnesses
+  skills/                         harness-neutral skills; see skills/AGENTS.md when authoring one
+pi/agent/
+  agents/                         canonical Pi subagent definitions; see agents/AGENTS.md
+  extensions/subagent/            Pi subagent runtime and validation; see subagent/AGENTS.md
+  extensions/                     other Pi-only runtime extensions
+  prompts/                        Pi-only slash-prompt workflows
+claude/                           Claude-only runtime resources
+link.sh                           deployment topology and Pi package installation
+README.md                         human-facing setup and architecture guide
+DECISIONS.md + decisions/         durable decision ledger
+```
+
+Route a change to the narrowest owner. `shared/` is only for one implementation that both harnesses can consume; divergent syntax, tools, or runtime behavior belongs under its harness. Do not put repository-maintenance guidance in `shared/AGENTS.md`: it is the global instruction file installed into ordinary Pi and Claude sessions. Use the nearest nested `AGENTS.md` when changing skills, Pi agent definitions, or the subagent extension.
+
 ## Ownership and constraints
 
 - `shared/AGENTS.md` and `shared/skills/` are only for behavior one implementation can serve to both harnesses. Keep divergent formats and capabilities in their harness directory; do not duplicate shared resources there.
