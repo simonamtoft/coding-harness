@@ -124,7 +124,9 @@ state are also intentionally not versioned.
 Because `models.json` is local, providers are added per machine. To expose
 Hetzner Inference models in Pi:
 
-1. Export the API key where Pi runs, e.g. in your shell rc:
+1. Create a token at <https://experiments.hetzner.com>: log in with your
+   Hetzner account, open **APPS → Inference**, and click **Create API Token**
+   (top right). Then export it where Pi runs, e.g. in your shell rc:
 
    ```sh
    export HETZNER_API_KEY=...
