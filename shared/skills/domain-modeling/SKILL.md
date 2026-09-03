@@ -5,7 +5,7 @@ description: Build and sharpen a project's domain model. Use when the user wants
 
 # Domain Modeling
 
-Actively build and sharpen the project's domain model as you design. This is the *active* discipline — challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `CONTEXT.md` for vocabulary is not this skill — that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
+Actively build and sharpen the project's domain model as you design. This is the *active* discipline — challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. Planning domain-affecting work reads existing context for vocabulary; use this workflow when that work exposes an unresolved term, domain rule, boundary, or invariant that needs collaborative clarification. This skill is for changing the model, not merely consuming it.
 
 ## File structure
 
@@ -40,6 +40,12 @@ If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The ma
 Create files lazily — only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
 
 ## During the session
+
+### Start from the relevant context
+
+If a root `CONTEXT-MAP.md` exists, use it to identify the bounded context before reading its `CONTEXT.md` and applicable ADRs. Without a map, read the existing root `CONTEXT.md` and applicable root ADRs. Treat distinct bounded-context terms as distinct unless the user explicitly resolves their relationship; do not silently unify them. If these artifacts are absent, work from the repository and user conversation without creating files merely to begin modeling.
+
+Keep the requested user or business outcome visible while resolving the model. Do not replace it with a technical proxy such as fewer branches, a schema simplification, or a faster query.
 
 ### Challenge against the glossary
 

@@ -7,7 +7,9 @@
 Before implementing:
 
 - Inspect the repository before asking questions it can answer.
+- For domain-affecting work, before planning or implementing: read `CONTEXT-MAP.md`, when present, then the relevant `CONTEXT.md` and ADRs; otherwise read the root `CONTEXT.md` and ADRs. Use its vocabulary, flag boundary-conflicting terms or concept mergers, and preserve the requested user or business outcome—not only a technical proxy—in plans and success criteria.
 - When different interpretations would materially change the implementation, name the distinction, recommend one, and ask before acting. Otherwise state the assumption briefly and proceed.
+- Skip that check for trivial, mechanical, or ordinary CRUD work; do not create missing artifacts. If terms or rules remain unresolved, use `domain-modeling` to clarify them collaboratively and incrementally capture the resolution, not generate a comprehensive model.
 - If a simpler approach exists, say so. Push back when warranted.
 
 ## 2. Scope and Design
