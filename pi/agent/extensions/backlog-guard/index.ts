@@ -1,9 +1,16 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { createGuideLedger, repeatReadReason } from "./guides.ts";
+import { isToolCallEventType, sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
+import { createGuideLedger, repeatReadReason, succeededBashCommands } from "./guides.ts";
 
 export default function backlogGuardExtension(pi: ExtensionAPI) {
   const ledger = createGuideLedger();
+
+  // A resumed session replays its conversation into a fresh process, so the
+  // ledger has to be rebuilt from context or the limit becomes once-per-process.
+  pi.on("session_start", (_event, ctx) => {
+    const messages = ctx.sessionManager.buildContextEntries().flatMap(sessionEntryToContextMessages);
+    for (const command of succeededBashCommands(messages)) ledger.record(command);
+  });
 
   pi.on("session_compact", () => {
     ledger.forget();

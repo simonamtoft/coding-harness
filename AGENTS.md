@@ -53,14 +53,14 @@ Run checks for the changed component:
 For link-topology changes, exercise `link.sh` with an isolated temporary `HOME`; never test a forced install against the real home directory.
 
 <!-- BACKLOG.MD GUIDELINES START -->
-<!-- backlog.md-instructions-version: 1.50.1 -->
+<!-- backlog.md-instructions-version: 1.51.0 -->
 <CRITICAL_INSTRUCTION>
 
 ## Backlog.md Workflow
 
 This project uses Backlog.md for task and project management.
 
-**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
+**At the beginning of each conversation in this project, run `backlog instructions overview` before answering or taking action. Re-read it only if you have not read it yet in the current conversation.**
 
 Use the overview to decide whether to search, read, create, or update Backlog tasks.
 

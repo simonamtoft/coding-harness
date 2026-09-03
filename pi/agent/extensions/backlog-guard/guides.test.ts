@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGuideLedger, repeatReadReason, requestedGuides } from "./guides.ts";
+import { createGuideLedger, repeatReadReason, requestedGuides, succeededBashCommands } from "./guides.ts";
+
+const bashCall = (id: string, command: string) => ({
+  role: "assistant" as const,
+  content: [{ type: "toolCall", id, name: "bash", arguments: { command } }],
+});
+const bashResult = (toolCallId: string, isError = false) => ({ role: "toolResult" as const, toolCallId, isError });
 
 test("recognizes executed instruction reads, including combined commands", () => {
   assert.deepEqual(requestedGuides("backlog instructions overview"), ["overview"]);
@@ -54,6 +60,29 @@ test("reports each repeated guide once, in command order", () => {
 
   assert.deepEqual(repeats, ["overview", "task-creation"]);
   assert.match(repeatReadReason(repeats), /`backlog instructions overview` and `backlog instructions task-creation` already ran/);
+});
+
+test("collects only bash commands whose results are in context and did not error", () => {
+  const messages = [
+    bashCall("a", "backlog instructions task-execution"),
+    bashResult("a"),
+    bashCall("b", "backlog instructions task-creation"),
+    bashResult("b", true),
+    bashCall("c", "backlog instructions overview"),
+    { role: "assistant" as const, content: [{ type: "text", text: "no result for c yet" }] },
+  ];
+
+  assert.deepEqual(succeededBashCommands(messages), ["backlog instructions task-execution"]);
+});
+
+test("rebuilds a resumed ledger so a replayed guide is refused", () => {
+  const ledger = createGuideLedger();
+  const replayed = [bashCall("a", "backlog instructions overview"), bashResult("a")];
+
+  for (const command of succeededBashCommands(replayed)) ledger.record(command);
+
+  assert.deepEqual(ledger.repeats("backlog instructions overview"), ["overview"]);
+  assert.deepEqual(ledger.repeats("backlog instructions task-execution"), []);
 });
 
 test("allows a re-read after compaction drops the guide from context", () => {

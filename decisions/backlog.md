@@ -42,6 +42,7 @@ Decision ledger area. Entry ids use the `BKL-` prefix; see `../DECISIONS.md` for
 **Decision:** `shared/AGENTS.md` narrows the generated Backlog nudge: consult the tracker only when the request names a task or tracker state, a skill directs it, or tracked work is about to be created, planned, updated, or finalized. Skip `backlog instructions overview` entirely, read the lifecycle guide at the moment of acting, and read each guide at most once per session. Repository-authored guidance was moved out of the generated block, which `backlog agents --update-instructions` overwrites.
 **Why:** Across 150 sessions, 215 overview calls and 171 guide calls produced 74 sessions that consulted no task at all, 20 of which still ran guides, and 12 calls discarded the guide to the null device. The generated nudge demands the overview "before answering", which is precisely when the need is unknowable; 23 sessions only discovered they needed a task after investigation.
 **Revisit if:** Backlog makes the nudge configurable, in which case the gate belongs in the generated block itself.
+**Partly superseded by:** BKL-09, which restored the overview as a once-per-session read; the trigger gate itself stands.
 **Rejected alternatives:** Editing the generated block, which `backlog agents --update-instructions` overwrites; and per-skill "run no tracker command" rules, which would fix commit skills while leaving the 74 untracked free-form sessions untouched.
 **Evidence:** "Too often the agent runs backlog commands such as `backlog instructions overview` even if the ask is pretty simple. E.g. when I run a commit skill, there is no reason to run that command."
 
@@ -50,3 +51,22 @@ Decision ledger area. Entry ids use the `BKL-` prefix; see `../DECISIONS.md` for
 **Decision:** `pi/agent/extensions/backlog-guard` blocks a repeat `backlog instructions <guide>` in the same session, forgets the ledger on compaction, and ignores instruction text inside quotes or heredoc bodies. No equivalent Claude hook was added.
 **Why:** An instruction alone loses to the generated `<CRITICAL_INSTRUCTION>` block — that is how the ritual arose. In Claude, `backlog` is absent from the `check-bash.sh` readonly allowlist, so every call already surfaces as a permission prompt the user can refuse, and duplicating session state inside a stateless safety hook buys little.
 **Revisit if:** Claude sessions show the same repeat pattern, or `backlog` is added to the Claude readonly allowlist.
+
+### BKL-09 · The overview is kept, once per session
+`reverted` · 2026-09-03 · `01a06692-7a9e`
+**Decision:** Reverses BKL-07's instruction to skip `backlog instructions overview` entirely. Once a trigger puts the tracker in play, the overview is read once per session to establish the shape of the current work; the trigger gate and the one-read-per-session limit both stand, and `backlog-guard` already enforces the limit.
+**Why:** The user's own framing: the overview is needed to understand the work in progress, but only when the turn works on project tasks and only once. Skipping it outright also lost the argument in practice — in a project whose `AGENTS.md` is nothing but the generated nudge, five of five observed sessions ran it anyway on the first turn.
+**Revisit if:** The overview's content stops carrying project state and becomes purely a command index.
+**Evidence:** "We do need the overview to understand the current work being done. But we only need it when working on project tasks, and only once in a session."
+
+### BKL-10 · Upstream carries the conversation-scoped nudge from 1.51.0
+`accepted` · 2026-09-03 · `01a06692-7a9e`
+**Decision:** Updated the CLI to 1.51.0 and refreshed this repository's generated block. Upstream now says "At the beginning of each conversation ... Re-read it only if you have not read it yet in the current conversation", which independently matches BKL-07's per-conversation scope and BKL-08's no-re-read rule. Keep `backlog-guard` regardless: it enforces the no-re-read half deterministically.
+**Why:** The local gate no longer has to fight the generated block on those two points, so future divergence is smaller. `backlog agents --update-instructions` is a `clack` multiselect; it can be driven non-interactively with `printf '\033[B \r' | backlog agents --update-instructions` for AGENTS.md, and it preserved all repository content outside the markers.
+**Revisit if:** Upstream adopts the trigger-based condition, in which case section 5's narrowing clause can shrink further.
+
+### BKL-11 · The remaining upstream gap is measured, not asserted
+`accepted` · 2026-09-03 · `01a06692-7a9e`
+**Decision:** Drafted an upstream issue and a local branch proposing that the overview read be gated on tracked work. Filed nothing: the user submits it.
+**Why:** The 1.51.0 wording still mandates the overview at conversation start unconditionally, and a controlled probe showed `gpt-5.6-terra` reading it on 6 of 6 tracked-work-free conversations with the new nudge, 9 of 9 with the old one, and 0 of 6 with the nudge removed. `claude-haiku-4-5` read it 0 of 9 times under the same conditions, so the cost is model-dependent and the nudge is the cause.
+**Revisit if:** Upstream declines the change, in which case removing the generated block per project becomes the only lever left.

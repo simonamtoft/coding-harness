@@ -37,6 +37,41 @@ export function requestedGuides(command: string): string[] {
   return guides;
 }
 
+type ToolCallBlock = { type: string; id?: string; name?: string; arguments?: { command?: unknown } };
+
+type ContextMessage =
+  | { role: "assistant"; content: ToolCallBlock[] }
+  | { role: "toolResult"; toolCallId: string; isError: boolean }
+  | { role: string };
+
+/**
+ * Bash commands whose output is still in the given context and did not error.
+ *
+ * Used to rebuild the ledger when a session resumes in a new process. Reading
+ * context entries rather than the session file is what makes compaction safe:
+ * a guide dropped by compaction is no longer listed, so it may be read again.
+ */
+export function succeededBashCommands(messages: ContextMessage[]): string[] {
+  const pending = new Map<string, string>();
+  const succeeded: string[] = [];
+
+  for (const message of messages) {
+    if (message.role === "assistant" && "content" in message && Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (block.type !== "toolCall" || block.name !== "bash" || !block.id) continue;
+        const command = block.arguments?.command;
+        if (typeof command === "string") pending.set(block.id, command);
+      }
+      continue;
+    }
+    if (message.role !== "toolResult" || !("toolCallId" in message) || message.isError) continue;
+    const command = pending.get(message.toolCallId);
+    if (command !== undefined) succeeded.push(command);
+  }
+
+  return succeeded;
+}
+
 /** Tracks which guides are already in the conversation, so repeats can be refused. */
 export function createGuideLedger() {
   let served = new Set<string>();

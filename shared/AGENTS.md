@@ -59,12 +59,11 @@ Rules for the loop itself:
 
 ## 5. Task Tracker Commands
 
-**Consult the tracker only when the turn touches tracked work.** This narrows any project instruction that tells you to run `backlog instructions overview` before every request: the triggers below replace that routing step.
+**Consult the tracker only when the turn touches tracked work.** This narrows any project instruction that tells you to run `backlog instructions overview` before every request.
 
-- Reach for the tracker when the request names a task or asks about tracker state, when a skill's workflow directs you there, or when you are about to create, plan, update, or finalize tracked work.
-- Run no tracker command for questions, explanations, debugging, code review, retrospectives, commits, or single mechanical edits.
-- The decision can wait. Whether work deserves a task is usually only knowable after investigation, so consult the tracker at the moment you act on it — not before you understand the request.
-- Read the guide for the action you are taking (`backlog instructions task-creation`, `task-execution`, or `task-finalization`) immediately before that action, at most once per session. Its text stays in context; re-reading it buys nothing, and running it to discard the output buys less.
+- Reach for the tracker when the request names a task or asks about tracker state, when a skill's workflow directs you there, or when you are about to create, plan, update, or finalize tracked work. Questions, explanations, debugging, code review, retrospectives, commits, and single mechanical edits need no tracker command at all.
+- Whether work deserves a task is usually only knowable after investigation, so consult the tracker at the moment you act on it rather than before you understand the request. The exception is a skill that mandates a tracker read as its first action: that read *is* the disambiguation, so do it before asking the user anything.
+- Read `backlog instructions overview` for the shape of the current work, and the guide for the action you are taking (`task-creation`, `task-execution`, or `task-finalization`) immediately before that action. Read each at most once per session.
 - Keep discovery cheap: `backlog task list --ready --sort priority --limit 10 --plain`, `backlog search "<query>" --plain`, `backlog task view <id> --plain`. Inspect only the task you selected; avoid bulk view loops and broad JSON listings.
 - Never edit tracker markdown files directly. Use the CLI so metadata, relationships, and history stay consistent.
 
