@@ -130,7 +130,13 @@ export function shellPathCandidates(command: string): string[] {
 }
 
 function maskSingleQuotedStrings(command: string): string {
-  return command.replace(/'[^']*'/g, "__SINGLE_QUOTED__");
+  const revealedCommandWords = command
+    .replace(/(^\s*|[;|&()]\s*)'(sudo|\/(?:usr\/bin|bin)\/sudo)'(?=\s|$)/g, "$1$2")
+    .replace(/(\|\s*)'(sh|bash|zsh|\/(?:usr\/)?bin\/(?:sh|bash|zsh))'(?=\s|$)/g, "$1$2")
+    .replace(/(^\s*|[;|&()]\s*)'git'(?=\s|$)/g, "$1git")
+    .replace(/((?:^\s*|[;|&()])\s*git(?:\s+[^;|&\s]+)*\s+)'(push|reset|filter-branch|filter-repo|clean|config|var)'(?=\s|$)/g, "$1$2")
+    .replace(/((?:^\s*|[;|&()])\s*git\b[^;|&]*)'(--force|--hard|-[A-Za-z]*f[A-Za-z]*)'(?=\s|$)/g, "$1$2");
+  return revealedCommandWords.replace(/'[^']*'/g, "__SINGLE_QUOTED__");
 }
 
 function commandMatches(command: string, pattern: RegExp): boolean {

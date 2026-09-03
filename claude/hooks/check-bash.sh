@@ -67,9 +67,11 @@ _resolve() {
 # ---------------------------------------------------------------------------
 # Quote masking. Two levels, because the two scans need different things:
 #
-#   single-quote masking — nothing inside '…' can ever execute, so masking it is
-#     always sound. Used by the DENY scan, which must still see into "…" because
-#     `$(…)` DOES execute inside double quotes: `echo "$(sudo rm -rf /)"`.
+#   single-quote masking — quoted payloads cannot execute and remain masked.
+#     A quoted standalone command word still executes after quote removal, so
+#     the deny scan first reveals named high-risk command words and flags only
+#     when they occupy command syntax. It still sees into "…" because `$(…)`
+#     executes inside double quotes: `echo "$(sudo rm -rf /)"`.
 #
 #   full masking — both quote styles. Used by the ALLOW scan, so that
 #     `grep -E '(a|b)'` is not mis-split on the `|` inside the quotes.
@@ -82,6 +84,11 @@ _resolve() {
 # ---------------------------------------------------------------------------
 _mask_single_quotes() {
   printf '%s' "$1" | sed -E -e ':a' -e '$!{N;ba' -e '}' \
+    -e "s/(^|[;|&()])[[:space:]]*'(sudo|\/(usr\/bin|bin)\/sudo)'([[:space:]]|$)/\\1 \\2\\4/g" \
+    -e "s/(\\|[[:space:]]*)'(sh|bash|zsh|\/(usr\/)?bin\/(sh|bash|zsh))'([[:space:]]|$)/\\1\\2\\5/g" \
+    -e "s/(^|[;|&()])[[:space:]]*'git'([[:space:]]|$)/\\1 git\\2/g" \
+    -e "s/((^|[;|&()])[[:space:]]*git([[:space:]]+[^;|&[:space:]]+)*[[:space:]]+)'(push|reset|filter-branch|filter-repo|clean|config|var)'([[:space:]]|$)/\\1\\4\\5/g" \
+    -e "s/((^|[;|&()])[[:space:]]*git[^;|&]*)'(--force|--hard|-[[:alpha:]]*f[[:alpha:]]*)'([[:space:]]|$)/\\1\\3\\4/g" \
     -e "s/'[^']*'/__QSTR__/g"
 }
 
