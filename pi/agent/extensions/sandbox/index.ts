@@ -7,11 +7,15 @@ import { getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agen
 import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
+  hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
+  hasResearchVaultReadAccess,
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   isWithin,
   playwrightBrowsersRoot,
+  requestResearchVaultConfirmation,
+  researchVaultBashOperation,
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
@@ -30,6 +34,10 @@ const PI_PACKAGES_ROOT = resolve(
   "tools/image/packages",
 );
 const PLAYWRIGHT_BROWSERS_ROOT = playwrightBrowsersRoot();
+const configuredResearchVaultRoot = resolve(homedir(), "research");
+const RESEARCH_VAULT_ROOT = existsSync(configuredResearchVaultRoot)
+  ? realpathSync.native(configuredResearchVaultRoot)
+  : configuredResearchVaultRoot;
 function realpathForCheck(path: string): string {
   const absolute = isAbsolute(path) ? path : resolve(process.cwd(), path);
   let candidate = absolute;
@@ -147,8 +155,13 @@ function block(reason: string) {
   return { block: true, reason: `Sandbox blocked tool call: ${reason}` };
 }
 
-export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory: () => string | undefined = () => undefined) {
+export function createSandboxGuard(
+  cwd = process.cwd(),
+  getSessionTempDirectory: () => string | undefined = () => undefined,
+  researchVaultRoot = RESEARCH_VAULT_ROOT,
+) {
   const root = realpathSync.native(cwd);
+  const resolvedResearchVaultRoot = realpathForCheck(researchVaultRoot);
   const sessionReadApprovals = new Set<string>();
   const isPluginWorkspacePath = (path: string) => hasPluginWorkspaceAccess(root, path, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT);
   const isSessionTempPath = (path: string) => {
@@ -170,6 +183,11 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
         if (inspection.outside) {
           if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
           if (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved)) return undefined;
+          if (hasResearchVaultReadAccess(event.toolName, inspection.resolved, resolvedResearchVaultRoot)) return undefined;
+          if (isWithin(resolvedResearchVaultRoot, inspection.resolved) && isWrite) {
+            if (await requestResearchVaultConfirmation(ctx, event.toolName, inspection.resolved)) return undefined;
+            return block(`${input.path}: research-vault ${event.toolName} denied by user`);
+          }
           if (!READ_TOOLS.has(event.toolName)) return block(`${input.path}: ${inspection.reason}`);
           if (isTrustedRetainedSessionRead(inspection.resolved)
             || isTrustedOutsideRead(event.toolName, inspection.resolved)) return undefined;
@@ -218,6 +236,19 @@ export function createSandboxGuard(cwd = process.cwd(), getSessionTempDirectory:
       if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory)) {
         return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
       }
+      const vaultOperation = researchVaultBashOperation(event.input.command, resolvedResearchVaultRoot);
+      const vaultOperationPathsAreSafe = hasSafeResearchVaultBashPaths(event.input.command, resolvedResearchVaultRoot);
+      if (vaultOperation && !vaultOperationPathsAreSafe) {
+        return block("documented research-vault command resolves outside the vault or to a protected secret path");
+      }
+      if (vaultOperation === "mutation") {
+        if (!await requestResearchVaultConfirmation(ctx, "Bash hash update", resolvedResearchVaultRoot)) {
+          return block("research-vault Bash mutation denied by user");
+        }
+        return undefined;
+      }
+      if (vaultOperation === "read") return undefined;
+
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);

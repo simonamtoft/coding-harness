@@ -31,6 +31,17 @@ host-side boundary to model tool calls:
   `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
   scoped development exception for user-owned executable package source; it is
   unavailable to sessions started in other projects.
+- The canonical personal research vault at `~/research` is resolved before every
+  check. Direct `read` calls are automatic; recursive tools retain the ordinary
+  approval requirement so they cannot traverse into protected descendants. The
+  documented `pdftotext`, `mhtml2txt.py`, and read-only `status.py` forms
+  are likewise automatic when run from that root. A `write` or `edit` asks for
+  one interactive, per-operation confirmation that names the operation and
+  resolved target; the documented `status.py --write-hashes` Bash mutation does
+  the same. Denial and non-interactive sessions leave the vault unchanged.
+  Protected secret paths remain denied, and a symlink escaping the vault
+  receives no grant. Other Bash commands naming the vault remain blocked, so
+  this does not grant sibling home-directory access.
 - `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
 - Project-local `AGENTS.md`/`CLAUDE.md` instruction files remain writable.
@@ -52,6 +63,7 @@ host-side boundary to model tool calls:
 - Bash is also blocked when it contains an explicit path outside the current,
   permitted plugin workspace, or session temp directory; changes its working
   directory to the session temp directory; or names a protected secret pattern.
+  The research-vault exceptions are limited to the documented commands above.
   The exact POSIX null device path is exempt so commands can safely discard output
   or compare against an empty source; neighboring device paths remain blocked.
   Scratch commands must use absolute paths; Bash does not use the read approval

@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
+  hasResearchVaultReadAccess,
+  hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   playwrightBrowsersRoot,
+  requestResearchVaultConfirmation,
+  researchVaultBashOperation,
+  researchVaultBashPaths,
   shellPathCandidates,
 } from "./policy.ts";
 
@@ -23,6 +31,61 @@ test("shared harness resources are trusted for reads", () => {
   assert.equal(hasTrustedSharedReadAccess("find", `${shared}/skills`, shared), false);
   assert.equal(hasTrustedSharedReadAccess("read", `${harness}/pi/agent/extensions/index.ts`, shared), false);
   assert.equal(hasTrustedSharedReadAccess("read", `${harness}/shared-other/rules.md`, shared), false);
+});
+
+test("research-vault reads and documented Bash workflow are scoped to the vault root", () => {
+  const vault = "/Users/example/research";
+
+  assert.equal(hasResearchVaultReadAccess("read", `${vault}/notes/topics/example.md`, vault), true);
+  assert.equal(hasResearchVaultReadAccess("find", `${vault}/raw`, vault), false);
+  assert.equal(hasResearchVaultReadAccess("write", `${vault}/notes/topics/example.md`, vault), false);
+  assert.equal(hasResearchVaultReadAccess("read", "/Users/example/research-old/note.md", vault), false);
+  assert.equal(researchVaultBashOperation(`cd ${vault} && python3 bin/status.py`, vault), "read");
+  assert.equal(researchVaultBashOperation(`cd ${vault} && python3 bin/status.py --write-hashes`, vault), "mutation");
+  assert.equal(researchVaultBashOperation(`cd ${vault} && pdftotext raw/papers/source.pdf -`, vault), "read");
+  assert.equal(researchVaultBashOperation(`python3 ${vault}/bin/mhtml2txt.py ${vault}/raw/article.mhtml`, vault), "read");
+  assert.deepEqual(researchVaultBashPaths(`cd ${vault} && python3 bin/mhtml2txt.py raw/article.mhtml`, vault), [
+    `${vault}/bin/mhtml2txt.py`,
+    `${vault}/raw/article.mhtml`,
+  ]);
+  assert.equal(researchVaultBashOperation(`cd ${vault} && python3 bin/status.py --other`, vault), undefined);
+  assert.equal(researchVaultBashOperation(`cd ${vault} && pdftotext raw/source.pdf>/tmp/output -`, vault), undefined);
+});
+
+test("documented vault Bash reads reject symlink and secret-path escapes", () => {
+  const vault = mkdtempSync(join(tmpdir(), "pi-vault-policy-"));
+  const outside = mkdtempSync(join(tmpdir(), "pi-vault-outside-"));
+  mkdirSync(join(vault, "bin"));
+  mkdirSync(join(vault, "raw"));
+  writeFileSync(join(vault, "bin", "mhtml2txt.py"), "");
+  writeFileSync(join(vault, "bin", "status.py"), "");
+  writeFileSync(join(outside, "private.mhtml"), "");
+  symlinkSync(join(outside, "private.mhtml"), join(vault, "raw", "escape.mhtml"));
+  writeFileSync(join(vault, ".env"), "secret");
+  symlinkSync(join(vault, ".env"), join(vault, "raw", "secret.mhtml"));
+
+  try {
+    assert.equal(hasSafeResearchVaultBashPaths(`cd ${vault} && python3 bin/status.py`, vault), true);
+    assert.equal(hasSafeResearchVaultBashPaths(`cd ${vault} && python3 bin/mhtml2txt.py raw/escape.mhtml`, vault), false);
+    assert.equal(hasSafeResearchVaultBashPaths(`cd ${vault} && python3 bin/mhtml2txt.py raw/secret.mhtml`, vault), false);
+  } finally {
+    rmSync(vault, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("research-vault mutation confirmation identifies the operation and fails closed", async () => {
+  const titles: string[] = [];
+  const approved = await requestResearchVaultConfirmation({
+    hasUI: true,
+    ui: { select: async (title) => { titles.push(title); return "Allow once"; } },
+  }, "write", "/Users/example/research/notes/source.md");
+
+  assert.equal(approved, true);
+  assert.match(titles[0] ?? "", /Operation: write/);
+  assert.match(titles[0] ?? "", /Target: \/Users\/example\/research\/notes\/source\.md/);
+  assert.equal(await requestResearchVaultConfirmation({ hasUI: true, ui: { select: async () => "Deny" } }, "edit", "target"), false);
+  assert.equal(await requestResearchVaultConfirmation({ hasUI: false, ui: { select: async () => "Allow once" } }, "write", "target"), false);
 });
 
 test("coding-harness sessions can access local plugins", () => {

@@ -84,3 +84,9 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** OS-level sandboxing is deferred to a separate investigation (PI-26) covering a Nix-defined container or VM and macOS Seatbelt. Tool-call inspection is not treated as an OS boundary.
 **Why:** Inspection cannot constrain subprocesses, shell indirection, extensions, or user commands; Nix gives reproducibility, not runtime isolation.
 **Revisit if:** A disposable isolation launcher with explicit filesystem, credential, network, and rollback policy is designed.
+
+### SBX-14 · User-mediated research-vault access
+`accepted` · 2026-09-03 · `01a068b2`
+**Decision:** The canonical personal research vault is a location-scoped exception: direct filesystem reads and its documented read-only ingestion/status commands are automatic, while file mutations and the documented hash-stamping Bash command need an interactive, one-time confirmation. Other Bash commands naming the vault remain blocked.
+**Why:** Durable research needs efficient access to its raw material and notes, but allowing a general external-write or Bash exception would weaken the project boundary. Resolving documented command operands before checking preserves secret-path denial and prevents a vault symlink from granting access elsewhere.
+**Revisit if:** The vault moves, gains a machine-enforced capability boundary, or its documented command workflow changes.

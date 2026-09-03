@@ -1,3 +1,4 @@
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
@@ -23,6 +24,70 @@ export function hasTrustedSharedReadAccess(
   codingHarnessSharedRoot: string,
 ): boolean {
   return toolName === "read" && isWithin(codingHarnessSharedRoot, targetPath);
+}
+
+export function hasResearchVaultReadAccess(toolName: string, targetPath: string, researchVaultRoot: string): boolean {
+  return toolName === "read" && isWithin(researchVaultRoot, targetPath);
+}
+
+type ResearchVaultBashOperation = { type: "read" | "mutation"; paths: string[] };
+
+function classifyResearchVaultBashOperation(command: string, researchVaultRoot: string): ResearchVaultBashOperation | undefined {
+  const root = researchVaultRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const safeRelativePath = "[A-Za-z0-9._/-]+";
+  const cdPrefix = `cd ${root} && `;
+  const statusScript = `${researchVaultRoot}/bin/status.py`;
+  const mhtmlScript = `${researchVaultRoot}/bin/mhtml2txt.py`;
+
+  if (new RegExp(`^(?:${cdPrefix}python3 bin/status\\.py|python3 ${root}/bin/status\\.py) --write-hashes$`).test(command)) {
+    return { type: "mutation", paths: [statusScript] };
+  }
+  if (new RegExp(`^(?:${cdPrefix}python3 bin/status\\.py|python3 ${root}/bin/status\\.py)$`).test(command)) {
+    return { type: "read", paths: [statusScript] };
+  }
+
+  const relativeMhtml = new RegExp(`^${cdPrefix}python3 bin/mhtml2txt\\.py (raw/${safeRelativePath})$`).exec(command);
+  if (relativeMhtml) return { type: "read", paths: [mhtmlScript, join(researchVaultRoot, relativeMhtml[1])] };
+  const absoluteMhtml = new RegExp(`^python3 ${root}/bin/mhtml2txt\\.py (${root}/raw/${safeRelativePath})$`).exec(command);
+  if (absoluteMhtml) return { type: "read", paths: [mhtmlScript, absoluteMhtml[1]] };
+
+  const relativePdf = new RegExp(`^${cdPrefix}pdftotext (raw/${safeRelativePath}) -$`).exec(command);
+  if (relativePdf) return { type: "read", paths: [join(researchVaultRoot, relativePdf[1])] };
+  const absolutePdf = new RegExp(`^pdftotext (${root}/raw/${safeRelativePath}) -$`).exec(command);
+  if (absolutePdf) return { type: "read", paths: [absolutePdf[1]] };
+  return undefined;
+}
+
+export function researchVaultBashOperation(command: string, researchVaultRoot: string): "read" | "mutation" | undefined {
+  return classifyResearchVaultBashOperation(command, researchVaultRoot)?.type;
+}
+
+export function researchVaultBashPaths(command: string, researchVaultRoot: string): string[] {
+  return classifyResearchVaultBashOperation(command, researchVaultRoot)?.paths ?? [];
+}
+
+export function hasSafeResearchVaultBashPaths(command: string, researchVaultRoot: string): boolean {
+  if (!existsSync(researchVaultRoot)) return false;
+  const resolvedVaultRoot = realpathSync.native(researchVaultRoot);
+  const paths = researchVaultBashPaths(command, researchVaultRoot);
+  return paths.length > 0 && paths.every((path) => {
+    if (!existsSync(path)) return false;
+    const resolved = realpathSync.native(path);
+    return !isProtectedSecretPath(resolved) && isWithin(resolvedVaultRoot, resolved);
+  });
+}
+
+export async function requestResearchVaultConfirmation(
+  ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } },
+  operation: string,
+  target: string,
+): Promise<boolean> {
+  if (!ctx.hasUI) return false;
+  const choice = await ctx.ui.select(
+    `Allow research-vault operation?\nOperation: ${operation}\nTarget: ${target}`,
+    ["Allow once", "Deny"],
+  );
+  return choice === "Allow once";
 }
 
 export function hasPluginWorkspaceAccess(
