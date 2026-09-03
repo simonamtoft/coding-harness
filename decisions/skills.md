@@ -112,3 +112,8 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** Neither skill carries a current, recurring workflow that justifies its own contract.
 **Revisit if:** Approved external plan handoffs recur with a stable cross-harness lifecycle, or shortcut reporting requires more than repository search.
 
+### SKL-19 · Verifier setup requires explicit invocation
+`accepted` · 2026-09-03 · `01a0670d`
+**Decision:** Made `wire-up-verifier` explicit-only while retaining its existing confirmation before repository changes.
+**Why:** Missing verifier configuration during ordinary work is not itself user intent to add repository files or policy.
+**Revisit if:** Projects adopt verifier scaffolding as a mandatory automatic setup step.

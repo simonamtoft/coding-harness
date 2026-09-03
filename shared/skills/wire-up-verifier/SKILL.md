@@ -1,5 +1,6 @@
 ---
 name: wire-up-verifier
+disable-model-invocation: true
 description: Use when working in a repo that has test/lint/typecheck commands but no verifier wired for the `verify-turn` loop, or when the user asks to "wire up a verifier / set up the verify loop / add a verify task". Scaffolds a `.agent/verify.sh` or a Taskfile `verify` task so the per-turn verification loop self-runs.
 ---
 
