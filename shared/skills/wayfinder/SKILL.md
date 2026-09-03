@@ -43,6 +43,21 @@ Core operations:
 
 `--depends-on` replaces the task's complete dependency set. Omit it when a child has no blockers. Do not invent labels or tracker setup.
 
+## Suggest next tickets
+
+When invoked with an existing map, inspect its current children before choosing work:
+
+1. Read the full child list with `backlog task list --parent <mapId> --plain`, then query the ready frontier with `backlog task list --parent <mapId> --status "To Do" --ready --sort ordinal --plain`.
+2. Rank the frontier tickets that most directly advance the map by ordinal order. The map's dependencies and ordinal order define relevance; do not infer a different priority from task wording alone.
+3. For each candidate, determine its **capacity** from the child description's **Mode**: `grilling` (HITL), `research` (AFK), `prototype` (HITL), or `task` (the stated manual prerequisite). If the map's **Notes** explicitly allow execution, identify eligible implementation work as `execution (authorized)`; otherwise do not recommend implementation.
+4. Do not recommend blocked or completed children. Mention a blocked frontier only when no ready work remains, naming the unmet dependency. Treat children already resolved as out of the next-work list; surface an out-of-scope decision only if it changes the map's route.
+
+When no map or destination is named, do not ask an open-ended clarification question. Inspect Backlog's ready work with `backlog task list --ready --sort priority --limit 10 --plain` and label each ordinary ready task `execution`. If context identifies a candidate's Wayfinder map, inspect that map and use its child capacity instead. State that no active map was identified when that is the case; do not claim or work a ticket yet.
+
+Present candidates through one native structured selection question in the harness's `ask_question` format. Its question asks which ticket to handle next; its details name the map or state that no active map was identified. Offer at most the first three ranked candidates, with each option's label containing the ticket title, ID, and capacity and its description giving the question it resolves. The user may supply another ticket through the UI's free-text answer. If no candidate is ready, do not present a selection question; report the blocking condition instead.
+
+A named child takes precedence only when it is ready; explain why it cannot be selected when blocked or complete.
+
 ## The map
 
 The parent task is the canonical low-resolution view. Its description contains:
@@ -126,8 +141,8 @@ The user invokes Wayfinder with a loose idea.
 
 The user invokes Wayfinder with a map task ID and optionally a child ID.
 
-1. Read the map with `backlog task view <mapId> --plain`.
-2. If the user named a child, use it. Otherwise select the first result from the frontier query. Claim it before working.
+1. Read the map with `backlog task view <mapId> --plain`, then inspect and recommend next tickets as [Suggest next tickets](#suggest-next-tickets) requires.
+2. If the user named a ready child, use it. Otherwise wait for the user to select a suggested ticket; claim it before working.
 3. Read the child's **Mode** and resolve it with the relevant workflow. Fetch related tasks only when needed.
 4. Read the finalization guide, record the answer in the child's final summary, verify its acceptance criteria when present, and mark it `Done` only when the guide's completion requirements are met.
 5. Add one decision comment to the map. Create newly sharpened children and update Not yet specified or Out of scope as needed.

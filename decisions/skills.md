@@ -73,3 +73,15 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Replaced overlapping lesson classifications and owner categories with first-match ordered rules.
 **Why:** "Reusable lesson", "one-off", and "already covered" were not mutually exclusive, so findings landed in several buckets.
 **Revisit if:** A category appears that ordered rules cannot express.
+
+### SKL-13 · Argument-less Wayfinder starts from Backlog
+`accepted` · 2026-09-03 · `01a06622`
+**Decision:** An invocation of Wayfinder without a map or destination inspects ready Backlog work and suggests candidates rather than asking the user to state a destination.
+**Why:** The direct invocation is an intent to find the next useful work; an immediate open-ended clarification adds friction without consulting the available project state.
+**Revisit if:** Wayfinder is deliberately restricted to map creation or map IDs become mandatory input.
+
+### SKL-14 · Wayfinder candidates use structured selection
+`accepted` · 2026-09-03 · `01a06622`
+**Decision:** Surface Wayfinder's ranked next-ticket candidates through the harness's `ask_question`-format selection UI rather than prose.
+**Why:** The candidate list is a choice point, so a selectable prompt makes the next action immediate and avoids another free-form response.
+**Revisit if:** The shared harnesses no longer provide a compatible structured question interface.
