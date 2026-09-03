@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## 1. Think Before Coding
 
