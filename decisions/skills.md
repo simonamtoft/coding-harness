@@ -93,3 +93,10 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Revisit if:** Wayfinder gains a fourth entry path, or the harness stops exposing a structured selection question.
 **Limitation:** Four controlled probe runs before the change and four after both queried the tracker first, so the restructure is verified as non-regressive; the intermittent ask-first failure was never reproduced and cannot be proven eliminated.
 
+### SKL-16 · Swarm has one shared workflow and no Pi prompt alias
+`accepted` · 2026-09-03 · `01a0670d`
+**Decision:** Moved the complete swarm protocol into the harness-neutral shared skill and removed Pi's separate `/swarm` prompt. Pi uses the standard `/skill:swarm` command; only the delegation call differs by harness.
+**Why:** The prompt and skill duplicated ownership, while the shared skill was a Pi-only pointer that Claude could not follow. Keeping a compatibility prompt would preserve a second entry-point artifact without adding behavior.
+**Revisit if:** A short `/swarm` alias proves materially more usable than the standard skill command.
+**Evidence:** "Merge the swarm prompt into the swarm skill" and "Remove `/swarm` prompt".
+

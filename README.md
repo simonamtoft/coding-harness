@@ -95,10 +95,10 @@ format or capability:
 | `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `review_changes` drives them. |
 | `claude/agents/` | A Claude-shaped `presenter` so the shared `present` skill works in both harnesses. |
 
-The `present` skill stays shared: its report pipeline (`PRESENTER.md`,
-`scripts/`, `assets/`) is harness-neutral, and only the delegation call differs
-(Pi's `subagent` tool vs Claude Code's `Task` tool). Both are documented in the
-skill.
+The `present` and `swarm` skills stay shared: their workflows are
+harness-neutral, and only the delegation call differs (Pi's `subagent` tool vs
+Claude Code's `Task` tool). Both variants are documented in each skill; Pi uses
+the standard `/skill:swarm` command rather than a separate prompt alias.
 
 Per-project verifiers are harness-neutral too. Pi's `verify-turn` extension and
 Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a

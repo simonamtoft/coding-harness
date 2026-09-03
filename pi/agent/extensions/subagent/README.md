@@ -46,7 +46,7 @@ Child processes include `--no-extensions`. This prevents global parent lifecycle
 
 ## Swarm workflow
 
-Invoke the `/swarm` prompt for the thin Pi-native swarm protocol. It requires an explicit frame, done predicate, partition/race/mixed shape, standalone briefs, terminal evidence, and parent-owned aggregation. Read-only workers may share a checkout. Write workers require distinct pre-created worktrees and explicit absolute `cwd` values; the parent owns allocation, merge, and cleanup. Dropouts remain visible as `BLOCKED` rather than receiving a generic fallback.
+Invoke the shared `/skill:swarm` workflow. It requires an explicit frame, done predicate, partition/race/mixed shape, standalone briefs, terminal evidence, and parent-owned aggregation. Read-only workers may share a checkout. Write workers require distinct pre-created worktrees and explicit absolute `cwd` values; the parent owns allocation, merge, and cleanup. Dropouts remain visible as `BLOCKED` rather than receiving a generic fallback.
 
 ## Review workflows
 
