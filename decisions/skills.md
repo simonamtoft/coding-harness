@@ -85,3 +85,11 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Surface Wayfinder's ranked next-ticket candidates through the harness's `ask_question`-format selection UI rather than prose.
 **Why:** The candidate list is a choice point, so a selectable prompt makes the next action immediate and avoids another free-form response.
 **Revisit if:** The shared harnesses no longer provide a compatible structured question interface.
+
+### SKL-15 · Wayfinder dispatches on its entry path, with a first-call contract
+`accepted` · 2026-09-03 · `01a06692-7a9e`
+**Decision:** Restructured Wayfinder around its three entry paths (suggest work, work through a map, chart a map), each owning its own steps, with reference material moved after them. The skill now opens with a first-action contract: the first tool call is a Backlog read, never a clarification question. SKL-13 and SKL-14 are unchanged in substance.
+**Why:** SKL-13 and SKL-14 already required this, but the rules sat in the second-to-last paragraph of a section headed for the opposite case, and session `01a066b3` opened with "What destination should Wayfinder chart?" before any tracker read, then reported candidates as prose. Placement, not policy, was the defect.
+**Revisit if:** Wayfinder gains a fourth entry path, or the harness stops exposing a structured selection question.
+**Limitation:** Four controlled probe runs before the change and four after both queried the tracker first, so the restructure is verified as non-regressive; the intermittent ask-first failure was never reproduced and cannot be proven eliminated.
+
