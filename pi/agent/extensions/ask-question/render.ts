@@ -1,12 +1,12 @@
 import { Text } from "@earendil-works/pi-tui";
-import type { QuestionSpec } from "./question-items.ts";
+import type { AnswerValue, QuestionSpec } from "./question-items.ts";
 
 type Theme = { fg: (color: string, text: string) => string; bold: (text: string) => string };
 
 interface AskQuestionDetails {
   status: "answered" | "cancelled" | "unavailable";
   questions: QuestionSpec[];
-  answers: Array<{ question: string; answer: string; wasCustom: boolean }>;
+  answers: Array<{ question: string; answer: AnswerValue; wasCustom: boolean }>;
 }
 
 export function renderCall(args: { questions?: QuestionSpec[] }, theme: Theme): Text {
@@ -46,7 +46,10 @@ export function renderResult(
 
   const lines = details.answers.map(({ question, answer, wasCustom }, index) => {
     const marker = theme.fg("success", "✓ ");
-    const shown = wasCustom ? `${theme.fg("muted", "custom: ")}${theme.fg("accent", answer)}` : theme.fg("accent", answer);
+    const value = Array.isArray(answer) ? answer.join(", ") : answer;
+    const shown = wasCustom && !Array.isArray(answer)
+      ? `${theme.fg("muted", "custom: ")}${theme.fg("accent", value)}`
+      : theme.fg("accent", value);
     if (!expanded) return `${marker}${shown}`;
 
     const asked = details.questions[index]?.details;

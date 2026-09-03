@@ -13,26 +13,35 @@ export interface QuestionSpec {
   question: string;
   details?: string;
   options?: QuestionOption[];
+  multiple?: boolean;
   placeholder?: string;
 }
 
+export type AnswerValue = string | string[];
+
 export interface PanelAnswer {
-  answer: string;
+  answer: AnswerValue;
   wasCustom: boolean;
 }
 
+export type PanelResult = PanelAnswer | "back" | undefined;
+
 export const CUSTOM_ANSWER_VALUE = "custom";
+export const DONE_VALUE = "done";
+export const BACK_VALUE = "back";
 
 const CUSTOM_ANSWER_LABEL = "Write a different answer…";
 
 /** Options keep the order the model gave them: most recommended first. */
-export function buildSelectItems(options: QuestionOption[]): PanelItem[] {
+export function buildSelectItems(options: QuestionOption[], multiple = false, allowBack = false): PanelItem[] {
   const items: PanelItem[] = options.map((option, index) => ({
     value: String(index),
     label: `${index + 1}. ${option.label}`,
     ...(option.description ? { description: option.description } : {}),
   }));
   items.push({ value: CUSTOM_ANSWER_VALUE, label: `${options.length + 1}. ${CUSTOM_ANSWER_LABEL}` });
+  if (multiple) items.push({ value: DONE_VALUE, label: "Done selecting" });
+  if (allowBack) items.push({ value: BACK_VALUE, label: "Back to previous question" });
   return items;
 }
 

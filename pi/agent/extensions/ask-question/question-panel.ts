@@ -1,11 +1,14 @@
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, Editor, Key, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import {
+  BACK_VALUE,
   buildHeading,
   buildSelectItems,
   CUSTOM_ANSWER_VALUE,
+  DONE_VALUE,
   type PanelAnswer,
   type PanelItem,
+  type PanelResult,
   type QuestionSpec,
 } from "./question-items.ts";
 
@@ -16,6 +19,7 @@ const PADDING = " ";
 const CURSOR = "> ";
 const LABEL_CONTINUATION = "  ";
 const DESCRIPTION_INDENT = "    ";
+const CUSTOM_ANSWER_SNIPPET_LENGTH = 60;
 
 /**
  * Wraps plain text to the remaining width and styles each resulting line.
@@ -73,6 +77,9 @@ class OptionList extends WidthCached {
   constructor(
     private readonly items: PanelItem[],
     private readonly theme: Theme,
+    private readonly selected: Set<number>,
+    private readonly customAnswer: () => string | undefined,
+    private readonly multiple: boolean,
   ) {
     super();
   }
@@ -95,16 +102,26 @@ class OptionList extends WidthCached {
     return this.items.flatMap((item, index) => {
       const isFocused = index === this.focused;
       const style: Style = (line) => this.theme.fg(isFocused ? "accent" : "text", line);
+      const isSelectable = /^\d+\. /.test(item.label);
+      const isChecked = item.value === CUSTOM_ANSWER_VALUE
+        ? this.customAnswer() !== undefined
+        : this.selected.has(Number(item.value));
+      const label = this.multiple && isSelectable
+        ? item.label.replace(/^(\d+\. )/, `${isChecked ? "[x]" : "[ ]"} $1`)
+        : item.label;
       const labelWidth = Math.max(1, width - PADDING.length - CURSOR.length);
-      const lines = wrapTextWithAnsi(item.label, labelWidth).map((line, lineIndex) => {
+      const lines = wrapTextWithAnsi(label, labelWidth).map((line, lineIndex) => {
         const marker = lineIndex === 0 && isFocused ? this.theme.fg("accent", CURSOR) : LABEL_CONTINUATION;
         return truncateToWidth(`${PADDING}${marker}${style(line)}`, width);
       });
 
-      if (!item.description) return lines;
+      const description = item.value === CUSTOM_ANSWER_VALUE && this.customAnswer()
+        ? `Custom: ${this.customAnswer()!.slice(0, CUSTOM_ANSWER_SNIPPET_LENGTH)}`
+        : item.description;
+      if (!description) return lines;
       return [
         ...lines,
-        ...wrapStyled(item.description, width, (line) => this.theme.fg("muted", line), DESCRIPTION_INDENT),
+        ...wrapStyled(description, width, (line) => this.theme.fg("muted", line), DESCRIPTION_INDENT),
       ];
     });
   }
@@ -130,13 +147,16 @@ export function askWithPanel(
   },
   spec: QuestionSpec,
   position?: { index: number; total: number },
-): Promise<PanelAnswer | undefined> {
+  allowBack = false,
+): Promise<PanelResult> {
   const options = spec.options ?? [];
-  const items = buildSelectItems(options);
+  const items = buildSelectItems(options, spec.multiple, allowBack);
 
-  return ctx.ui.custom<PanelAnswer | undefined>((tui, theme, _keybindings, done) => {
+  return ctx.ui.custom<PanelResult>((tui, theme, _keybindings, done) => {
     const container = new Container();
-    const optionList = new OptionList(items, theme);
+    const selected = new Set<number>();
+    let customAnswer: string | undefined;
+    const optionList = new OptionList(items, theme, selected, () => customAnswer, Boolean(spec.multiple));
     const editor = new Editor(tui, {
       borderColor: (line: string) => theme.fg("accent", line),
       selectList: {
@@ -150,12 +170,27 @@ export function askWithPanel(
     let editing = false;
 
     optionList.onSelect = (item) => {
+      if (item.value === BACK_VALUE) {
+        done("back");
+        return;
+      }
+      if (item.value === DONE_VALUE) {
+        const answer = [...options.filter((_option, index) => selected.has(index)).map((option) => option.label), ...(customAnswer ? [customAnswer] : [])];
+        if (answer.length > 0) done({ answer, wasCustom: customAnswer !== undefined });
+        return;
+      }
       if (item.value !== CUSTOM_ANSWER_VALUE) {
-        done({ answer: options[Number(item.value)].label, wasCustom: false });
+        const index = Number(item.value);
+        if (spec.multiple) {
+          selected.has(index) ? selected.delete(index) : selected.add(index);
+          optionList.invalidate();
+          return;
+        }
+        done({ answer: options[index].label, wasCustom: false });
         return;
       }
       editing = true;
-      editor.setText("");
+      editor.setText(customAnswer ?? "");
       rebuild();
       tui.requestRender();
     };
@@ -163,7 +198,15 @@ export function askWithPanel(
 
     editor.onSubmit = (value: string) => {
       const answer = value.trim();
-      if (answer.length > 0) done({ answer, wasCustom: true });
+      if (!spec.multiple) {
+        if (answer) done({ answer, wasCustom: true });
+        return;
+      }
+      customAnswer = answer || undefined;
+      editing = false;
+      optionList.invalidate();
+      rebuild();
+      tui.requestRender();
     };
 
     function rebuild(): void {
@@ -185,7 +228,7 @@ export function askWithPanel(
       } else {
         container.addChild(optionList);
         container.addChild(
-          new WrappedText("↑↓ navigate • enter select • esc cancel", (line) => theme.fg("dim", line)),
+          new WrappedText(spec.multiple ? "↑↓ navigate • enter toggle/select • esc cancel" : "↑↓ navigate • enter select • esc cancel", (line) => theme.fg("dim", line)),
         );
       }
 

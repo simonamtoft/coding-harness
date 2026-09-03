@@ -28,3 +28,9 @@ Decision ledger area. Entry ids use the `ASK-` prefix; see `../DECISIONS.md` for
 **Decision:** Coordinate through a `globalThis` promise-chain lock: queue `ask_question`, fail fast for `/ctx-monitor`.
 **Why:** Separately loaded extensions can otherwise both claim terminal input; silently queueing a slash command looks like a hang.
 **Revisit if:** Pi provides native popup ownership.
+
+### ASK-05 · Multi-select answers retain custom values
+`accepted` · 2026-09-03 · `01a06728`
+**Decision:** Opt-in multi-select questions use `multiple: true` and return an ordered string array; any typed custom answer appends to the selected labels. Ordinary questions continue returning a string.
+**Why:** Callers can distinguish one answer from several without changing the established single-select shape, and choosing “other” must not discard the explicit selections.
+**Revisit if:** Consumers need a richer per-selection source or identifier than a displayed label.

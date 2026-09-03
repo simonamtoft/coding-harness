@@ -1,6 +1,13 @@
 import { Type } from "typebox";
 import { withUiLock } from "../shared/ui-lock.ts";
-import { buildHeading, type PanelAnswer, type QuestionOption, type QuestionSpec } from "./question-items.ts";
+import {
+  buildHeading,
+  type AnswerValue,
+  type PanelAnswer,
+  type PanelResult,
+  type QuestionOption,
+  type QuestionSpec,
+} from "./question-items.ts";
 import type { askWithPanel } from "./question-panel.ts";
 
 type AskContext = Parameters<typeof askWithPanel>[0] & {
@@ -12,40 +19,26 @@ type AskContext = Parameters<typeof askWithPanel>[0] & {
   };
 };
 
+type RecordedAnswer = { question: string; answer: AnswerValue; wasCustom: boolean };
+type QuestionResult = PanelAnswer | "back" | undefined;
+
 export const CLARIFICATION_GATE = `Clarification gate (mandatory): Before using any tool, decide whether the request leaves unresolved choices that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If it does, collect all closely related blocking questions into one ask_question call before acting. Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_question call—do not batch it with other tool calls or restate the details in prose. Provide concrete options when useful, ordered best first so the leading option is the one you recommend, while always allowing a free-text answer. Do not silently choose a reasonable default. Do not ask when repository inspection can resolve the choice.`;
 
 const OptionSchema = Type.Object({
   label: Type.String({ description: "Short label for the choice" }),
-  description: Type.Optional(
-    Type.String({ description: "One line naming the consequence or tradeoff of this choice" }),
-  ),
+  description: Type.Optional(Type.String({ description: "One line naming the consequence or tradeoff of this choice" })),
 });
 
 const QuestionSchema = Type.Object({
   question: Type.String({ description: "The specific question to ask the user" }),
-  details: Type.Optional(
-    Type.String({
-      description:
-        "The context needed to decide: key facts, constraints, or tradeoffs. Shown under the question and kept in the transcript.",
-    }),
-  ),
-  options: Type.Optional(
-    Type.Array(OptionSchema, {
-      description:
-        "Up to three concrete choices, ordered best first: the leading option is the one you recommend. The user can always write a different answer.",
-      maxItems: 3,
-    }),
-  ),
-  placeholder: Type.Optional(
-    Type.String({ description: "Placeholder shown for a free-text answer" }),
-  ),
+  details: Type.Optional(Type.String({ description: "The context needed to decide: key facts, constraints, or tradeoffs. Shown under the question and kept in the transcript." })),
+  options: Type.Optional(Type.Array(OptionSchema, { description: "Up to three concrete choices, ordered best first: the leading option is the one you recommend. The user can always write a different answer.", maxItems: 3 })),
+  multiple: Type.Optional(Type.Boolean({ description: "Allow choosing multiple options. The answer is returned as an ordered list." })),
+  placeholder: Type.Optional(Type.String({ description: "Placeholder shown for a free-text answer" })),
 });
 
 const AskQuestionParams = Type.Object({
-  questions: Type.Array(QuestionSchema, {
-    description: "One or more closely related questions that must be answered before continuing",
-    minItems: 1,
-  }),
+  questions: Type.Array(QuestionSchema, { description: "One or more closely related questions that must be answered before continuing", minItems: 1 }),
 });
 
 function normalizeOptions(options: unknown[]): QuestionOption[] {
@@ -60,60 +53,87 @@ function normalizeQuestion(question: unknown): unknown {
 }
 
 function buildTitle(question: QuestionSpec, position: { index: number; total: number }): string {
-  const lines = [buildHeading(question.question, position)];
-  if (question.details) lines.push(question.details);
-  if (question.placeholder) lines.push(question.placeholder);
-  return lines.join("\n");
+  return [buildHeading(question.question, position), question.details, question.placeholder].filter(Boolean).join("\n");
 }
 
-/** Fallback for RPC and other non-TUI modes, where ctx.ui.custom() resolves to undefined. */
+function cancelledResult(questions: QuestionSpec[], text = "The user cancelled without answering all questions.") {
+  return { content: [{ type: "text" as const, text }], details: { status: "cancelled" as const, questions, answers: [] } };
+}
+
 async function askWithSelect(
   ctx: AskContext,
   question: QuestionSpec,
   options: QuestionOption[],
   position: { index: number; total: number },
-): Promise<PanelAnswer | undefined> {
-  const displayedOptions = options.map(
-    (option, index) => `${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}`,
-  );
-  const customChoice = `${displayedOptions.length + 1}. Write a different answer…`;
-  const selected = await ctx.ui.select(buildTitle(question, position), [...displayedOptions, customChoice]);
-
-  if (selected === undefined) return undefined;
-  if (selected !== customChoice) {
-    return { answer: options[displayedOptions.indexOf(selected)].label, wasCustom: false };
-  }
-
-  const answer = (await ctx.ui.input(question.question, question.placeholder))?.trim();
-  return answer ? { answer, wasCustom: true } : undefined;
-}
-
-async function askOneQuestion(
-  ctx: AskContext,
-  question: QuestionSpec,
-  position: { index: number; total: number },
-): Promise<PanelAnswer | undefined> {
-  const options = (question.options ?? []).filter((option) => option.label.trim().length > 0);
-
-  if (options.length === 0) {
-    const answer = (await ctx.ui.editor(buildTitle(question, position)))?.trim();
+  allowBack: boolean,
+): Promise<QuestionResult> {
+  const title = buildTitle(question, position);
+  if (!question.multiple) {
+    const displayed = options.map((option, index) => `${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}`);
+    const custom = `${displayed.length + 1}. Write a different answer…`;
+    const back = "Back to previous question";
+    const selected = await ctx.ui.select(title, [...displayed, custom, ...(allowBack ? [back] : [])]);
+    if (!selected) return undefined;
+    if (selected === back) return "back";
+    if (selected !== custom) return { answer: options[displayed.indexOf(selected)].label, wasCustom: false };
+    const answer = (await ctx.ui.input(question.question, question.placeholder))?.trim();
     return answer ? { answer, wasCustom: true } : undefined;
   }
 
-  if (ctx.mode !== "tui") return askWithSelect(ctx, question, options, position);
+  const selected = new Set<number>();
+  let customAnswer: string | undefined;
+  while (true) {
+    const displayed = options.map((option, index) => `${selected.has(index) ? "[x]" : "[ ]"} ${index + 1}. ${option.label}${option.description ? ` — ${option.description}` : ""}`);
+    const custom = "Write a different answer…";
+    const done = "Done selecting";
+    const back = "Back to previous question";
+    const choice = await ctx.ui.select(title, [...displayed, custom, done, ...(allowBack ? [back] : [])]);
+    if (!choice) return undefined;
+    if (choice === back) return "back";
+    if (choice === done) {
+      const answer = [...options.filter((_option, index) => selected.has(index)).map((option) => option.label), ...(customAnswer ? [customAnswer] : [])];
+      if (answer.length > 0) return { answer, wasCustom: customAnswer !== undefined };
+      continue;
+    }
+    if (choice === custom) {
+      const answer = await ctx.ui.editor(question.question, customAnswer);
+      if (answer !== undefined) customAnswer = answer.trim() || undefined;
+      continue;
+    }
+    const index = displayed.indexOf(choice);
+    selected.has(index) ? selected.delete(index) : selected.add(index);
+  }
+}
 
-  // Loaded on demand so non-TUI modes never pull in the TUI component tree.
-  const { askWithPanel } = await import("./question-panel.ts");
-  return askWithPanel(ctx, { ...question, options }, position);
+async function askOneQuestion(ctx: AskContext, question: QuestionSpec, position: { index: number; total: number }, allowBack: boolean): Promise<QuestionResult> {
+  const options = (question.options ?? []).filter((option) => option.label.trim().length > 0);
+  if (ctx.mode === "tui") {
+    const { askWithPanel } = await import("./question-panel.ts");
+    return askWithPanel(ctx, { ...question, options }, position, allowBack);
+  }
+  if (options.length > 0) return askWithSelect(ctx, question, options, position, allowBack);
+  if (allowBack) {
+    const choice = await ctx.ui.select(buildTitle(question, position), ["Write a different answer…", "Back to previous question"]);
+    if (!choice) return undefined;
+    if (choice === "Back to previous question") return "back";
+  }
+  const answer = (await ctx.ui.editor(buildTitle(question, position)))?.trim();
+  return answer ? { answer, wasCustom: true } : undefined;
+}
+
+async function confirmAnswers(ctx: AskContext, answers: RecordedAnswer[]): Promise<"confirm" | "back" | undefined> {
+  const summary = answers.map(({ question, answer }) => `${question}\nAnswer: ${Array.isArray(answer) ? answer.join(", ") : answer}`).join("\n\n");
+  const choice = await ctx.ui.select(`Review your answers:\n${summary}`, ["Confirm answers", "Back to last question"]);
+  if (choice === "Confirm answers") return "confirm";
+  if (choice === "Back to last question") return "back";
+  return undefined;
 }
 
 export const askQuestionTool = {
   name: "ask_question",
   label: "Ask Question",
-  description:
-    "Ask the user one or more blocking clarification questions before work continues. Each question may offer choices and always permits a free-text answer.",
-  promptSnippet:
-    "Give the decision context, then ask one or more blocking clarification questions with optional choices",
+  description: "Ask the user one or more blocking clarification questions before work continues. Each question may offer choices and always permits a free-text answer.",
+  promptSnippet: "Give the decision context, then ask one or more blocking clarification questions with optional choices",
   promptGuidelines: [
     "Call ask_question before acting when unresolved choices could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria.",
     "Give each ask_question question a details field stating the decision needed and the key facts or tradeoffs behind the options; write the assistant response prose only when approving a plan, which belongs in the message rather than the question.",
@@ -128,83 +148,47 @@ export const askQuestionTool = {
   parameters: AskQuestionParams,
   prepareArguments(args: unknown) {
     if (!args || typeof args !== "object") return args;
-    const legacy = args as {
-      questions?: unknown;
-      question?: unknown;
-      options?: unknown;
-      placeholder?: unknown;
-    };
-    if (Array.isArray(legacy.questions)) {
-      return { ...legacy, questions: legacy.questions.map(normalizeQuestion) };
-    }
+    const legacy = args as { questions?: unknown; question?: unknown; options?: unknown; placeholder?: unknown };
+    if (Array.isArray(legacy.questions)) return { ...legacy, questions: legacy.questions.map(normalizeQuestion) };
     if (legacy.questions !== undefined || typeof legacy.question !== "string") return args;
-    return {
-      questions: [
-        {
-          question: legacy.question,
-          ...(Array.isArray(legacy.options) ? { options: normalizeOptions(legacy.options) } : {}),
-          ...(typeof legacy.placeholder === "string" ? { placeholder: legacy.placeholder } : {}),
-        },
-      ],
-    };
+    return { questions: [{ question: legacy.question, ...(Array.isArray(legacy.options) ? { options: normalizeOptions(legacy.options) } : {}), ...(typeof legacy.placeholder === "string" ? { placeholder: legacy.placeholder } : {}) }] };
   },
   executionMode: "sequential" as const,
 
-  async execute(
-    _toolCallId: string,
-    params: { questions: QuestionSpec[] },
-    signal: AbortSignal | undefined,
-    _onUpdate: unknown,
-    ctx: AskContext & { hasUI: boolean },
-  ) {
-    if (signal?.aborted) {
-      return {
-        content: [{ type: "text", text: "The turn was aborted before the questions were asked." }],
-        details: { status: "cancelled", questions: params.questions, answers: [] },
-      };
-    }
+  async execute(_toolCallId: string, params: { questions: QuestionSpec[] }, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: AskContext & { hasUI: boolean }) {
+    if (signal?.aborted) return cancelledResult(params.questions, "The turn was aborted before the questions were asked.");
+    if (!ctx.hasUI) return { content: [{ type: "text" as const, text: "Interactive UI is unavailable. Ask the questions in the assistant response and stop until the user answers." }], details: { status: "unavailable" as const, questions: params.questions, answers: [] } };
 
-    if (!ctx.hasUI) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Interactive UI is unavailable. Ask the questions in the assistant response and stop until the user answers.",
-          },
-        ],
-        details: { status: "unavailable", questions: params.questions, answers: [] },
-      };
-    }
-
-    // Held across every question so a second pop-up cannot steal terminal input mid-run.
     return withUiLock(async () => {
-      const answers: Array<{ question: string; answer: string; wasCustom: boolean }> = [];
-
-      for (const [index, question] of params.questions.entries()) {
-        const position = { index, total: params.questions.length };
-        const result = await askOneQuestion(ctx, question, position);
-
-        if (!result) {
-          return {
-            content: [{ type: "text", text: "The user cancelled without answering all questions." }],
-            details: { status: "cancelled", questions: params.questions, answers },
-          };
+      if (signal?.aborted) return cancelledResult(params.questions, "The turn was aborted before the questions were asked.");
+      const answers: RecordedAnswer[] = [];
+      let index = 0;
+      while (true) {
+        while (index < params.questions.length) {
+          if (signal?.aborted) return cancelledResult(params.questions, "The turn was aborted before the questions were asked.");
+          const question = params.questions[index];
+          const result = await askOneQuestion(ctx, question, { index, total: params.questions.length }, index > 0);
+          if (!result) return cancelledResult(params.questions);
+          if (result === "back") {
+            index -= 1;
+            answers.pop();
+            continue;
+          }
+          answers[index] = { question: question.question, ...result };
+          index += 1;
         }
 
-        answers.push({ question: question.question, ...result });
+        if (params.questions.length === 1) break;
+        if (signal?.aborted) return cancelledResult(params.questions, "The turn was aborted before the questions were asked.");
+        const confirmation = await confirmAnswers(ctx, answers);
+        if (!confirmation) return cancelledResult(params.questions);
+        if (confirmation === "confirm") break;
+        index -= 1;
+        answers.pop();
       }
 
-      const summary = answers
-        .map(({ question, answer }, index) => {
-          const details = params.questions[index].details;
-          return `${index + 1}. ${question}${details ? `\n${details}` : ""}\nAnswer: ${answer}`;
-        })
-        .join("\n\n");
-
-      return {
-        content: [{ type: "text", text: summary }],
-        details: { status: "answered", questions: params.questions, answers },
-      };
+      const summary = answers.map(({ question, answer }, answerIndex) => `${answerIndex + 1}. ${question}${params.questions[answerIndex].details ? `\n${params.questions[answerIndex].details}` : ""}\nAnswer: ${Array.isArray(answer) ? answer.join(", ") : answer}`).join("\n\n");
+      return { content: [{ type: "text" as const, text: summary }], details: { status: "answered" as const, questions: params.questions, answers } };
     });
   },
 };

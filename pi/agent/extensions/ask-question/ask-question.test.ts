@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 mock.module("typebox", () => ({
   Type: {
     Array: () => ({}),
+    Boolean: () => ({}),
     Object: () => ({}),
     Optional: () => ({}),
     String: () => ({}),
@@ -149,6 +150,90 @@ describe("ask_question outcomes", () => {
     await result;
     expect(busyDuringPrompt).toBe(true);
     expect(isUiBusy()).toBe(false);
+  });
+
+  test("does not open a queued prompt after its turn is aborted", async () => {
+    let releaseFirst!: () => void;
+    const first = registerTool().execute("call-queued-1", ONE_QUESTION, undefined, undefined, {
+      ...RPC_CONTEXT,
+      ui: { select: () => new Promise<string>((resolve) => { releaseFirst = () => resolve("1. Yes"); }) },
+    });
+    await Promise.resolve();
+
+    const controller = new AbortController();
+    const select = mock(() => Promise.resolve("1. Yes"));
+    const second = registerTool().execute("call-queued-2", ONE_QUESTION, controller.signal, undefined, {
+      ...RPC_CONTEXT,
+      ui: { select },
+    });
+    controller.abort();
+    releaseFirst();
+
+    expect((await second).details.status).toBe("cancelled");
+    expect(select).not.toHaveBeenCalled();
+    await first;
+  });
+
+  test("returns an ordered multi-select answer with a custom value", async () => {
+    const choices = ["[ ] 1. Unit", "Write a different answer…", "Done selecting"];
+    let call = 0;
+    const result = await registerTool().execute(
+      "call-multiple",
+      { questions: [{ question: "Checks?", multiple: true, options: [{ label: "Unit" }, { label: "Integration" }] }] },
+      undefined,
+      undefined,
+      { ...RPC_CONTEXT, ui: { select: () => Promise.resolve(choices[call++]), editor: () => Promise.resolve("Manual") } },
+    );
+
+    expect(result.details.answers).toEqual([{ question: "Checks?", answer: ["Unit", "Manual"], wasCustom: true }]);
+  });
+
+  test("removes a multi-select custom answer when it is resubmitted empty", async () => {
+    const choices = ["[ ] 1. Unit", "Write a different answer…", "Write a different answer…", "Done selecting"];
+    const editorValues = ["Manual", ""];
+    let choiceIndex = 0;
+    let editorIndex = 0;
+    const result = await registerTool().execute(
+      "call-remove-custom",
+      { questions: [{ question: "Checks?", multiple: true, options: [{ label: "Unit" }] }] },
+      undefined,
+      undefined,
+      {
+        ...RPC_CONTEXT,
+        ui: {
+          select: () => Promise.resolve(choices[choiceIndex++]),
+          editor: (_title: string, prefill?: string) => {
+            if (editorIndex === 1) expect(prefill).toBe("Manual");
+            return Promise.resolve(editorValues[editorIndex++]);
+          },
+        },
+      },
+    );
+
+    expect(result.details.answers).toEqual([{ question: "Checks?", answer: ["Unit"], wasCustom: false }]);
+    expect(result.details.status).toBe("answered");
+  });
+
+  test("stages multi-question answers until explicit confirmation and permits going back", async () => {
+    const selections = ["1. First", "Back to previous question", "2. Revised", "1. Final", "Confirm answers"];
+    let call = 0;
+    const result = await registerTool().execute(
+      "call-navigation",
+      {
+        questions: [
+          { question: "First?", options: [{ label: "First" }, { label: "Revised" }] },
+          { question: "Second?", options: [{ label: "Final" }] },
+        ],
+      },
+      undefined,
+      undefined,
+      { ...RPC_CONTEXT, ui: { select: () => Promise.resolve(selections[call++]) } },
+    );
+
+    expect(result.details.answers).toEqual([
+      { question: "First?", answer: "Revised", wasCustom: false },
+      { question: "Second?", answer: "Final", wasCustom: false },
+    ]);
   });
 
   test("accepts plain string options and drops the retired recommended field", () => {
