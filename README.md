@@ -119,6 +119,45 @@ environment-specific providers, and `subagents.json` optionally maps agent
 names to machine-specific `provider/model` values. Authentication and generated
 state are also intentionally not versioned.
 
+## Adding the Hetzner Inference API
+
+Because `models.json` is local, providers are added per machine. To expose
+Hetzner Inference models in Pi:
+
+1. Export the API key where Pi runs, e.g. in your shell rc:
+
+   ```sh
+   export HETZNER_API_KEY=...
+   ```
+
+2. Add a `hetzner` entry under the top-level `providers` object in
+   `~/.pi/agent/models.json` (merge with an existing `providers` object if
+   present):
+
+   ```json
+   "hetzner": {
+     "baseUrl": "https://inference.hetzner.com/api/v1",
+     "api": "openai-completions",
+     "apiKey": "$HETZNER_API_KEY",
+     "models": [
+       { "id": "Qwen/Qwen3.6-35B-A3B-FP8", "contextWindow": 262144 },
+       { "id": "Qwen3.8-27B", "contextWindow": 262144 }
+     ]
+   }
+   ```
+
+   Useful optional per-model fields: `name`, `maxTokens` (default 16384),
+   `reasoning`, `input`, and `cost`.
+
+3. Verify with `pi --list-models`, or open `/model` in a session — the file
+   reloads when the dialog opens, so no restart is needed. The models stay
+   hidden from `/model` until `HETZNER_API_KEY` is set in Pi's environment.
+
+If the endpoint rejects requests, add provider-level `compat` flags; for
+example, OpenAI-compatible servers that do not understand the `developer`
+role need `"compat": { "supportsDeveloperRole": false }`. Pi's `models.md`
+doc has the full provider and model schema.
+
 ## Session context hygiene
 
 Prefer one focused task per session. In Pi, use `/ctx-monitor` to inspect which
