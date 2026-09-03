@@ -17,10 +17,10 @@ Produce the PR body the user will paste into GitHub (or copy into `gh pr create`
 
 ## Procedure (in this order)
 
-1. **Find the PR template.** Run `~/.claude/skills/write-pr-description/scripts/find_pr_template.sh`. If output is a path, read that file as the template. If output is `NONE`, use a minimal `## Summary` / `## Test plan` shape and say "no template found, using minimal shape".
-2. **Establish the base branch.** Run `~/.claude/skills/_shared/scripts/git_base_branch.sh`. Use its stdout as `<base>`. If the script exits 1, ask the user to name the base branch.
+1. **Find the PR template.** Resolve `scripts/find_pr_template.sh` from this skill directory and run it. If output is a path, read that file as the template. If output is `NONE`, use a minimal `## Summary` / `## Test plan` shape and say "no template found, using minimal shape".
+2. **Establish the base branch.** Resolve `../_shared/scripts/git_base_branch.sh` from this skill directory and run it. Use its stdout as `<base>`. If the script exits 1, ask the user to name the base branch.
 3. **Read the actual branch contents.** `git log <base>..HEAD --reverse --format=%s%n%b` and `git diff <base>..HEAD --stat`. Read the diff stat — don't pull the full diff unless a section explicitly demands it (e.g. "Breaking changes").
-4. **Extract the ticket key.** Run `~/.claude/skills/_shared/scripts/git_ticket_key.sh`. Use its stdout as the ticket reference; if empty, check commit subjects for a key. Include it where the template wants it; don't sprinkle it.
+4. **Extract the ticket key.** Resolve `../_shared/scripts/git_ticket_key.sh` from this skill directory and run it. Use its stdout as the ticket reference; if empty, check commit subjects for a key. Include it where the template wants it; don't sprinkle it.
 5. **Fill each template section concretely.**
    - **Summary** — 1–3 bullets, the *what* and *why*, not a commit-log dump. Group related commits into a single bullet.
    - **Test plan / verification** — concrete checks tied to what changed (commands to run, screens to look at). Don't list aspirational ones.

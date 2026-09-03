@@ -53,7 +53,7 @@ Write a handoff document so a fresh agent can continue the work without needing 
 
    ## Suggested skills
 
-   Bullet list of skills the next agent should consider invoking. Pick from the skills available in `~/.claude/skills/`. Only list skills that are genuinely relevant to the next session's focus.
+   Bullet list of skills the next agent should consider invoking. Pick from the skills available in the active harness. Only list skills that are genuinely relevant to the next session's focus.
    Format: `- \`/skill-name\` — why it's relevant`.
 
    ## How to resume
