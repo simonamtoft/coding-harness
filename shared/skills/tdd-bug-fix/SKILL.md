@@ -13,8 +13,8 @@ Do not force a test when it would be impractical. If the available test would re
 
 Use narrower workflows first when they apply:
 
-- Diagnose pasted errors and name their root cause with `triage-error` before applying this workflow.
-- For empty or zero output, follow `debug-empty-or-zero-output` and check inputs, keys, and effective configuration before producer logic.
+- Diagnose pasted errors with `diagnose-failure` in error mode before applying this workflow.
+- For empty or zero output, use `diagnose-failure` in empty-output mode and check inputs, keys, and effective configuration before producer logic.
 - Investigate red CI with `investigate-failing-ci`; classify infrastructure, real failures, and flakes before treating a failure as a code regression.
 - Use the characterization workflow in `refactor-cognitive-complexity` for behavior-preserving complexity refactors.
 

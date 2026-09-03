@@ -32,7 +32,7 @@ Diagnose a failing CI job by reading the workflow definition first, classifying 
 - **Don't disable or skip checks as a fix.** A failing CI is information. Only suggest `continue-on-error`, `if: false`, or removing a check if the user explicitly asks — and even then, surface what's being silenced.
 - **Don't fix flakes by retrying until green.** Mark them as flake, file a ticket, move on.
 - **Print commands, don't run them.** Local reproductions and `gh run rerun` etc. are printed for the user.
-- **No fix without a named cause.** Shared rule with `triage-error`.
+- **No fix without a named cause.** Shared rule with `diagnose-failure`.
 
 ## Common patterns
 

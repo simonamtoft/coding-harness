@@ -100,3 +100,9 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Revisit if:** A short `/swarm` alias proves materially more usable than the standard skill command.
 **Evidence:** "Merge the swarm prompt into the swarm skill" and "Remove `/swarm` prompt".
 
+### SKL-17 · Failure diagnosis uses symptom-specific modes
+`accepted` · 2026-09-03 · `01a0670d`
+**Decision:** Merged `triage-error` and `debug-empty-or-zero-output` into `diagnose-failure`, preserving error-first and input-first diagnostic orders as explicit modes. CI investigation and TDD remain separate lifecycle owners.
+**Why:** Both skills shared the same root-cause-first contract and differed primarily in the order dictated by the symptom.
+**Revisit if:** One mode acquires a materially different safety or output contract.
+
