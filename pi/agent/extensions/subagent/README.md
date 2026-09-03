@@ -10,6 +10,7 @@ Bundled roles:
 
 - `presenter` — builds and validates final HTML reports; its write tools are limited to report work
 - `repository-scout` — concise repository reconnaissance
+- `commit-planner` — coherent commit grouping and message planning from a supplied working-tree snapshot
 - `documentation-analyst` — concise documentation analysis
 - `test-log-analyst` — concise test and build-log diagnosis
 - `correctness-reviewer` — correctness and maintainability findings

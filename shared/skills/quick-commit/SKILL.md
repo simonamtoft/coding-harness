@@ -18,11 +18,14 @@ This is the committing counterpart to `generate-commit-message` (which only prin
 
 ## Procedure (in this order)
 
-1. **See the whole working tree.** Run `git status --short`, `git diff` (unstaged), and `git diff --staged`. Read the actual diffs, not just filenames — a rename, a behaviour change, and a reformat look identical from the outside, and the grouping in step 2 depends on what really changed.
+1. **See the whole working tree.** Run `git status --short`, `git diff` (unstaged), and `git diff --staged`. Read the actual diffs, not just filenames — a rename, a behaviour change, and a reformat look identical from the outside. Also collect the repository-style evidence required by `../_shared/commit-message-rules.md`, resolved from this skill directory.
 
-2. **Group changes into coherent commits.** Partition the changed files into the smallest set of groups where each group is *one* logical change (a feature, a fix, a refactor, a docs update, a config tweak). Most trees are a single group — that's the fast path, one commit. When changes span unrelated concerns, split them: each concern is its own commit. If a *single file* mixes concerns, stage it by hunk (`git add -p`) or flag it and ask how to split — don't silently lump.
+2. **Delegate the plan.** Unless the working tree is empty, create a mode-0700 temporary directory under `${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}` and write the complete status, staged and unstaged diffs, repository-style evidence, and any user-stated scope to a mode-0600 snapshot file. Dispatch exactly one cheap, read-only `commit-planner` subagent with the snapshot's absolute path — never put the full diff in the delegation prompt. It must return proposed commit groups, exact paths, messages, mixed-file warnings, and material that must not be committed. Remove the temporary directory after it returns. The parent retains all staging, committing, pushing, and user confirmation.
 
-3. **Draft one message per group** by the shared rules in `../_shared/commit-message-rules.md`, resolved from this skill directory — repo-style detection (the two scripts) plus the one-line format, applied to each group independently.
+   - **Pi:** invoke `subagent` with `agent: commit-planner`, `agentScope: user`, and `cwd` set to the snapshot directory, so its read-only tools can access the snapshot. The task contains only its filename and the requested output.
+   - **Claude Code:** invoke `Task` with `subagent_type: commit-planner` and a prompt containing the snapshot path, requested output, and active working directory.
+
+3. **Validate the proposed groups.** Partition the changed files into the smallest set of groups where each group is *one* logical change (a feature, a fix, a refactor, a docs update, a config tweak). Most trees are a single group — that's the fast path, one commit. When changes span unrelated concerns, split them: each concern is its own commit. If a *single file* mixes concerns, stage it by hunk (`git add -p`) or flag it and ask how to split — don't silently lump. Check the planner's messages against the shared commit-message rules before presenting them.
 
 4. **Show the plan and get one confirmation.** Present a numbered list, in commit order, each entry showing its files and its message:
 
@@ -43,7 +46,7 @@ This is the committing counterpart to `generate-commit-message` (which only prin
 
 - **Never bundle unrelated changes into one commit.** Honouring commit boundaries is the whole point of this skill over a blind `git add -A && git commit`.
 - **Confirm before committing; confirm again before pushing.** One confirmation for the commit plan, a separate one for the push. Committing is reversible (`git reset`), pushing is not.
-- **Read the diff before grouping.** Filenames lie — a rename, a behaviour change, and a reformat look identical from outside.
+- **Read the diff before grouping.** Filenames lie — a rename, a behaviour change, and a reformat look identical from outside. The `commit-planner` is mandatory for non-empty working trees, but the parent validates its proposal before presenting it.
 - **Guard what gets committed.** If a group would stage secrets, credentials, client data, or a large generated blob, stop and flag it rather than committing — surface it and ask. Respect `.gitignore` and any standing "don't commit X" instruction.
 - **Leave pre-existing staged changes alone unless they're in scope.** If the index already holds unrelated staged files the user didn't mention, surface them and ask before folding them into a commit.
 
