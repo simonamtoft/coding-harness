@@ -16,7 +16,7 @@ Entries live in `decisions/`, one file per area. Read only the area your change 
 | Extensions and repository layout | `decisions/extensions.md` | `EXT-` | `pi/agent/extensions`, `pi/agent/packages.txt`, `link.sh`, `claude/` |
 | Skill boundaries | `decisions/skills.md` | `SKL-` | `shared/skills` |
 | Reports | `decisions/reports.md` | `REP-` | `shared/skills/present` |
-| Backlog workflow | `decisions/backlog.md` | `BKL-` | `backlog/` |
+| Backlog workflow | `decisions/backlog.md` | `BKL-` | `backlog/`, the tracker section of `shared/AGENTS.md`, `pi/agent/extensions/backlog-guard` |
 
 ## Using this ledger
 

@@ -57,7 +57,18 @@ Rules for the loop itself:
 - **Feed the specific failure back.** Act on the exact signal — which assertion, which type error, which dependency — not a fresh guess.
 - **Report what was verified.** Name the checks run and disclose anything that could not be tested.
 
-## 5. Present Clearly
+## 5. Task Tracker Commands
+
+**Consult the tracker only when the turn touches tracked work.** This narrows any project instruction that tells you to run `backlog instructions overview` before every request: the triggers below replace that routing step.
+
+- Reach for the tracker when the request names a task or asks about tracker state, when a skill's workflow directs you there, or when you are about to create, plan, update, or finalize tracked work.
+- Run no tracker command for questions, explanations, debugging, code review, retrospectives, commits, or single mechanical edits.
+- The decision can wait. Whether work deserves a task is usually only knowable after investigation, so consult the tracker at the moment you act on it — not before you understand the request.
+- Read the guide for the action you are taking (`backlog instructions task-creation`, `task-execution`, or `task-finalization`) immediately before that action, at most once per session. Its text stays in context; re-reading it buys nothing, and running it to discard the output buys less.
+- Keep discovery cheap: `backlog task list --ready --sort priority --limit 10 --plain`, `backlog search "<query>" --plain`, `backlog task view <id> --plain`. Inspect only the task you selected; avoid bulk view loops and broad JSON listings.
+- Never edit tracker markdown files directly. Use the CLI so metadata, relationships, and history stay consistent.
+
+## 6. Present Clearly
 
 **Use the smallest representation that exposes the important structure.**
 
