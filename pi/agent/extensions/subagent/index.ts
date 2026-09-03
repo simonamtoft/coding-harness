@@ -29,12 +29,13 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
-	isReadOnlyTool,
 	type AgentConfig,
 	type AgentScope,
 	discoverAgents,
+	requiresProjectAgentApproval,
 	validateAgentDefinition,
 	validateRequestedAgents,
+	validateReviewerAgents,
 	validateWriteWorkerCwds,
 } from "./agents.ts";
 import {
@@ -577,7 +578,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && !ctx.hasUI) {
+			if (requiresProjectAgentApproval(agentScope, confirmProjectAgents, ctx.hasUI)) {
 				return {
 					content: [{ type: "text", text: "Project-local agents require explicit approval in headless mode (set confirmProjectAgents to false only for a trusted project)." }],
 					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
@@ -1198,12 +1199,7 @@ export default function (pi: ExtensionAPI) {
 			const reviewerNames = params.security
 				? ["correctness-reviewer", "security-reviewer"]
 				: ["correctness-reviewer"];
-			const reviewerValidation = validateRequestedAgents(discovery.agents, reviewerNames);
-			const reviewerHasInvalidScope = reviewerNames.some((name) => {
-				const reviewer = discovery.agents.find((agent) => agent.name === name);
-				return !reviewer || reviewer.source !== "user" || reviewer.writable || reviewer.tools.some((tool) => !isReadOnlyTool(tool));
-			});
-			const reviewerError = discovery.error ?? reviewerValidation ?? (reviewerHasInvalidScope ? "required reviewers must be validated user-level read-only agents" : undefined);
+			const reviewerError = discovery.error ?? validateReviewerAgents(discovery.agents, reviewerNames);
 			if (reviewerError) throw new Error(`Review dispatch failed closed: ${reviewerError}`);
 			const focus = params.focus?.length ? params.focus.map((file) => `- ${file}`).join("\n") : "- Entire supplied change set";
 			const task = [

@@ -88,15 +88,27 @@ function realpathOrNull(value: string): string | null {
 }
 
 export function validateRequestedAgents(agents: AgentConfig[], requestedNames: string[]): string | undefined {
-	const requested = new Set<string>();
 	for (const name of requestedNames) {
-		requested.add(name);
 		const agent = agents.find((candidate) => candidate.name === name);
 		if (!agent) return `unknown agent: ${name}`;
 		const error = validateAgentDefinition(agent);
 		if (error) return `invalid agent ${name}: ${error}`;
 	}
 	return undefined;
+}
+
+export function requiresProjectAgentApproval(scope: AgentScope, confirmProjectAgents: boolean, hasUI: boolean): boolean {
+	return (scope === "project" || scope === "both") && confirmProjectAgents && !hasUI;
+}
+
+export function validateReviewerAgents(agents: AgentConfig[], reviewerNames: string[]): string | undefined {
+	const requestError = validateRequestedAgents(agents, reviewerNames);
+	if (requestError) return requestError;
+	const invalidReviewer = reviewerNames.some((name) => {
+		const reviewer = agents.find((agent) => agent.name === name);
+		return !reviewer || reviewer.source !== "user" || reviewer.writable || reviewer.tools.some((tool) => !isReadOnlyTool(tool));
+	});
+	return invalidReviewer ? "required reviewers must be validated user-level read-only agents" : undefined;
 }
 
 /**
@@ -243,11 +255,12 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
-export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
-	const userDir = path.join(getAgentDir(), "agents");
-	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
-	const modelOverrides = loadModelOverrides();
-
+export function discoverAgentsInDirectories(
+	userDir: string,
+	projectAgentsDir: string | null,
+	scope: AgentScope,
+	modelOverrides: Record<string, string> = {},
+): AgentDiscoveryResult {
 	const applyModelOverrides = (agents: AgentConfig[]) =>
 		agents.map((agent) => ({ ...agent, model: modelOverrides[agent.name] ?? agent.model }));
 	const userAgents = scope === "project" ? [] : applyModelOverrides(loadAgentsFromDir(userDir, "user"));
@@ -264,6 +277,15 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	}
 
 	return { agents: selectedAgents, projectAgentsDir };
+}
+
+export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
+	return discoverAgentsInDirectories(
+		path.join(getAgentDir(), "agents"),
+		findNearestProjectAgentsDir(cwd),
+		scope,
+		loadModelOverrides(),
+	);
 }
 
 export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {
