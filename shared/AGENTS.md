@@ -19,6 +19,10 @@ Before implementing:
 - Do not add features, configuration, or flexibility for hypothetical requirements.
 - Do not introduce an abstraction solely for anticipated reuse. A single-use abstraction must clarify a domain concept, contract, or ownership boundary.
 - Do not add defensive handling for scenarios prevented by types, validation, or another enforced invariant.
+- At system boundaries, validate and parse external data into trusted, project-owned values. Report validation failures according to repository convention; do not silently coerce them or repeat validation after the invariant is enforced.
+- Prefer representations that make invalid combinations unconstructable where practical. Introduce stronger types or value objects only for a demonstrated partial operation or semantic mix-up.
+- Treat unchecked assertions and coercions as hazards: establish the fact through validation, narrowing, or an explicit, documented boundary assumption rather than hiding uncertainty from the code.
+- When an authoritative schema or model defines a shape, derive from it rather than maintaining a duplicate definition.
 - Name recurring, domain-significant, or specification-defined values. Keep self-explanatory one-off literals inline.
 - Keep new fields, functions, and types private unless a current requirement needs broader access. Treat increased visibility as a public API decision, not a convenience.
 - If the implementation is substantially larger than the problem requires, simplify it.
@@ -38,11 +42,8 @@ Document a deliberate limitation only when a future maintainer could reasonably 
 
 ### Comments
 
-- Prefer clear names and structure over explanatory comments.
-- Add comments only for information the code cannot express: non-obvious intent, invariants, constraints, tradeoffs, or external quirks.
-- Add doc comments only when an API has a non-obvious contract, side effect, failure mode, unit, or lifecycle requirement. Do not paraphrase the signature.
-- Do not add comments that narrate the code, label obvious sections, preserve change history, or contain disabled code.
-- When changing code, update or remove comments that are no longer accurate.
+- Prefer clear names and structure over explanatory comments. Add comments only for non-obvious intent, invariants, constraints, tradeoffs, or external quirks; add doc comments only for a non-obvious contract, side effect, failure mode, unit, or lifecycle requirement—not to paraphrase the signature.
+- Do not add comments that narrate the code, label obvious sections, preserve change history, or contain disabled code. Update or remove comments that are no longer accurate.
 
 ## 4. Goal-Driven Execution
 
@@ -63,10 +64,9 @@ Rules for the loop itself:
 
 **Consult the tracker only when the turn touches tracked work.** This narrows any project instruction that tells you to run `backlog instructions overview` before every request.
 
-- Reach for the tracker when the request names a task or asks about tracker state, when a skill's workflow directs you there, or when you are about to create, plan, update, or finalize tracked work. Questions, explanations, debugging, code review, retrospectives, commits, and single mechanical edits need no tracker command at all.
-- Whether work deserves a task is usually only knowable after investigation, so consult the tracker at the moment you act on it rather than before you understand the request. The exception is a skill that mandates a tracker read as its first action: that read *is* the disambiguation, so do it before asking the user anything.
-- Read `backlog instructions overview` for the shape of the current work, and the guide for the action you are taking (`task-creation`, `task-execution`, or `task-finalization`) immediately before that action. Read each at most once per session.
-- Keep discovery cheap: `backlog task list --ready --sort priority --limit 10 --plain`, `backlog search "<query>" --plain`, `backlog task view <id> --plain`. Inspect only the task you selected; avoid bulk view loops and broad JSON listings.
+- Consult the tracker when a request names a task or asks about tracker state, a skill directs it, or before creating, planning, updating, or finalizing tracked work. Skip it for questions, explanations, debugging, code review, retrospectives, commits, and single mechanical edits.
+- Whether work needs a task is normally known only after investigation, so consult it when acting on the work. A skill that mandates a first tracker read is the exception; that read is the disambiguation.
+- Before a task lifecycle action, read `backlog instructions overview` and the matching `task-creation`, `task-execution`, or `task-finalization` guide, each at most once per session. Keep discovery targeted: use `backlog task list --ready --sort priority --limit 10 --plain`, `backlog search "<query>" --plain`, or `backlog task view <id> --plain`; inspect only the selected task and avoid bulk view loops or broad JSON listings.
 - Never edit tracker markdown files directly. Use the CLI so metadata, relationships, and history stay consistent.
 
 ## 6. Present Clearly

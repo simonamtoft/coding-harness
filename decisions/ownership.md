@@ -37,3 +37,10 @@ Decision ledger area. Entry ids use the `OWN-` prefix; see `../DECISIONS.md` for
 **Decision:** Rejected converting the ledger to classic ADRs (one numbered file per decision, Context/Decision/Consequences). Split the single 497-line file into per-area files under `decisions/` keyed by an id prefix, keeping the existing entry format and adding stable `PREFIX-NN` ids.
 **Why:** The entry format already carries status, decision, context, and the `Revisit if` condition ADR lacks; the actual problem was read cost, since consulting one area meant loading the whole file. Per-decision files would need an index anyway and turn an area read into ~70 file reads.
 **Revisit if:** Entries need independent lifecycle or review per decision, or an external ADR tool is adopted.
+
+### OWN-07 · Universal guidance stays principled, not templated
+`accepted` · 2026-09-04 · `01a06b63`
+**Decision:** Replace the proposed TypeScript-specific skill with concise, language-neutral boundary and model guidance in `shared/AGENTS.md`. Refuse universal DTO, Pydantic, TypeScript, or C# templates and repository-layout prescriptions.
+**Why:** Concrete schema libraries, transport-to-domain mapping, and project structure depend on each repository's framework and architectural conventions; a shared template would impose misleading defaults. The durable cross-language value is in boundary validation, constructive representations, proportionate strengthening, evidence for unchecked coercions, and deriving from authoritative definitions.
+**Revisit if:** Repositories using the same stack demonstrate a recurring, stable template need with session evidence.
+**Evidence:** "Universal guidance."
