@@ -20,6 +20,8 @@ Before implementing:
 - Do not introduce an abstraction solely for anticipated reuse. A single-use abstraction must clarify a domain concept, contract, or ownership boundary.
 - Do not add defensive handling for scenarios prevented by types, validation, or another enforced invariant.
 - At system boundaries, validate and parse external data into trusted, project-owned values. Report validation failures according to repository convention; do not silently coerce them or repeat validation after the invariant is enforced.
+- Do not make transport, storage, or framework representations domain-facing contracts without a demonstrated reason.
+- Always separate persistence-specific reads and writes from distinct domain, business, calculation, or workflow logic; expose focused operations or values instead of storage details.
 - Prefer representations that make invalid combinations unconstructable where practical. Introduce stronger types or value objects only for a demonstrated partial operation or semantic mix-up.
 - Treat unchecked assertions and coercions as hazards: establish the fact through validation, narrowing, or an explicit, documented boundary assumption rather than hiding uncertainty from the code.
 - When an authoritative schema or model defines a shape, derive from it rather than maintaining a duplicate definition.
