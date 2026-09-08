@@ -50,3 +50,9 @@ Decision ledger area. Entry ids use the `EXT-` prefix; see `../DECISIONS.md` for
 **Decision:** The browser tool may reach only the exact `localhost:<port>` assigned to that worktree.
 **Why:** Chosen over general local browser access.
 **Revisit if:** Worktree applications need multiple local origins.
+
+### EXT-09 · Bash results are cut to 16 KB and re-spilled to a private artifact
+`accepted` · 2026-09-08 · `01a08143`, `01a0810b`
+**Decision:** `bash-result-limiter` replaces every oversized bash result with a 16 KB tail, well below Pi's own 50 KB default, and copies the full output into a mode-0600 file in `PI_SESSION_TMPDIR` instead of pointing at Pi's spilled file. Both the model-facing marker and the result's `details.fullOutputPath` name that copy; Pi's original spilled file is left in place. The limiter does its own byte-bounded, line-aligned tail rather than calling the package's `truncateTail`.
+**Why:** 16 KB comes from observed session behaviour, not from a formula. Pi writes spilled output through `createWriteStream` into the shared `os.tmpdir()` with default permissions, so the copy is the privacy boundary; deleting Pi's original is unsafe because Pi still references it. `truncateTail` is unresolvable under `bun test` in this repository, so depending on it forces either an injected seam with a diverging test double or an untested code path.
+**Revisit if:** Pi spills output with restrictive permissions or into the session directory, the retained size stops matching how sessions actually consume bash output, or the repository gains a resolvable dependency on the Pi package in tests.
