@@ -44,3 +44,10 @@ Decision ledger area. Entry ids use the `OWN-` prefix; see `../DECISIONS.md` for
 **Why:** Concrete schema libraries, transport-to-domain mapping, and project structure depend on each repository's framework and architectural conventions; a shared template would impose misleading defaults. The durable cross-language value is in boundary validation, constructive representations, proportionate strengthening, evidence for unchecked coercions, and deriving from authoritative definitions.
 **Revisit if:** Repositories using the same stack demonstrate a recurring, stable template need with session evidence.
 **Evidence:** "Universal guidance."
+
+### OWN-08 · Prefer durable contract tests over high-fidelity test hierarchy
+`accepted` · 2026-09-08 · `01a081aa`
+**Decision:** Replace the universal end-to-end → integration → unit preference with guidance to test stable contracts at their owning layer, and use visual or manual verification for one-off editorial and layout changes.
+**Why:** A fidelity-first hierarchy encouraged browser tests that encoded presentation copy, structure, ordering, and layout details, creating volatile tests with little regression value.
+**Revisit if:** Repositories demonstrate that the guidance systematically misses regressions that a broader browser suite would catch.
+**Evidence:** "stop creating useless tests that are very volatile"

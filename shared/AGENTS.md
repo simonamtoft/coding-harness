@@ -56,7 +56,8 @@ For multi-step work, state the success criteria and a brief plan. Skip the plan 
 Rules for the loop itself:
 
 - **Verification is external, not self-asserted.** Actually run the check — test, typecheck, lint, the app, or observability the repo exposes (traces, logs, tools like Langfuse).
-- **Prefer the highest-fidelity check that's practical.** Choose the check closest to the changed user-visible behavior: end-to-end → integration → unit.
+- **Choose the narrowest durable check that owns the behavior.** Use end-to-end tests when a real user journey or cross-boundary contract needs protection; otherwise prefer focused unit or component checks over broad browser automation.
+- **Add permanent tests only for stable, meaningful contracts**—business rules, state transitions, public interfaces, critical journeys, or demonstrated regressions. Do not test incidental copy, DOM structure, ordering, CSS classes, layout geometry, or implementation attributes unless they are the explicit product contract. Use visual or manual verification for one-off editorial and layout changes; prefer no test to a volatile test.
 - **Reproduce bugs before fixing them when practical.** Add a regression test first when practical, observe it fail for the reported behavior, then pass after the fix. If local reproduction is not possible, use the closest observable signal and state the limitation.
 - **Characterize behavior before structural refactors.** When changing complex or untested control flow, first cover branches, side effects, ordering, and failure paths with tests.
 - **Feed the specific failure back.** Act on the exact signal — which assertion, which type error, which dependency — not a fresh guess.
