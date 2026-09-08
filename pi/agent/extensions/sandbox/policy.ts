@@ -209,10 +209,14 @@ export function shellPathCandidates(command: string): string[] {
       .replace(/"(?:\\.|[^"\\])*"/g, (value) => value.slice(1, -1))
       .split(/\s+/)
       .map((token) => token.replace(/^[([{;,]+|[)\]},;&]+$/g, ""));
+    const isBracketTest = /^\s*(?:if\s+)?(?:\[\[|\[)(?:\s|$)/.test(segment);
     return tokens.filter((token, index) => {
       if (!token) return false;
       if (index === 0 && isSystemCommand(token)) return false;
-      return looksLikePath(token) || isProtectedSecretPath(token);
+      const isRootComparisonValue = isBracketTest
+        && token === "/"
+        && ["=", "==", "!=", "=~"].some((operator) => operator === tokens[index - 1] || operator === tokens[index + 1]);
+      return !isRootComparisonValue && (looksLikePath(token) || isProtectedSecretPath(token));
     });
   });
 }

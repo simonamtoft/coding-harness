@@ -163,6 +163,14 @@ test("ordinary Bash commands do not require path inspection", () => {
   assert.deepEqual(shellPathCandidates("git status && npm test"), []);
 });
 
+test("root-path comparisons in shell tests are not filesystem candidates", () => {
+  assert.deepEqual(shellPathCandidates('[[ "$PI_SESSION_TMPDIR" != "/" ]]'), []);
+  assert.deepEqual(shellPathCandidates('[[ "/" != "$PI_SESSION_TMPDIR" ]]'), []);
+  assert.deepEqual(shellPathCandidates('if [[ "$PI_SESSION_TMPDIR" == "/" ]]; then echo invalid; fi'), []);
+  assert.deepEqual(shellPathCandidates("[[ -d / ]]"), ["/"]);
+  assert.deepEqual(shellPathCandidates("cd /"), ["/"]);
+});
+
 test("the POSIX null device does not require path inspection", () => {
   assert.deepEqual(shellPathCandidates("git diff --no-index -- /dev/null file.txt"), []);
   assert.deepEqual(shellPathCandidates("command > /dev/null"), []);
