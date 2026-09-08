@@ -1,6 +1,7 @@
 ---
 name: implementation-worker
 description: Bounded implementation slice in a coordinator-provided isolated worktree
+model: openai-codex/gpt-5.6-terra
 tools: read, grep, find, ls, bash, edit, write
 ---
 

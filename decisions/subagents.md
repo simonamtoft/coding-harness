@@ -50,6 +50,7 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Decision:** Agent definitions are committed, but provider/model mappings live in the untracked `~/.pi/agent/subagents.json`.
 **Why:** Provider names, model ids, credentials, cost policy, and availability vary per machine.
 **Revisit if:** A portable model-configuration format with per-machine overrides exists.
+**Superseded by:** SUB-14.
 
 ### SUB-09 · The presenter never changed the parent's model
 `rejected` · 2026-08-24 · `01a033ac`
@@ -84,3 +85,10 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Claude declares `tools` without an enforcing validator, so a partial check in a Pi suite would suggest a write boundary it does not cover; `check-bash.sh` and `check-edit-scope.sh` remain the actual enforcement. `implementation-worker` cannot port at all, since Claude has no coordinator-provided worktree contract.
 **Revisit if:** Claude gains agent-level tool enforcement, or a Claude stub is found running without its brief.
 **Evidence:** "I will test claude at some other point"
+
+### SUB-14 · Canonical subagent models use built-in providers by role
+`accepted` · 2026-09-08 · `01a0825e`
+**Decision:** Commit model pins for every canonical Pi role using only built-in `openai-codex` or `anthropic` providers. Use OpenAI Codex Luna for low-risk utility roles and Terra for implementation; use Anthropic Sonnet 5 for correctness review and Opus 4.8 for security review. Machine-local `subagents.json` retains higher precedence for provider, model, credentials, and cost policy.
+**Why:** Custom `IM-GPT` is machine-wired and must not be a portable canonical dependency. Separating OpenAI Codex implementation from Anthropic review also gives correctness and security review an independent provider perspective.
+**Revisit if:** Built-in provider availability, model quality, cost policy, or the desired implementation/review diversity changes.
+**Evidence:** "I wanted to use default provider, as in openai-codex or anthropic, and not IM-GPT"

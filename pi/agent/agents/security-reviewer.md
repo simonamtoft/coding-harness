@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Independent threat-focused review of changed code for exploitable security defects
-model: openai-codex/gpt-5.6-sol
+model: anthropic/claude-opus-4-8
 tools: read, grep, find, ls
 ---
 

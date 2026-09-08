@@ -104,7 +104,9 @@ describe("agent discovery", () => {
 		writeAgent(userDir, { name: "repository-scout" });
 		writeAgent(projectDir, { name: "documentation-analyst" });
 
-		expect(discoverAgentsInDirectories(userDir, projectDir, "user").agents.map((entry) => entry.name)).toEqual(["repository-scout"]);
+		const userDiscovery = discoverAgentsInDirectories(userDir, projectDir, "user");
+		expect(userDiscovery.agents.map((entry) => entry.name)).toEqual(["repository-scout"]);
+		expect(userDiscovery.agents[0]?.model).toBeUndefined();
 		expect(discoverAgentsInDirectories(userDir, projectDir, "project").agents.map((entry) => entry.name)).toEqual(["documentation-analyst"]);
 		expect(discoverAgentsInDirectories(userDir, projectDir, "both").agents.map((entry) => entry.name)).toEqual(["repository-scout", "documentation-analyst"]);
 

@@ -1,7 +1,7 @@
 ---
 name: commit-planner
 description: Read-only commit-boundary analysis from a supplied Git working-tree snapshot
-model: IM-GPT/gpt-5.6-luna
+model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls
 ---
 

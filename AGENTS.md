@@ -31,7 +31,7 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.
 - `link.sh` defines link topology and Pi package installation. Preserve its refusal and backup behavior for existing targets.
-- Do not commit credentials, authentication state, provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`.
+- Do not commit credentials, authentication state, machine-local provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`. Canonical built-in model defaults in `pi/agent/agents/` are the exception; local `subagents.json` overrides remain untracked.
 - Update `README.md` with changes to link behavior, layout, installation, or ownership boundaries.
 
 ## Decision ledger

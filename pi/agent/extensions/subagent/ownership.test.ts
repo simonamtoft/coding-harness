@@ -30,11 +30,15 @@ const piAgentFiles = readdirSync(piAgentsDir)
 	.filter((name) => name.endsWith(".md") && name !== "AGENTS.md")
 	.map((name) => join(piAgentsDir, name));
 
-const piAgents = piAgentFiles.map((filePath) => ({
-	filePath,
-	name: readFileSync(filePath, "utf-8").match(/^name:\s*(\S+)$/m)?.[1] ?? "",
-	content: readFileSync(filePath, "utf-8"),
-}));
+const piAgents = piAgentFiles.map((filePath) => {
+	const content = readFileSync(filePath, "utf-8");
+	return {
+		filePath,
+		name: content.match(/^name:\s*(\S+)$/m)?.[1] ?? "",
+		model: content.match(/^model:\s*(\S+)$/m)?.[1] ?? "",
+		content,
+	};
+});
 
 const skillFiles = markdownFilesIn(skillsDir);
 
@@ -47,6 +51,18 @@ const ownerTexts = [
 describe("subagent ownership", () => {
 	test("every Pi agent declares a name", () => {
 		expect(piAgents.filter((agent) => !agent.name).map((agent) => agent.filePath)).toEqual([]);
+	});
+
+	test("canonical agents use built-in providers at role-appropriate tiers", () => {
+		expect(Object.fromEntries(piAgents.map((agent) => [agent.name, agent.model]))).toEqual({
+		"commit-planner": "openai-codex/gpt-5.6-luna",
+		"correctness-reviewer": "anthropic/claude-sonnet-5",
+		"implementation-worker": "openai-codex/gpt-5.6-terra",
+		presenter: "openai-codex/gpt-5.6-luna",
+		"repository-scout": "openai-codex/gpt-5.6-luna",
+		"security-reviewer": "anthropic/claude-opus-4-8",
+		"test-log-analyst": "openai-codex/gpt-5.6-luna",
+	});
 	});
 
 	test("every Pi agent is named by an owning skill or by dispatch code", () => {

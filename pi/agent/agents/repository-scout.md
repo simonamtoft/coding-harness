@@ -1,6 +1,7 @@
 ---
 name: repository-scout
 description: Concise read-only reconnaissance of repository structure, conventions, and relevant implementation paths
+model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls
 ---
 
