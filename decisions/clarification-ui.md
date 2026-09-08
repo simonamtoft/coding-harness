@@ -34,3 +34,9 @@ Decision ledger area. Entry ids use the `ASK-` prefix; see `../DECISIONS.md` for
 **Decision:** Opt-in multi-select questions use `multiple: true` and return an ordered string array; any typed custom answer appends to the selected labels. Ordinary questions continue returning a string.
 **Why:** Callers can distinguish one answer from several without changing the established single-select shape, and choosing “other” must not discard the explicit selections.
 **Revisit if:** Consumers need a richer per-selection source or identifier than a displayed label.
+
+### ASK-06 · Explicit native clarification calls with five optional choices
+`accepted` · 2026-09-08 · `01a080cf`
+**Decision:** Prompt guidance explicitly requires `ask_question` rather than prose for blocking clarifications. Options are optional and model-chosen, capped at five.
+**Why:** A `/grill` session asked fifteen blocking questions in prose despite the prior mandatory gate; three choices were unnecessarily restrictive. The existing panel remains for up to three choices; four and five use Pi’s scrolling native selector.
+**Revisit if:** Models still bypass the explicit instruction, requiring runtime enforcement, or option counts need scrolling or search.
