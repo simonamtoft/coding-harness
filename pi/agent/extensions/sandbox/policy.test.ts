@@ -12,6 +12,7 @@ import {
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   playwrightBrowsersRoot,
+  permitsRootVerifierScriptBashReference,
   requestResearchVaultConfirmation,
   researchVaultBashOperation,
   researchVaultBashPaths,
@@ -122,12 +123,35 @@ test("project-local instruction files remain writable", () => {
   assert.equal(isControlPlaneWriteBlocked(project, "/Users/example/projects/other/AGENTS.md", harness, plugins), true);
 });
 
+test("repository-root verifier scripts remain writable", () => {
+  const project = "/Users/example/projects/app";
+
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/verify.sh`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/diagnostics.sh`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/nested/.agent/verify.sh`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${project}/nested/.agent/diagnostics.sh`, harness, plugins), true);
+});
+
+test("Bash can stage or mark root verifier scripts executable without executing them", () => {
+  const project = "/Users/example/projects/app";
+  const verifyScript = `${project}/.agent/verify.sh`;
+  const diagnosticsScript = `${project}/.agent/diagnostics.sh`;
+
+  assert.equal(permitsRootVerifierScriptBashReference("git add -- .agent/verify.sh docs/test-audit.md", project, verifyScript), true);
+  assert.equal(permitsRootVerifierScriptBashReference(`git add -- ${verifyScript}`, project, verifyScript), true);
+  assert.equal(permitsRootVerifierScriptBashReference("chmod +x .agent/diagnostics.sh", project, diagnosticsScript), true);
+  assert.equal(permitsRootVerifierScriptBashReference(`chmod +x ${diagnosticsScript}`, project, diagnosticsScript), true);
+  assert.equal(permitsRootVerifierScriptBashReference("./.agent/verify.sh", project, verifyScript), false);
+  assert.equal(permitsRootVerifierScriptBashReference("bash .agent/verify.sh", project, verifyScript), false);
+  assert.equal(permitsRootVerifierScriptBashReference("git add -- .agent/verify.sh && ./.agent/verify.sh", project, verifyScript), false);
+  assert.equal(permitsRootVerifierScriptBashReference("git add .agent/verify.sh $(./.agent/verify.sh)", project, verifyScript), false);
+  assert.equal(permitsRootVerifierScriptBashReference("chmod +x .agent/verify.sh .agent/diagnostics.sh", project, verifyScript), false);
+});
+
 test("other control-plane writes are allowed only from coding-harness sessions", () => {
   const project = "/Users/example/projects/app";
 
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.pi/extensions/demo.ts`, harness, plugins), true);
-  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/verify.sh`, harness, plugins), true);
-  assert.equal(isControlPlaneWriteBlocked(project, `${project}/.agent/diagnostics.sh`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.git/hooks/pre-commit`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(worktreePlugin, `${worktreePlugin}/extensions/index.ts`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(harness, `${harness}/pi/agent/extensions/sandbox/index.ts`, harness, plugins), false);

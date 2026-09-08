@@ -12,6 +12,7 @@ import {
   hasResearchVaultReadAccess,
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
+  permitsRootVerifierScriptBashReference,
   isWithin,
   playwrightBrowsersRoot,
   requestResearchVaultConfirmation,
@@ -252,6 +253,13 @@ export function createSandboxGuard(
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);
+        const rootVerifierScript = inspection.resolved
+          && isWithin(root, inspection.resolved)
+          && (inspection.resolved === join(root, ".agent", "verify.sh")
+            || inspection.resolved === join(root, ".agent", "diagnostics.sh"));
+        if (rootVerifierScript && !permitsRootVerifierScriptBashReference(event.input.command, root, inspection.resolved!)) {
+          return block(`${candidate}: Bash execution of repository verifier scripts is blocked`);
+        }
         if (inspection.resolved
           && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
           return block(`${candidate}: Bash access to the agent control plane requires a coding-harness session`);

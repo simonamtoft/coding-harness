@@ -44,13 +44,19 @@ host-side boundary to model tool calls:
   this does not grant sibling home-directory access.
 - `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
-- Project-local `AGENTS.md`/`CLAUDE.md` instruction files remain writable.
+- Project-local `AGENTS.md`/`CLAUDE.md` instruction files and the active
+  repository's root `.agent/verify.sh` and `.agent/diagnostics.sh` remain
+  writable. The verifier scripts are the established cross-harness project
+  contract, and Pi's verifier trust gate asks before executing changed content.
   Other agent control-plane writes are restricted to sessions started inside the
   canonical `coding-harness` checkout. Elsewhere, file tools cannot change
   instruction files outside the active project, `.pi` or `.agents` resources,
-  `.agent/verify.sh`, Git config/hooks, or plugin checkout content. Bash calls
-  that explicitly name those protected paths are also blocked; indirect Bash
-  mutation remains subject to the lexical-boundary limitation below.
+  nested `.agent/verify.sh` or `.agent/diagnostics.sh`, Git config/hooks, or
+  plugin checkout content. Bash may stage the root verifier scripts with `git
+  add` or mark them executable with `chmod +x`, but cannot execute them directly;
+  execution goes through the verifier trust gate. Bash calls that explicitly name
+  other protected paths are blocked; indirect Bash mutation remains subject to
+  the lexical-boundary limitation below.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
   the project.

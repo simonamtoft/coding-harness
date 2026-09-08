@@ -90,3 +90,9 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** The canonical personal research vault is a location-scoped exception: direct filesystem reads and its documented read-only ingestion/status commands are automatic, while file mutations and the documented hash-stamping Bash command need an interactive, one-time confirmation. Other Bash commands naming the vault remain blocked.
 **Why:** Durable research needs efficient access to its raw material and notes, but allowing a general external-write or Bash exception would weaken the project boundary. Resolving documented command operands before checking preserves secret-path denial and prevents a vault symlink from granting access elsewhere.
 **Revisit if:** The vault moves, gains a machine-enforced capability boundary, or its documented command workflow changes.
+
+### SBX-15 · Permit only root verifier-contract scripts
+`accepted` · 2026-09-08 · `01a081d6`
+**Decision:** Sessions outside `coding-harness` may modify only their active repository's `.agent/verify.sh` and `.agent/diagnostics.sh`; Bash may stage them or mark them executable but cannot execute them directly. Nested copies and other control-plane paths remain restricted.
+**Why:** These two scripts are the documented cross-harness verifier contract, and blocking them prevented normal commits. Moving the contract would add churn without strengthening the boundary because the existing writable Taskfile `verify` fallback has equivalent execution capability. Pi's verifier trust gate approves repository-controlled verifier content before execution, so the Bash exception must not bypass that gate.
+**Revisit if:** The verifier contract no longer uses these project-root scripts, or verification execution receives a stronger isolated trust boundary.

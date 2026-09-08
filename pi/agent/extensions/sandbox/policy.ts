@@ -123,6 +123,28 @@ function isProjectControlPath(path: string): boolean {
   return gitIndex !== -1 && (segments[gitIndex + 1] === "config" || segments[gitIndex + 1] === "hooks");
 }
 
+function isRootVerifierScript(sessionRoot: string, targetPath: string): boolean {
+  if (!isWithin(sessionRoot, targetPath)) return false;
+  const pathFromRoot = relative(sessionRoot, targetPath);
+  return pathFromRoot === join(".agent", "verify.sh") || pathFromRoot === join(".agent", "diagnostics.sh");
+}
+
+/** Allows staging and marking the verifier executable without allowing Bash to run it directly. */
+export function permitsRootVerifierScriptBashReference(command: string, root: string, script: string): boolean {
+  if (/[\r\n$`<>|;&()*?\[\]{}\\!]/.test(command)) return false;
+
+  const trimmed = command.trim();
+  if (/^git add(?:\s+--)?(?:\s+[^\s]+)+$/.test(trimmed)) return true;
+
+  const chmod = /^chmod\s+(?:[ugoa]*\+x)\s+(.+)$/.exec(trimmed);
+  if (!chmod) return false;
+  const operand = chmod[1];
+  const unquoted = (operand.startsWith('"') && operand.endsWith('"')) || (operand.startsWith("'") && operand.endsWith("'"))
+    ? operand.slice(1, -1)
+    : operand;
+  return resolve(root, unquoted) === script;
+}
+
 export function isControlPlaneWriteBlocked(
   sessionRoot: string,
   targetPath: string,
@@ -132,6 +154,7 @@ export function isControlPlaneWriteBlocked(
   if (isWithin(codingHarnessRoot, sessionRoot)) return false;
   if (isWithin(pluginWorkspaceRoot, targetPath)) return true;
   if (isProjectInstructionPath(targetPath) && isWithin(sessionRoot, targetPath)) return false;
+  if (isRootVerifierScript(sessionRoot, targetPath)) return false;
   return isProjectControlPath(targetPath);
 }
 
