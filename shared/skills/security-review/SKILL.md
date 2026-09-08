@@ -5,51 +5,15 @@ description: Threat-focused review of a prepared Git change set for concrete exp
 
 # Security review
 
-Review the supplied change set as an independent security evaluator. Produce findings only; do not modify files.
+Independent, findings-only security review of a prepared change set. The review itself never modifies files.
 
-## Method
+`SECURITY-REVIEWER.md` in this skill directory is the reviewer brief: the threat method, exclusions, and required finding shape. Read it and follow it when performing the review, whether you are the dispatched reviewer or reviewing directly.
 
-1. Read the supplied review bundle to establish the changed attack surface.
-2. Identify assets, trust boundaries, identities, privileges, and attacker-controlled inputs touched by the change.
-3. Inspect affected files plus relevant callers, middleware, validation, configuration, persistence, and tests.
-4. Check applicable classes only:
-   - authentication and authorization gaps;
-   - injection into shells, queries, templates, paths, URLs, or interpreters;
-   - SSRF, path traversal, unsafe redirects, and unsafe deserialization;
-   - secret, credential, token, or personal-data exposure;
-   - insecure defaults, fail-open behavior, and privilege escalation;
-   - cryptographic misuse and broken integrity assumptions;
-   - race conditions or replay behavior with a security consequence;
-   - dependency or infrastructure changes that introduce a demonstrated risk.
-5. Trace a plausible attack path from attacker capability to impact. Search for controls elsewhere that may block it.
+## Dispatch
 
-## Exclusions
+The `security-reviewer` role owns this brief.
 
-Do not report:
+- **Pi:** `review_changes` with `security: true` prepares the bundle and dispatches `security-reviewer`, which reads the same brief.
+- **Claude Code:** review directly against the brief, or invoke `Task` with a read-only subagent type and a prompt naming the bundle path and this brief.
 
-- generic hardening advice without an attack path;
-- dependency reputation concerns without repository-specific evidence;
-- style or maintainability issues without security impact;
-- vulnerabilities outside the supplied change set unless the change exposes or worsens them;
-- claims contradicted by enforced validation, middleware, or platform guarantees.
-
-## Output
-
-Order findings by severity. Use this exact shape for each finding:
-
-```markdown
-## [severity] Short vulnerability title
-- Location: `path/to/file.ext:line`
-- Confidence: high | medium
-- Attack path: Attacker capability → triggering input/action → security impact.
-- Evidence: Why existing controls do not prevent it.
-- Direction: The smallest reasonable mitigation.
-```
-
-Allowed severities: `critical`, `high`, `medium`, `low`.
-
-If there are no actionable findings, output exactly:
-
-```markdown
-No actionable security findings.
-```
+Run it only for changes affecting authentication, authorization, secrets, cryptography, untrusted input, network or filesystem trust boundaries, dependency security, or security configuration — or when the user explicitly asks.

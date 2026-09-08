@@ -23,6 +23,17 @@ Find the root cause before proposing a fix. Select one mode from the observed sy
 
 Read-only repository lookups are allowed. Print mutating or environment-changing diagnostic commands for the user unless they explicitly authorize execution. If the first hypothesis is disproved, say so and restart from the relevant mode rather than stacking speculative fixes.
 
+## Delegating an oversized log
+
+Diagnose from the log yourself whenever you can see it. Oversized results are truncated tail-first, and the tail is where the failing assertion and summary usually are.
+
+Dispatch the `test-log-analyst` role only when both hold: the retained output was truncated to an artifact on disk, and the retained tail does not establish the failing check. Give it the artifact's absolute path — never paste the log into the prompt — and treat its answer as evidence to confirm, not as the diagnosis. `TEST-LOG-ANALYST.md` in this skill directory is its brief.
+
+- **Pi:** invoke `subagent` with `agent: test-log-analyst` and `agentScope: user`. The task contains the artifact path and the failing command.
+- **Claude Code:** invoke `Task` with `subagent_type: test-log-analyst` and a prompt containing the artifact path, the failing command, and the active working directory.
+
+The root cause, the correction, and the verification stay with you.
+
 ## Error mode
 
 Investigate in this order:

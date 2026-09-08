@@ -6,16 +6,17 @@ Adapted from Pi's bundled `examples/extensions/subagent/` implementation. It exp
 
 Bundled definitions live in this repository under `pi/agent/agents/` and are linked to `~/.pi/agent/agents/`. Additional definitions may be discovered at runtime from the user directory and, only when explicitly requested, the nearest project `.pi/agents/` directory.
 
-Bundled roles:
+Every role is owned by one skill or by extension dispatch code, and its brief lives once in the owning skill directory. The agent file is frontmatter plus a pointer to that brief.
 
-- `presenter` — builds and validates final HTML reports; its write tools are limited to report work
-- `repository-scout` — concise repository reconnaissance
-- `commit-planner` — coherent commit grouping and message planning from a supplied working-tree snapshot
-- `documentation-analyst` — concise documentation analysis
-- `test-log-analyst` — concise test and build-log diagnosis
-- `correctness-reviewer` — correctness and maintainability findings
-- `security-reviewer` — threat-focused security findings
-- `implementation-worker` — the only writable swarm role; bounded slices require a coordinator-provided isolated cwd
+Bundled roles and their owners:
+
+- `presenter` — final HTML reports; owned by `present`. Its write tools are limited to report work
+- `commit-planner` — commit grouping and messages from a supplied working-tree snapshot; owned by `quick-commit`
+- `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `review_changes`
+- `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `review_changes`
+- `test-log-analyst` — diagnosis of an oversized test or build log artifact; owned by `diagnose-failure`
+- `repository-scout` — repository reconnaissance for a recon slice; owned by `swarm`
+- `implementation-worker` — the only writable role; owned by `swarm`, and bounded slices require a coordinator-provided isolated cwd
 
 Read-only roles receive only `read`, `grep`, `find`, and `ls`. `implementation-worker` receives those plus `bash`, `edit`, and `write`; `presenter` has a separate report-only capability. Unknown tools, malformed frontmatter, duplicate names, unknown agents, and scope mismatches fail closed. User model overrides take precedence over frontmatter models, which take precedence over the parent model; duplicate names across selected user/project scopes are rejected rather than shadowed.
 
@@ -30,7 +31,6 @@ Set machine-specific agent models in `~/.pi/agent/subagents.json`:
   "models": {
     "presenter": "IM-GPT/gpt-5.6-luna",
     "repository-scout": "IM-GPT/gpt-5.6-luna",
-    "documentation-analyst": "IM-GPT/gpt-5.6-luna",
     "test-log-analyst": "IM-GPT/gpt-5.6-luna",
     "correctness-reviewer": "IM-GPT/gpt-5.6-terra",
     "security-reviewer": "openai-codex/gpt-5.6-sol"

@@ -70,3 +70,17 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Having both the parent and planner read the diff duplicates large context in an expensive model without improving the commit plan. The parent retains the irreversible actions and user-facing safety gate.
 **Revisit if:** Planner errors or unresolvable ambiguity make parent diff inspection necessary often enough to outweigh the context savings.
 **Evidence:** "Let's now do the move to Luna"
+
+### SUB-12 · Every subagent is owned by a skill and briefed once
+`constraint` · 2026-09-08 · `01a08055`
+**Decision:** A role must be dispatched by exactly one owning skill or by extension dispatch code; a role with no owner is deleted, not advertised. Its brief lives once as `<ROLE-NAME>.md` in the owning skill directory, and each harness agent file is native frontmatter plus a pointer to it. `documentation-analyst` was removed on this rule. Rejected: rendering discovered agents into the `subagent` tool description, registering one tool per role, pre-emptive intent routing, and a generator assembling shared bodies with per-harness frontmatter.
+**Why:** Across 132 sessions every owned role was used and every orphan was not, although `swarm` already named all three orphans — so reachability follows from ownership, not from publishing an inventory. Routing would reintroduce the SUB-06 coordinator; a generator would add a build step, a staleness window, and generated artifacts to de-duplicate prose while leaving `tools` and `model` duplicated anyway.
+**Revisit if:** A role needs two genuine owners, or a role earns its keep without any skill or machinery dispatching it.
+**Evidence:** "Perhaps the best approach for now is simply having them linked directly from skills."
+
+### SUB-13 · Claude counterparts are optional and unverified by Pi tests
+`accepted` · 2026-09-08 · `01a08055`
+**Decision:** `ownership.test.ts` asserts only about Pi: no orphaned agent, no skill naming an unknown role, every Pi pointer resolving. Parity is not required, no Claude capability assertion was added, and Claude stub paths and dispatch behavior are verified separately in PI-57.
+**Why:** Claude declares `tools` without an enforcing validator, so a partial check in a Pi suite would suggest a write boundary it does not cover; `check-bash.sh` and `check-edit-scope.sh` remain the actual enforcement. `implementation-worker` cannot port at all, since Claude has no coordinator-provided worktree contract.
+**Revisit if:** Claude gains agent-level tool enforcement, or a Claude stub is found running without its brief.
+**Evidence:** "I will test claude at some other point"

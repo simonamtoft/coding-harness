@@ -25,7 +25,7 @@ Read-only workers may share a checkout. Writable workers require distinct pre-cr
 
 Use parallel dispatch for partitions and races. Use a chain only when a later brief explicitly requires the previous worker's terminal output.
 
-- **Pi:** use `subagent`. Existing read-only specialists include `repository-scout`, `documentation-analyst`, `test-log-analyst`, `correctness-reviewer`, and `security-reviewer`. Writable slices use only `implementation-worker`, with its worktree passed as `cwd`. Runtime-discovered agents are not trusted by name alone; project-local agents require interactive approval or an explicit trusted headless opt-out.
+- **Pi:** use `subagent`. Read-only recon slices use `repository-scout`. Writable slices use only `implementation-worker`, with its worktree passed as `cwd`. Roles owned by another skill — `correctness-reviewer`, `security-reviewer`, `test-log-analyst`, `commit-planner`, `presenter` — are dispatched through that skill, not framed as swarm slices. Runtime-discovered agents are not trusted by name alone; project-local agents require interactive approval or an explicit trusted headless opt-out.
 - **Claude Code:** use `Task` with the narrowest suitable read-only or writable subagent type available in that session. Give writable workers separate pre-created worktrees and explicit working directories; do not let multiple workers edit one checkout.
 
 Do not use a generic fallback when a required role is unavailable or invalid. Record that slice as `BLOCKED`.

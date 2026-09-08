@@ -9,6 +9,7 @@
 - Write harness-neutral instructions. Resolve scripts, assets, and referenced files relative to the skill directory, never through `~/.pi/...` or `~/.claude/...`. When the harness calls differ, document the small Pi and Claude delegation variants without changing the common workflow.
 - Do not call Pi-only extension tools from a shared skill. Put harness-only mechanisms in the appropriate harness resources instead.
 - Read `decisions/skills.md` before proposing a new boundary. For a new reusable skill candidate, use `analyze-sessions` evidence rather than adding a speculative workflow.
+- When a skill owns a subagent role, keep that role's brief in the skill directory as `<ROLE-NAME>.md` and state the dispatch condition and the per-harness invocation in `SKILL.md`. The harness agent files hold only frontmatter and a pointer to the brief, so the brief must stay harness-neutral.
 - Keep companion scripts, templates, and examples inside the skill directory. Do not add credentials, generated output, installed state, or machine-local configuration.
 
 Do not change `../AGENTS.md` for skill-authoring guidance: it is the global runtime instruction file linked into both harnesses.
