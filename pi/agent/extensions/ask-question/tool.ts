@@ -22,7 +22,7 @@ type AskContext = Parameters<typeof askWithPanel>[0] & {
 type RecordedAnswer = { question: string; answer: AnswerValue; wasCustom: boolean };
 type QuestionResult = PanelAnswer | "back" | undefined;
 
-export const CLARIFICATION_GATE = `Clarification gate (mandatory): Before using any tool, decide whether the request leaves unresolved choices that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If it does, collect all closely related blocking questions into one ask_question call before acting. Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_question call—do not batch it with other tool calls or restate the details in prose. Provide concrete options when useful, ordered best first so the leading option is the one you recommend, while always allowing a free-text answer. Do not silently choose a reasonable default. Do not ask when repository inspection can resolve the choice.`;
+export const CLARIFICATION_GATE = `Clarification gate (mandatory): Before using any tool, decide whether the request leaves unresolved choices that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If it does, collect all closely related blocking questions into one ask_question call before acting. You MUST use ask_question for every such question; never ask it as ordinary assistant prose unless ask_question reports that interactive UI is unavailable, in which case ask in the assistant response and stop until the user answers. Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_question call—do not batch it with other tool calls or restate the details in prose. Provide concrete options only when useful; choose how many to offer, up to five, order them best first so the leading option is the one you recommend, and always allow a free-text answer. Do not silently choose a reasonable default. Do not ask when repository inspection can resolve the choice.`;
 
 const OptionSchema = Type.Object({
   label: Type.String({ description: "Short label for the choice" }),
@@ -32,7 +32,7 @@ const OptionSchema = Type.Object({
 const QuestionSchema = Type.Object({
   question: Type.String({ description: "The specific question to ask the user" }),
   details: Type.Optional(Type.String({ description: "The context needed to decide: key facts, constraints, or tradeoffs. Shown under the question and kept in the transcript." })),
-  options: Type.Optional(Type.Array(OptionSchema, { description: "Up to three concrete choices, ordered best first: the leading option is the one you recommend. The user can always write a different answer.", maxItems: 3 })),
+  options: Type.Optional(Type.Array(OptionSchema, { description: "Optional concrete choices. Choose how many to offer, up to five; order them best first so the leading option is the one you recommend. The user can always write a different answer.", maxItems: 5 })),
   multiple: Type.Optional(Type.Boolean({ description: "Allow choosing multiple options. The answer is returned as an ordered list." })),
   placeholder: Type.Optional(Type.String({ description: "Placeholder shown for a free-text answer" })),
 });
@@ -107,7 +107,8 @@ async function askWithSelect(
 
 async function askOneQuestion(ctx: AskContext, question: QuestionSpec, position: { index: number; total: number }, allowBack: boolean): Promise<QuestionResult> {
   const options = (question.options ?? []).filter((option) => option.label.trim().length > 0);
-  if (ctx.mode === "tui") {
+  // The custom panel has no vertical viewport; Pi's native selector scrolls longer lists.
+  if (ctx.mode === "tui" && options.length <= 3) {
     const { askWithPanel } = await import("./question-panel.ts");
     return askWithPanel(ctx, { ...question, options }, position, allowBack);
   }
@@ -135,12 +136,12 @@ export const askQuestionTool = {
   description: "Ask the user one or more blocking clarification questions before work continues. Each question may offer choices and always permits a free-text answer.",
   promptSnippet: "Give the decision context, then ask one or more blocking clarification questions with optional choices",
   promptGuidelines: [
-    "Call ask_question before acting when unresolved choices could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria.",
+    "Call ask_question before acting when unresolved choices could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria; never ask those questions as ordinary assistant prose unless ask_question reports interactive UI is unavailable, in which case ask in the assistant response and stop until the user answers.",
     "Give each ask_question question a details field stating the decision needed and the key facts or tradeoffs behind the options; write the assistant response prose only when approving a plan, which belongs in the message rather than the question.",
     "When clarification is required, collect all closely related blocking questions into one ask_question call, and do not batch it with edit, write, bash, or other tool calls.",
     "Do not repeat ask_question details in prose; the user sees them with the question.",
     "Before using ask_question, inspect the repository when it can answer the questions.",
-    "For each ask_question question, offer at most three concrete options ordered best first, and allow the user to write a different answer.",
+    "For each ask_question question, offer concrete options only when useful; choose how many to offer, up to five, and allow the user to write a different answer.",
     "State why the leading ask_question option leads in its description or in the question details, never by labelling it recommended.",
     "Keep ask_question option labels short and put the tradeoff in the option description instead of the label.",
     "If ask_question reports cancellation or unavailable UI, do not infer answers or continue with the blocked decisions.",

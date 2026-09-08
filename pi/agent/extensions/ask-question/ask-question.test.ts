@@ -2,11 +2,11 @@ import { describe, expect, mock, test } from "bun:test";
 
 mock.module("typebox", () => ({
   Type: {
-    Array: () => ({}),
-    Boolean: () => ({}),
-    Object: () => ({}),
-    Optional: () => ({}),
-    String: () => ({}),
+    Array: (items: unknown, options: object = {}) => ({ items, ...options }),
+    Boolean: (options: object = {}) => options,
+    Object: (properties: object) => properties,
+    Optional: (schema: unknown) => schema,
+    String: (options: object = {}) => options,
   },
 }));
 
@@ -17,6 +17,13 @@ const { buildSelectItems, CUSTOM_ANSWER_VALUE } = await import("./question-items
 const { isUiBusy } = await import("../shared/ui-lock.ts");
 
 type AskQuestionTool = {
+  parameters: {
+    questions: {
+      items: {
+        options: { maxItems: number };
+      };
+    };
+  };
   promptGuidelines?: string[];
   prepareArguments?: (args: unknown) => unknown;
   execute: (
@@ -52,8 +59,14 @@ describe("ask_question prompt guidance", () => {
     expect(injectedPrompt).toContain("Put the deciding context in each question's details field");
     expect(injectedPrompt).toContain("put the plan itself in the assistant response");
     expect(injectedPrompt).toContain("do not batch it with other tool calls");
+    expect(injectedPrompt).toContain("MUST use ask_question");
+    expect(injectedPrompt).toContain("up to five");
     expect(injectedPrompt).not.toContain("write a concise context block in the same assistant response");
     expect(toolGuidance).toContain("details field stating the decision needed");
+    expect(toolGuidance).toContain("never ask those questions as ordinary assistant prose");
+    expect(toolGuidance).toContain("interactive UI is unavailable");
+    expect(toolGuidance).toContain("up to five");
+    expect(registerTool().parameters.questions.items.options.maxItems).toBe(5);
     expect(toolGuidance).toContain("Do not repeat ask_question details in prose");
     expect(toolGuidance).toContain("do not batch it with edit, write, bash, or other tool calls");
   });
@@ -99,6 +112,24 @@ describe("ask_question outcomes", () => {
 
     expect(result.details.status).toBe("answered");
     expect(result.details.answers).toEqual([{ question: "Ship it?", answer: "Yes", wasCustom: false }]);
+  });
+
+  test("uses the scrolling native selector for more than three TUI options", async () => {
+    const select = mock((_title: string, options: string[]) => Promise.resolve(options[3]));
+    const result = await registerTool().execute(
+      "call-five-options",
+      {
+        questions: [{
+          question: "Pick one?",
+          options: ["One", "Two", "Three", "Four", "Five"].map((label) => ({ label })),
+        }],
+      },
+      undefined,
+      undefined,
+      { mode: "tui", hasUI: true, ui: { select } },
+    );
+
+    expect(result.details.answers).toEqual([{ question: "Pick one?", answer: "Four", wasCustom: false }]);
   });
 
   test("asks free-text questions in the multi-line editor", async () => {
