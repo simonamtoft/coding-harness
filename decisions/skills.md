@@ -117,3 +117,10 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Made `wire-up-verifier` explicit-only while retaining its existing confirmation before repository changes.
 **Why:** Missing verifier configuration during ordinary work is not itself user intent to add repository files or policy.
 **Revisit if:** Projects adopt verifier scaffolding as a mandatory automatic setup step.
+
+### SKL-20 · Quick-commit snapshots use a skill-local helper
+`accepted` · 2026-09-10 · `01a08b8e`
+**Decision:** Moved deterministic quick-commit snapshot capture into a tested script inside the shared skill; keep commit grouping in the read-only planner and irreversible Git actions in the parent.
+**Why:** The ten latest concrete executions reconstructed the same snapshot in 3–7 shell calls, causing retries and sandbox failures before planning. Script the mechanical, repeatable capture without weakening the planner, confirmation, or staging-isolation boundaries.
+**Revisit if:** The helper itself becomes a source of harness-specific incompatibility, or commit planning no longer needs a private snapshot.
+**Evidence:** "Script the mechanics"
