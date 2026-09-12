@@ -48,6 +48,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/check-read.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/route-bulk-read.py"
           }
         ]
       },

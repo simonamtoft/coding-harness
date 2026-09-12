@@ -42,7 +42,7 @@ leaves the override in place.
 
 ## Layout
 
-- `shared/`: the common `AGENTS.md`, skills, and command-safety regression contract consumed by both harnesses.
+- `shared/`: the common `AGENTS.md`, skills, and command-safety/read-routing regression contracts consumed by both harnesses.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
   intentionally ignored by Git.
@@ -167,6 +167,58 @@ sources are consuming the context window. When a session grows large, use
 `/handoff` to preserve its decisions and state, then continue in a fresh
 session. Reloading `AGENTS.md` can restore attention to instructions
 temporarily, but it does not remove the accumulated context.
+
+### Bulk-read routing
+
+Large reference reads can be delegated without loading their contents into the
+parent conversation. Pi's `read-routing` extension and Claude's
+`route-bulk-read.py` PreToolUse hook redirect broad `Read` calls for regular files
+larger than 16 KiB to the shared `bulk-read` skill. The parent supplies explicit paths and a
+question; the read-only worker returns findings, source locations, and coverage
+gaps, targeting at most 600 words. Pi resolves the worker's configured canonical
+or local provider/model pin independently of the parent, passing both values
+explicitly to the child; an unpinned worker inherits the parent's exact model.
+This is predictable routing, not a same-provider data-egress boundary: the child
+fails instead of silently switching providers when its selected provider/model is
+unavailable. Claude uses Haiku; use bounded direct reads when that provider is not
+permitted for the source.
+
+Explicit limits of 1–350 lines remain available for original-source inspection;
+an offset alone or an oversized limit does not bypass routing. Read complete
+source in chunks when reasoning requires it. Governing Markdown stays directly
+readable: AGENTS/CLAUDE/SYSTEM instructions, SKILL files, CONTEXT files, DECISIONS,
+Markdown below skills/agents/adr/adrs/decisions, and Claude rules. Native image,
+PDF, and notebook inputs also stay on the direct path. These exemptions never
+grant filesystem permission or weaken secret checks.
+
+The guards compare file size against one threshold and never open or return file
+contents. Size tracks token cost far more closely than line count does: measured
+across prose and code, characters per token stayed near 3.6 while tokens per line
+varied fourfold. The 16 KiB gate sits inside the measured delegation break-even
+band; see the [routing README](pi/agent/extensions/read-routing/README.md) for the
+numbers. Bash output limiting remains independent. The guards do not
+intercept Bash, search output, or files already injected into context. Worker calls are exempt
+from cost routing: Pi children load only the sandbox extension; Claude uses the
+hook's `agent_id` to distinguish children from top-level custom agents. No
+routing-specific toggle, full-read exemption state, or automatic writer is added.
+
+Existing directory links deploy all resources without changing `link.sh`.
+Reload Pi with `/reload` and start a new Claude session to load the new resources.
+Claude requires `python3`, already used by other hooks. Run the shared policy
+fixtures through both implementations:
+
+```sh
+bun test pi/agent/extensions
+PYTHONDONTWRITEBYTECODE=1 python3 claude/hooks/test/read-routing-test.py
+```
+
+This is a cost-routing pilot, not a claimed percentage saving. Compare parent
+context, total parent-plus-worker cost (including cache effects), latency, missed
+facts, and subsequent rereads on representative tasks before tuning thresholds.
+See the [routing diagrams and evaluation guide](pi/agent/extensions/read-routing/README.md)
+for provisioning, current limitations, and session-probe evidence.
+A worker failure or permission denial falls back to permitted bounded direct
+reads, not a silent model upgrade or security bypass.
 
 ## Resources
 

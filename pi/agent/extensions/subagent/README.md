@@ -15,6 +15,7 @@ Bundled roles and their owners:
 - `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `review_changes`
 - `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `review_changes`
 - `test-log-analyst` — diagnosis of an oversized test or build log artifact; owned by `diagnose-failure`
+- `bulk-reader` — question-directed extraction from explicit large reference files; owned by `bulk-read`
 - `repository-scout` — repository reconnaissance for a recon slice; owned by `swarm`
 - `implementation-worker` — the only writable role; owned by `swarm`, and bounded slices require a coordinator-provided isolated cwd
 
@@ -38,11 +39,11 @@ Set machine-specific agent models in `~/.pi/agent/subagents.json`:
 }
 ```
 
-A local override takes precedence over an agent's frontmatter model. Without either value, the subagent inherits the active parent model and thinking level. The local file is runtime configuration and is not linked from or committed to this repository.
+A local override takes precedence over an agent's frontmatter model. Without either value, the subagent inherits the active parent model and thinking level. Every child receives its resolved provider and model as separate CLI arguments: an override or frontmatter pin is honored independently of the parent, while an unpinned agent receives the parent's exact provider/model. Dispatch fails clearly if no provider-qualified model can be resolved or the selected provider/model is unavailable; it never silently switches providers. The local file is runtime configuration and is not linked from or committed to this repository.
 
 ## Isolation change from the bundled example
 
-Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions.
+Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions. The sandbox is explicitly re-enabled for every child; parent read-routing is not, so bulk readers can inspect source without recursive cost routing while retaining filesystem restrictions.
 
 ## Swarm workflow
 

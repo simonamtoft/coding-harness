@@ -92,3 +92,33 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Custom `IM-GPT` is machine-wired and must not be a portable canonical dependency. Separating OpenAI Codex implementation from Anthropic review also gives correctness and security review an independent provider perspective.
 **Revisit if:** Built-in provider availability, model quality, cost policy, or the desired implementation/review diversity changes.
 **Evidence:** "I wanted to use default provider, as in openai-codex or anthropic, and not IM-GPT"
+
+### SUB-15 · Bulk-read hooks redirect; the parent frames extraction
+`accepted` · 2026-09-12 · `01a0950d`
+**Decision:** Use native cost hooks and one shared bulk-read workflow, not Portal or a hook-spawned model. The parent supplies the extraction question; ordinary read-only workers return evidence, not correctness judgments. Claude uses Haiku. Pi retains its configured utility model only within the active parent's provider and otherwise inherits the parent's exact model; this provider boundary is enforced at dispatch, including over local `subagents.json` overrides. Direct full-source access uses bounded reads only: no per-read exemption state or new session toggle. Delegated writing and shell-read interception remain out of scope.
+**Why:** A read call supplies a path but not the question the parent needs answered. Native delegation already owns model selection and isolation. A read-only child sends source contents to its model provider, so instructions and machine-local pins cannot safely act as the cross-provider egress boundary. The user chose bounded reads over exemption machinery and Haiku over the existing Claude Sonnet utility convention. This is an explicitly requested pilot, not a claim of measured savings or a speculative skill inferred from session frequency.
+**Revisit if:** Representative tasks show repeated routing friction, unreliable extraction, or combined worker/parent cost and latency outweighing context savings.
+**Evidence:** "Haiku"; "Bounded reads only".
+**Superseded by:** SUB-16.
+
+### SUB-16 · Provider pins are predictable routing, not an egress boundary
+`accepted` · 2026-09-12 · `01a0952a`
+**Decision:** Every Pi child receives explicit `--provider` and `--model` arguments. A canonical or `subagents.json` pin is honored independently of its parent for all delegation modes, including reviews; only an unpinned agent inherits the parent's exact provider/model and thinking level. Remove bulk-reader's same-provider restriction. Missing, malformed, or unavailable selections fail clearly and never fall back to another provider.
+**Why:** Parent-provider affinity unexpectedly discarded valid local configuration and conflated deterministic model routing with a data-egress control. Explicit provider/model arguments prevent Pi's fuzzy resolution from silently crossing providers while leaving data-provider authorization to the applicable project policy.
+**Revisit if:** Pi provides an authoritative availability preflight or a separately specified data-egress policy requires enforced provider boundaries.
+**Evidence:** "Implement predictable provider selection for all Pi subagent delegation."
+
+### SUB-17 · Bulk reads route by file lines, not bytes
+`reverted` · 2026-09-12 · `01a095e5`
+**Decision:** Replace the 16 KiB broad-read threshold in both Pi and Claude with file length strictly greater than 350 lines. Preserve direct bounded requests, governing/native-document exemptions, and independent sandbox checks. Count lines with fixed-memory scans rather than loading entire files; the Bash output limiter retains its separate byte budget.
+**Why:** The user rejected the byte gate as an inappropriate carryover from output limiting. In session `01a095f7-595a-7565-93d3-875f5ab66d78`, a converted article was only 348 lines but 23,723 bytes: it triggered a worker round trip despite fitting the direct line allowance. The worker could not read the parent's temporary artifact, so the parent then read it in one bounded call. The sandbox boundary was not changed to compensate for a threshold mismatch.
+**Revisit if:** Representative line-based trials show that long individual lines or scan latency outweigh the simplicity of the line-only policy.
+**Evidence:** "I think we should just keep it at the line # reads, and not the 16KiB if-statement." Follow-up choices: "File line count"; "Both Pi and Claude".
+**Superseded by:** SUB-18.
+
+### SUB-18 · Long-line scan backstop also triggers delegation
+`accepted` · 2026-09-12 · `01a095e5`
+**Decision:** Route broad reads exceeding 350 file lines OR 256 KiB in both harnesses, retaining bounded-read and document exemptions. Use file size to route already oversized files and cap scanning at the byte threshold plus one overflow-probe byte for files that grow during inspection. Do not treat scan-budget exhaustion as permission to read directly or claim it proves a line count.
+**Why:** Independent review identified unbounded I/O for huge files with few newlines. The user chose to route those byte-heavy reads rather than defer them to the native tool. A 256 KiB backstop bounds scanner work while leaving the observed 348-line, 23,723-byte article direct; it is separate from the Bash output limiter's 16 KiB budget.
+**Revisit if:** Representative extraction trials show that the byte backstop adds unnecessary delegation or misses economically useful routing opportunities.
+**Evidence:** "treat the byte gate similar to line gate"; selected "350 lines or 256 KiB".

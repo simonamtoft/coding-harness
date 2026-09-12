@@ -32,6 +32,7 @@ import {
 	type AgentConfig,
 	type AgentScope,
 	discoverAgents,
+	resolveDispatchModel,
 	requiresProjectAgentApproval,
 	validateAgentDefinition,
 	validateRequestedAgents,
@@ -319,10 +320,10 @@ async function runSingleAgent(
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
 	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
 
-	const inheritsDispatchConfig = !agent.model;
-	const model = agent.model ?? dispatchDefaults.model;
-	if (model) args.push("--model", model);
-	if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
+	const modelSelection = resolveDispatchModel(agent, dispatchDefaults.model);
+	const model = modelSelection.model;
+	args.push(...modelSelection.cliArgs);
+	if (modelSelection.inheritsParent && dispatchDefaults.thinkingLevel) {
 		args.push("--thinking", dispatchDefaults.thinkingLevel);
 	}
 	args.push("--tools", agent.tools.join(","));
@@ -337,7 +338,7 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-		model: agent?.model ?? dispatchDefaults.model,
+		model,
 		step,
 	};
 
@@ -444,6 +445,10 @@ async function runSingleAgent(
 		currentResult.exitCode = exitCode;
 		currentResult.finishedAt = Date.now();
 		currentResult.status = isFailedResult(currentResult) ? "failed" : "completed";
+		if (isFailedResult(currentResult)) {
+			const failure = currentResult.errorMessage || currentResult.stderr.trim() || "The child process exited without an error message.";
+			currentResult.errorMessage = `Selected provider/model ${model} failed: ${failure}`;
+		}
 		if (wasAborted) throw new Error("Subagent was aborted");
 		return currentResult;
 	} finally {

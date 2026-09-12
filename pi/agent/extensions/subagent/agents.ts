@@ -38,6 +38,36 @@ export interface AgentDiscoveryResult {
 	error?: string;
 }
 
+function splitProviderModel(model: string): { provider: string; modelId: string } | undefined {
+	const separator = model.indexOf("/");
+	if (separator <= 0 || separator === model.length - 1) return undefined;
+	return { provider: model.slice(0, separator), modelId: model.slice(separator + 1) };
+}
+
+export interface DispatchModelSelection {
+	model: string;
+	cliArgs: string[];
+	inheritsParent: boolean;
+}
+
+/**
+ * Resolve every child to an exact provider/model pair. Specifying both CLI
+ * arguments prevents Pi from finding a similarly named model on another provider.
+ */
+export function resolveDispatchModel(agent: AgentConfig, parentModel: string | undefined): DispatchModelSelection {
+	const inheritsParent = !agent.model;
+	const model = agent.model ?? parentModel;
+	if (!model) throw new Error(`Agent ${agent.name} requires a configured model or an active parent model`);
+
+	const selected = splitProviderModel(model);
+	if (!selected) throw new Error(`Agent ${agent.name} selected model must be a provider/model string: ${model}`);
+	return {
+		model,
+		cliArgs: ["--provider", selected.provider, "--model", selected.modelId],
+		inheritsParent,
+	};
+}
+
 export function validateAgentDefinition(agent: AgentConfig): string | undefined {
 	if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(agent.name)) return "name must be kebab-case";
 	if (!agent.description.trim()) return "description must not be empty";

@@ -24,7 +24,7 @@ A Claude counterpart is optional per role and its behavior is not covered by the
 - Read-only roles may use only `read`, `grep`, `find`, and `ls`. Keep their brief and return contract narrow, evidence-based, and explicit about non-goals.
 - `implementation-worker` is the only writable role. `presenter` is the only presentation role. Do not add another writable or presentation agent without changing and testing the extension's enforced capability model.
 - Agent definitions are runtime-discovered, so do not create a second registry. Update `../extensions/subagent/README.md` only when the documented role contract or discovery behavior changes.
-- Put portable role behavior and canonical built-in model defaults in the committed definition. Machine-specific provider/model selection belongs in untracked `~/.pi/agent/subagents.json`, which overrides the canonical default.
+- Put portable role behavior and canonical built-in model defaults in the committed definition. Machine-specific provider/model selection belongs in untracked `~/.pi/agent/subagents.json`, which overrides the canonical default. Runtime dispatch passes every selected provider/model pair explicitly, so a configured pin is independent of the parent; this is predictable routing, not a data-egress boundary.
 - Project-local `.pi/agents/` definitions are opt-in at dispatch time and require trust confirmation; do not use them to replace canonical harness roles.
 
 Read `../../../decisions/subagents.md` before changing a delegation contract or an ownership assignment. If the extension's discovery, validation, capabilities, or isolation rules must change, follow `../extensions/subagent/AGENTS.md` and run `bun test pi/agent/extensions`.

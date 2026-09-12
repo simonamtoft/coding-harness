@@ -23,6 +23,7 @@ const {
 	IMPLEMENTATION_TOOLS,
 	READ_ONLY_TOOLS,
 	discoverAgentsInDirectories,
+	resolveDispatchModel,
 	requiresProjectAgentApproval,
 	validateAgentDefinition,
 	validateRequestedAgents,
@@ -129,6 +130,38 @@ describe("agent discovery", () => {
 });
 
 describe("dispatch preflight", () => {
+	test("pins every configured agent independently of its parent provider", () => {
+		for (const agentName of ["bulk-reader", "repository-scout", "correctness-reviewer"]) {
+			expect(
+				resolveDispatchModel(agent(agentName, [...READ_ONLY_TOOLS], { model: "openai-codex/cheap" }), "anthropic/parent"),
+			).toEqual({
+				model: "openai-codex/cheap",
+				cliArgs: ["--provider", "openai-codex", "--model", "cheap"],
+				inheritsParent: false,
+			});
+		}
+	});
+
+	test("pins inherited parent models while preserving parent thinking inheritance", () => {
+		expect(resolveDispatchModel(agent("repository-scout"), "anthropic/parent")).toEqual({
+			model: "anthropic/parent",
+			cliArgs: ["--provider", "anthropic", "--model", "parent"],
+			inheritsParent: true,
+		});
+		expect(
+			resolveDispatchModel(agent("repository-scout", [...READ_ONLY_TOOLS], { model: "anthropic/parent" }), "anthropic/parent"),
+		).toMatchObject({ inheritsParent: false });
+	});
+
+	test("fails before dispatch when no exact provider/model can be selected", () => {
+		expect(() => resolveDispatchModel(agent("repository-scout"), undefined)).toThrow(
+			"configured model or an active parent model",
+		);
+		expect(() =>
+		resolveDispatchModel(agent("repository-scout", [...READ_ONLY_TOOLS], { model: "not-qualified" }), "anthropic/parent"),
+	).toThrow("provider/model string");
+	});
+
 	test("requires explicit project trust in headless dispatch and allows trusted opt-out", () => {
 		expect(requiresProjectAgentApproval("user", true, false)).toBeFalse();
 		expect(requiresProjectAgentApproval("project", true, false)).toBeTrue();

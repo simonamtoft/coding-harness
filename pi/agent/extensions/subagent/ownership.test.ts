@@ -16,7 +16,7 @@ const skillsDir = join(repoRoot, "shared/skills");
 const dispatchSources = ["pi/agent/extensions/subagent/index.ts"];
 
 /** Role names are recognizable by these suffixes, so a stale prose mention of a removed role fails. */
-const ROLE_SUFFIXES = ["scout", "analyst", "reviewer", "planner", "worker"];
+const ROLE_SUFFIXES = ["scout", "analyst", "reviewer", "planner", "worker", "reader"];
 const PI_POINTER = /~\/\.pi\/agent\/skills\/([A-Za-z0-9._\-/]+\.md)/g;
 const BACKTICKED_TOKEN = /`([a-z0-9]+(?:-[a-z0-9]+)+)`/g;
 
@@ -55,6 +55,7 @@ describe("subagent ownership", () => {
 
 	test("canonical agents use built-in providers at role-appropriate tiers", () => {
 		expect(Object.fromEntries(piAgents.map((agent) => [agent.name, agent.model]))).toEqual({
+		"bulk-reader": "openai-codex/gpt-5.6-luna",
 		"commit-planner": "openai-codex/gpt-5.6-luna",
 		"correctness-reviewer": "anthropic/claude-sonnet-5",
 		"implementation-worker": "openai-codex/gpt-5.6-terra",

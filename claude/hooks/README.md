@@ -80,6 +80,28 @@ Blocks the `Read` tool from reading the same protected secret paths (shared matc
 
 **Why this is a hook and not a `permissions.deny` rule:** the host-managed policy sets `allowManagedPermissionRulesOnly: true`, which makes *all* user-level `permissions.allow`/`deny` rules inert — only managed rules apply. The old `~/.ssh`/`~/.aws`/`*.pem` deny globs in `settings.json` therefore no longer block anything, and `cat`/`head` being on the readonly allowlist meant `cat ~/.ssh/id_rsa` was getting auto-*allowed*. User hooks still run under the managed policy (they aren't permission rules), so they're the only user-controlled enforcement layer left — hence the read guard plus the `check-bash.sh` secret guard above. Note: a user hook can *tighten* but never override a managed `deny`/`ask`.
 
+### `route-bulk-read.py` — cost routing
+
+Runs independently alongside `check-read.sh`; never emits a permission grant.
+A regular file larger than 16 KiB redirects the parent to the
+`bulk-read` skill unless the call has an explicit limit of 1–350 lines. Offset
+alone is not bounded. Governing Markdown and native image/PDF/notebook inputs
+are exempt; see the root README for the exact policy. The guard compares the
+resolved file's size against the threshold; it never opens the file or returns
+its contents. Missing or inaccessible paths are left to the native Read tool.
+
+Child calls carrying a nonempty `agent_id` are exempt from cost routing, not
+from secret protection. `agent_type` alone is not an exemption because top-level
+`--agent` sessions also carry it. The parent frames a question for the Haiku
+`bulk-reader`; the hook does not start a model or replace source with a summary.
+Direct reasoning uses bounded reads. No new toggle is added; the existing global
+`CLAUDE_HOOK_DISABLE` convention still applies.
+
+Verify with `PYTHONDONTWRITEBYTECODE=1 python3 claude/hooks/test/read-routing-test.py`.
+The tests include shared policy fixtures, child exemption, and coexistence with
+the secret guard. An installed-client probe is still needed to verify its actual
+hook payload and model availability.
+
 ### `check-edit-scope.sh` — per-project edit allowlist
 
 Blocks `Edit` / `Write` / `MultiEdit` / `NotebookEdit` calls whose `file_path` falls outside the project's declared scope.
@@ -159,7 +181,7 @@ All of these *user* hooks short-circuit when this env var is `1`. No in-conversa
 
 ## Wiring
 
-`~/.claude/settings.json` has a `hooks.PreToolUse` block matching `Bash` → `check-bash.sh`, `Read` → `check-read.sh`, and `Edit|Write|MultiEdit|NotebookEdit` → `check-edit-scope.sh`, and a `hooks.Stop` block with two hooks → `verify-turn.sh` then `python3 …/claude-md-refcheck.py`. Edit those blocks to disable temporarily; delete them to remove. (`check-read.sh` is invoked as `bash …/check-read.sh` so it doesn't depend on the execute bit; `claude-md-refcheck.py` is invoked as `python3 …` for the same reason.)
+`~/.claude/settings.json` has a `hooks.PreToolUse` block matching `Bash` → `check-bash.sh`, `Read` → `check-read.sh` plus `python3 …/route-bulk-read.py`, and `Edit|Write|MultiEdit|NotebookEdit` → `check-edit-scope.sh`, and a `hooks.Stop` block with two hooks → `verify-turn.sh` then `python3 …/claude-md-refcheck.py`. Edit those blocks to disable temporarily; delete them to remove. (`check-read.sh` is invoked as `bash …/check-read.sh` so it doesn't depend on the execute bit; `claude-md-refcheck.py` is invoked as `python3 …` for the same reason.)
 
 The same file carries the `sandbox` block described at the top. **`sandbox.*` edits apply mid-session**, without a restart — but with a propagation lag, so re-run a test before trusting a single result. Confirm the resolved config with `/sandbox` → Config tab.
 
