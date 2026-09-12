@@ -20,6 +20,7 @@ import {
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
+import { changesDirectoryToSessionTemp } from "./session-temp.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
@@ -130,28 +131,6 @@ function inspectPath(root: string, rawPath: string): { resolved?: string; reason
   return { resolved };
 }
 
-function changesDirectoryToSessionTemp(command: string, sessionTempDirectory: string): boolean {
-  return command.split(/&&|\|\||[;|]/).some((segment) => {
-    const tokens = segment
-      .replace(/'([^']*)'/g, "$1")
-      .replace(/"((?:\\.|[^"\\])*)"/g, "$1")
-      .trim()
-      .split(/\s+/)
-      .map((token) => token.replace(/^[({]+|[)}]+$/g, ""));
-    const commandIndex = tokens.findIndex((token) => {
-      const isPrefix = /^(?:if|then|elif|else|do|command|builtin|time|!)$/.test(token)
-        || /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
-      return token !== "" && !isPrefix;
-    });
-    if (commandIndex === -1 || (tokens[commandIndex] !== "cd" && tokens[commandIndex] !== "pushd")) return false;
-    if (segment.includes("PI_SESSION_TMPDIR")) return true;
-    const target = tokens.slice(commandIndex + 1).find((token) => !token.startsWith("-"));
-    if (!target) return false;
-    const expanded = target.startsWith("~") ? join(process.env.HOME ?? "~", target.slice(1)) : target;
-    return isAbsolute(expanded) && isWithin(sessionTempDirectory, realpathForCheck(expanded));
-  });
-}
-
 function block(reason: string) {
   return { block: true, reason: `Sandbox blocked tool call: ${reason}` };
 }
@@ -234,7 +213,7 @@ export function createSandboxGuard(
       const denyReason = deniedBashCommandReason(event.input.command, root, undefined, sessionTempDirectory);
       if (denyReason) return block(denyReason);
 
-      if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory)) {
+      if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory, realpathForCheck)) {
         return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
       }
       const vaultOperation = researchVaultBashOperation(event.input.command, resolvedResearchVaultRoot);
