@@ -12,6 +12,7 @@ import {
   hasResearchVaultReadAccess,
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
+  isTrustedSharedSkillHelper,
   permitsRootVerifierScriptBashReference,
   isWithin,
   playwrightBrowsersRoot,
@@ -244,7 +245,9 @@ export function createSandboxGuard(
           return block(`${candidate}: Bash access to the agent control plane requires a coding-harness session`);
         }
         const permittedOutsidePath = inspection.outside && inspection.resolved
-          && (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved));
+          && (isSessionTempPath(inspection.resolved)
+            || isPluginWorkspacePath(inspection.resolved)
+            || isTrustedSharedSkillHelper(inspection.resolved, CODING_HARNESS_SHARED_ROOT));
         if (inspection.reason && !permittedOutsidePath) return block(`${candidate}: ${inspection.reason}`);
       }
     }

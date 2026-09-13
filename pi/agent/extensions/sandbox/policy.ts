@@ -26,6 +26,15 @@ export function hasTrustedSharedReadAccess(
   return toolName === "read" && isWithin(codingHarnessSharedRoot, targetPath);
 }
 
+export function isTrustedSharedSkillHelper(targetPath: string, codingHarnessSharedRoot: string): boolean {
+  if (isProtectedSecretPath(targetPath) || !isWithin(codingHarnessSharedRoot, targetPath)) return false;
+  const relativePath = relative(codingHarnessSharedRoot, targetPath).split(sep);
+  return relativePath.length === 4
+    && relativePath[0] === "skills"
+    && relativePath[2] === "scripts"
+    && relativePath[3]!.endsWith(".sh");
+}
+
 export function hasResearchVaultReadAccess(toolName: string, targetPath: string, researchVaultRoot: string): boolean {
   return toolName === "read" && isWithin(researchVaultRoot, targetPath);
 }

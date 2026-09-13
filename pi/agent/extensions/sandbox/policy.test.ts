@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,6 +10,7 @@ import {
   hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
   isControlPlaneWriteBlocked,
+  isTrustedSharedSkillHelper,
   isProtectedSecretPath,
   playwrightBrowsersRoot,
   permitsRootVerifierScriptBashReference,
@@ -32,6 +33,28 @@ test("shared harness resources are trusted for reads", () => {
   assert.equal(hasTrustedSharedReadAccess("find", `${shared}/skills`, shared), false);
   assert.equal(hasTrustedSharedReadAccess("read", `${harness}/pi/agent/extensions/index.ts`, shared), false);
   assert.equal(hasTrustedSharedReadAccess("read", `${harness}/shared-other/rules.md`, shared), false);
+});
+
+test("symlinked shared skill helpers retain narrowly-scoped Bash access", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-shared-skills-"));
+  const shared = join(root, "shared");
+  const helper = join(shared, "skills", "quick-commit", "scripts", "capture_snapshot.sh");
+  const installedSkills = join(root, "agent", "skills");
+  mkdirSync(join(shared, "skills", "quick-commit", "scripts"), { recursive: true });
+  writeFileSync(helper, "#!/usr/bin/env bash\n");
+  mkdirSync(join(root, "agent"), { recursive: true });
+  symlinkSync(join(shared, "skills"), installedSkills);
+
+  try {
+    const canonicalShared = realpathSync(shared);
+    const resolvedHelper = realpathSync(join(installedSkills, "quick-commit", "scripts", "capture_snapshot.sh"));
+    assert.equal(isTrustedSharedSkillHelper(resolvedHelper, canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "SKILL.md"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", ".env.sh"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(root, "outside.sh"), canonicalShared), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("research-vault reads and documented Bash workflow are scoped to the vault root", () => {
