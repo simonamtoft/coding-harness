@@ -38,7 +38,7 @@ flowchart TD
 
 Directory symlinks make new canonical files available without relinking. Start a new Pi session or run `/reload` to refresh extensions and skills. Agent definitions are discovered at dispatch. Credentials, installed models/providers, and optional `~/.pi/agent/subagents.json` overrides remain local; linking does not provision them.
 
-The canonical [agent definition](../../agents/bulk-reader.md) pins `openai-codex/gpt-5.6-luna` and permits only `read`, `grep`, `find`, and `ls`. A local model override wins. The [subagent runtime](../subagent/README.md) passes explicit provider/model arguments; an unpinned agent inherits the parent. Do not assume the effective worker is cheaper merely because its role is named `bulk-reader`.
+The canonical [agent definition](../../agents/bulk-reader.md) pins `openai-codex/gpt-5.6-luna` and permits only `read` and `grep`. A local model override wins. The [subagent runtime](../subagent/README.md) passes explicit provider/model arguments; an unpinned agent inherits the parent. Do not assume the effective worker is cheaper merely because its role is named `bulk-reader`.
 
 ## Runtime routing
 
@@ -183,6 +183,23 @@ Priced against the parent model those token counts imply, using `models-store.js
 Direct cost is the one-time ingestion at the input rate; it understates the real difference because those tokens stay resident and are re-billed as cache reads on every later turn — $0.0084 per turn for the prose file against $0.0003 delegated. The dispatch column is the parent's own output tokens for writing the assignment, estimated from prompt length at the output rate. Reading `SKILL.md` adds roughly $0.0037 once per session, not once per delegation.
 
 Delegation overhead is close to fixed, because the brief, system prompt, and answer dominate worker cost while the file barely moves it. Savings therefore scale with file size while overhead does not, and the cheaper the parent model, the larger a file must be before delegation pays.
+
+### 15-file live routing and accuracy probe
+
+A fresh natural-adoption probe on 2026-09-12 used 15 synthetic, non-sensitive reference files, each 1,400 lines and 99,365 B (1.49 MB total). Each file held one planted `verification_token` at a different line; `retention_days` was absent from all files. The parent was `IM-GPT/gpt-5.6-terra`; `bulk-reader` used its pinned `openai-codex/gpt-5.6-luna` model.
+
+The broad-read gate was separately confirmed: an unbounded `read` of one fixture returned the routing error and no file contents. In the natural extraction run, where the prompt did not mention delegation, the parent read the skill, dispatched one `bulk-reader`, and then made 15 one-line bounded reads to verify its citations. It returned all 15 planted values at their exact lines and correctly reported the missing key.
+
+| Measure | Natural routed run | Forced unbounded direct attempt |
+| --- | ---: | ---: |
+| Files with complete, correct answer | 15 / 15 | 0 / 15 |
+| Parent read-result bytes | 4,318 B | 256,255 B across 5 files |
+| Final parent turn total tokens | 9,605 | 62,733 |
+| Reported parent cost | $0.0181 | $0.0436 |
+| Reported worker cost | $0.00546 | — |
+| Combined reported cost | $0.0236 | $0.0436 |
+
+The direct arm deliberately requested one unbounded read per file with routing disabled. Pi truncated each result at 50 KB (line 721), so after five files it stopped and correctly declined to claim complete coverage. It is therefore **not a quality-matched cost baseline**: the apparent $0.0200 / 46% combined-cost difference and the extrapolated $0.00715 / 82% per-file figure must not be treated as measured savings. The direct-read payload contrast is useful evidence that routing kept source out of the parent context, but a completed bounded direct baseline is required to publish a cost-reduction percentage.
 
 ### Break-even by parent model
 

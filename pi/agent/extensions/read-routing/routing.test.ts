@@ -72,6 +72,20 @@ test("multi-byte characters are measured as bytes, not characters", () => {
   expect(bulkReadRedirect({ path }, root)).toBeDefined();
 });
 
+test("Pi path aliases retain routing for large files", () => {
+  const aliases = [
+    ["unicode space.txt", "unicode\u00a0space.txt"],
+    ["cafe\u0301.txt", "café.txt"],
+    ["owner’s notes.txt", "owner's notes.txt"],
+    ["report 1\u202fPM.txt", "report 1 PM.txt"],
+  ];
+  for (const [actualName, requestedName] of aliases) {
+    const actualPath = join(root, actualName);
+    writeFileSync(actualPath, aboveThreshold);
+    expect(bulkReadRedirect({ path: join(root, requestedName) }, root)).toBeDefined();
+  }
+});
+
 test("bounded limits include 1 and 350, but not 351 or non-finite values", () => {
   const path = join(root, "limit-boundary.txt");
   writeFileSync(path, aboveThreshold);
@@ -99,7 +113,6 @@ test("extension redirects broad reads but permits repeated bounded reads without
   expect(blocked.block).toBe(true);
   expect(blocked.reason).toContain(join(homedir(), ".pi/agent/skills/bulk-read/SKILL.md"));
   expect(blocked.reason).toContain("bulk-reader");
-  expect(blocked.reason).toContain("16 KiB");
   expect(blocked.reason).toContain("1\u2013350 lines");
   expect(handler!({ toolName: "read", input: { path, limit: 350 } }, { cwd: root })).toBeUndefined();
   for (const offset of [1, 351, 701, 1051]) {

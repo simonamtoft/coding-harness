@@ -1,4 +1,4 @@
-import { realpathSync, statSync } from "node:fs";
+import { realpathSync, statSync, type Stats } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ const GOVERNING_NAMES = new Set([
 ]);
 const GOVERNING_DIRS = new Set(["skills", "agents", "adr", "adrs", "decisions"]);
 const NATIVE_DOCUMENT_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".pdf", ".ipynb"]);
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 
 function isDirectDocument(filePath: string): boolean {
   const extension = extname(filePath).toLowerCase();
@@ -22,25 +23,43 @@ function isDirectDocument(filePath: string): boolean {
     || parts.some((part, index) => part === ".claude" && parts[index + 1] === "rules");
 }
 
+function resolveReadPath(rawPath: string, cwd: string): { filePath: string; info?: Stats } {
+  let normalizedPath = rawPath.replace(/^@/, "").replace(UNICODE_SPACES, " ");
+  if (normalizedPath === "~" || normalizedPath.startsWith("~/")) normalizedPath = join(homedir(), normalizedPath.slice(1));
+  if (normalizedPath.startsWith("file://")) normalizedPath = fileURLToPath(normalizedPath);
+  const resolvedPath = resolve(cwd, normalizedPath);
+  const nfdPath = resolvedPath.normalize("NFD");
+  const candidates = [
+    resolvedPath,
+    resolvedPath.replace(/ (AM|PM)\./gi, " $1."),
+    nfdPath,
+    resolvedPath.replace(/'/g, "’"),
+    nfdPath.replace(/'/g, "’"),
+  ];
+
+  for (const filePath of candidates) {
+    try {
+      return { filePath, info: statSync(filePath) };
+    } catch {
+      // Preserve the native read tool's fallback behavior for missing or inaccessible paths.
+    }
+  }
+  return { filePath: resolvedPath };
+}
+
 export function bulkReadRedirect(input: { path?: unknown; limit?: unknown }, cwd: string): string | undefined {
   if (typeof input.path !== "string" || !input.path) return;
   if (typeof input.limit === "number" && Number.isInteger(input.limit)
     && input.limit > 0 && input.limit <= MAX_BOUNDED_READ_LINES) return;
 
   try {
-    let rawPath = input.path.replace(/^@/, "");
-    if (rawPath === "~" || rawPath.startsWith("~/")) rawPath = join(homedir(), rawPath.slice(1));
-    if (rawPath.startsWith("file://")) rawPath = fileURLToPath(rawPath);
-    const filePath = resolve(cwd, rawPath);
-    if (isDirectDocument(filePath)) return;
-    const canonicalPath = realpathSync(filePath);
-    if (isDirectDocument(canonicalPath)) return;
-    const info = statSync(canonicalPath);
-    if (!info.isFile() || info.size <= MAX_DIRECT_BYTES) return;
+    const { filePath, info } = resolveReadPath(input.path, cwd);
+    if (isDirectDocument(filePath) || !info || !info.isFile() || info.size <= MAX_DIRECT_BYTES) return;
+    if (isDirectDocument(realpathSync(filePath))) return;
   } catch {
     // Missing or inaccessible files belong to the read tool, not the cost policy.
     return;
   }
 
-  return `Bulk read routed: this file exceeds ${MAX_DIRECT_BYTES / 1024} KiB. Read ${join(homedir(), ".pi/agent/skills/bulk-read/SKILL.md")} and delegate extraction to bulk-reader with the paths and a specific question. If you need original source for reasoning or editing, use read with offset and limit (1–${MAX_BOUNDED_READ_LINES} lines). Offset alone is not bounded. Do not bypass via Bash or oversized limits. Security checks still apply.`;
+  return `Bulk read routed. Read ${join(homedir(), ".pi/agent/skills/bulk-read/SKILL.md")} and delegate extraction to bulk-reader with the paths and a specific question. If you need original source for reasoning or editing, use read with offset and limit (1–${MAX_BOUNDED_READ_LINES} lines). Offset alone is not bounded. Do not bypass via Bash or oversized limits. Security checks still apply.`;
 }

@@ -19,7 +19,7 @@ Bundled roles and their owners:
 - `repository-scout` — repository reconnaissance for a recon slice; owned by `swarm`
 - `implementation-worker` — the only writable role; owned by `swarm`, and bounded slices require a coordinator-provided isolated cwd
 
-Read-only roles receive only `read`, `grep`, `find`, and `ls`. `implementation-worker` receives those plus `bash`, `edit`, and `write`; `presenter` has a separate report-only capability. Unknown tools, malformed frontmatter, duplicate names, unknown agents, and scope mismatches fail closed. User model overrides take precedence over frontmatter models, which take precedence over the parent model; duplicate names across selected user/project scopes are rejected rather than shadowed.
+Read-only roles may receive only `read`, `grep`, `find`, and `ls`. `implementation-worker` receives those plus `bash`, `edit`, and `write`; `presenter` has a separate report-only capability. Unknown tools, malformed frontmatter, duplicate names, unknown agents, and scope mismatches fail closed. User model overrides take precedence over frontmatter models, which take precedence over the parent model; duplicate names across selected user/project scopes are rejected rather than shadowed.
 
 Project agents are trusted only after interactive confirmation. In headless mode they are rejected by default; a caller must explicitly set `confirmProjectAgents: false` for a trusted project. Pi's capabilities and validation are intentionally narrower than Claude's task-role system; this extension provides only the roles and cwd guarantees Pi can enforce.
 

@@ -2,7 +2,7 @@
 name: bulk-reader
 description: Source-backed extraction from explicit large reference files without filling the parent context
 model: openai-codex/gpt-5.6-luna
-tools: read, grep, find, ls
+tools: read, grep
 ---
 
 You are a read-only bulk reader for a parent Pi agent.
