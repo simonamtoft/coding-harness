@@ -35,6 +35,15 @@ clean_output=$(cd "$clean_repo" && "$capture" "$clean_workspace" 'clean test')
 [[ $clean_output == EMPTY ]] || fail "clean repository returned $clean_output"
 [[ -z $(find "$clean_workspace" -mindepth 1 -print -quit) ]] || fail 'clean snapshot was not removed'
 
+unstaged_repo=$(new_repo unstaged)
+unstaged_workspace="$tmp/unstaged-workspace"
+mkdir "$unstaged_workspace"
+printf 'unstaged only\n' >>"$unstaged_repo/tracked.txt"
+unstaged_evidence=$(cd "$unstaged_repo" && "$capture" "$unstaged_workspace" 'unstaged test')
+[[ -f $unstaged_evidence ]] || fail 'unstaged-only capture did not return an evidence file'
+assert_contains "$unstaged_evidence" '+unstaged only'
+rm -rf -- "$(dirname -- "$unstaged_evidence")"
+
 repo=$(new_repo changes)
 workspace="$tmp/changes-workspace"
 mkdir "$workspace"
@@ -45,6 +54,9 @@ mkdir -p "$repo/nested"
 printf 'nested\n' >"$repo/nested/new file.txt"
 printf 'space\n' >"$repo/with space.txt"
 printf '\0binary' >"$repo/asset.bin"
+printf 'STAGED_SECRET\n' >"$repo/.env"
+git -C "$repo" add .env
+printf 'UNTRACKED_SECRET\n' >"$repo/private.key"
 ln -s tracked.txt "$repo/tracked-link"
 evidence=$(cd "$repo" && "$capture" "$workspace" 'commit the current change')
 [[ -f $evidence ]] || fail 'capture did not return an evidence file'
@@ -62,7 +74,12 @@ assert_contains "$evidence" 'nested/new file.txt'
 assert_contains "$evidence" '+nested'
 assert_contains "$evidence" 'with space.txt'
 assert_contains "$evidence" 'UNCAPTURED: binary path asset.bin'
+assert_contains "$evidence" 'UNCAPTURED: protected secret path .env'
+assert_contains "$evidence" 'UNCAPTURED: protected secret path private.key'
 assert_contains "$evidence" 'UNCAPTURED: nonregular or unreadable path tracked-link'
+if grep -F -e STAGED_SECRET -e UNTRACKED_SECRET "$evidence" >/dev/null; then
+  fail 'evidence captured protected secret contents'
+fi
 assert_contains "$evidence" 'UNTRACKED FILE: nested'
 
 rm -rf -- "$(dirname -- "$evidence")"

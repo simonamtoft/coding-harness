@@ -17,6 +17,28 @@ path_size() {
   stat -f %z -- "$1" 2>/dev/null || stat -c %s -- "$1"
 }
 
+is_protected_secret_path() {
+  case "/$1" in
+    */.env|*/.env.*|*/.ssh/*|*/.aws/*|*/.gnupg/*|*/.azure/*|*/.kube/*|*/.gcloud/*|*/.config/gcloud/*|*/Library/Keychains/*|*/.docker/config.json|*/credentials.json|*/service-account*.json|*/id_rsa|*/id_ed25519|*/.netrc|*/.npmrc|*/.pypirc|*.pem|*.key) return 0 ;;
+  esac
+  return 1
+}
+
+append_diff() {
+  local mode=${1:-} path
+  local -a paths=()
+  while IFS= read -r -d '' path; do
+    if is_protected_secret_path "$path"; then
+      printf 'UNCAPTURED: protected secret path %q\n' "$path" >>"$evidence"
+    else
+      paths+=("$path")
+    fi
+  done < <(git diff $mode --name-only -z)
+  if ((${#paths[@]})); then
+    git diff $mode -- "${paths[@]}"
+  fi
+}
+
 trap cleanup_on_error ERR
 chmod 700 "$snapshot_dir"
 
@@ -37,9 +59,9 @@ chmod 600 "$evidence"
   printf 'GIT STATUS:\n'
   cat "$status_file"
   printf '\nUNSTAGED DIFF:\n'
-  git diff
+  append_diff
   printf '\nSTAGED DIFF:\n'
-  git diff --staged
+  append_diff --staged
   printf '\nCOMMIT MESSAGE RULES:\n'
   cat "$skill_dir/../_shared/commit-message-rules.md"
   printf '\nDETECTED COMMIT STYLE:\n'
@@ -53,6 +75,10 @@ chmod 600 "$evidence"
 
 while IFS= read -r -d '' path; do
   if size=$(path_size "$path"); then :; else size=unknown; fi
+  if is_protected_secret_path "$path"; then
+    printf 'UNCAPTURED: protected secret path %q (%s bytes)\n' "$path" "$size" >>"$evidence"
+    continue
+  fi
   if [[ ! -f "$path" || -L "$path" || ! -r "$path" ]]; then
     printf 'UNCAPTURED: nonregular or unreadable path %q (%s bytes)\n' "$path" "$size" >>"$evidence"
     continue
