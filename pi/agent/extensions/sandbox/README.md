@@ -27,6 +27,18 @@ host-side boundary to model tool calls:
   (`PLAYWRIGHT_BROWSERS_PATH` when absolute, otherwise
   `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`). Write, edit,
   and Bash access to those roots is unchanged.
+- Sessions started **at the canonical `coding-harness` root** may use `read`,
+  `grep`, `find`, and `ls` on `~/.pi/agent/sessions`. This exception does not
+  apply from checkout subdirectories or other projects, and the session-store
+  root must be an existing non-symlink directory. Recursive `grep`/`find`
+  calls fail closed if the requested tree contains symlinks or protected paths;
+  direct reads still resolve symlinks before checking. Transcript writes and
+  general Bash access remain blocked. Use the read-only discovery helper below
+  instead of shell commands on the session store. Eligible Bash denials name the
+  approved discovery command and direct the agent to the read tool, rather than
+  implying that all transcript access is unavailable. The repository's root
+  `AGENTS.md` also includes this workflow so new sessions can find it before a
+  denied call.
 - Sessions started inside the canonical `coding-harness` checkout or
   `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
   scoped development exception for user-owned executable package source; it is
@@ -69,7 +81,8 @@ host-side boundary to model tool calls:
 - Bash is also blocked when it contains an explicit path outside the current,
   permitted plugin workspace, or session temp directory; changes its working
   directory to the session temp directory; or names a protected secret pattern.
-  The research-vault exceptions are limited to the documented commands above.
+  The research-vault and session-history exceptions are limited to their
+  documented commands.
   The exact POSIX null device path is exempt so commands can safely discard output
   or compare against an empty source; neighboring device paths remain blocked.
   Scratch commands must use absolute paths; Bash does not use the read approval
@@ -80,6 +93,31 @@ host-side boundary to model tool calls:
 - On session startup, the extension changes the Pi agent directory and retained
   session directories to mode 0700, and session transcripts plus local
   credential/configuration JSON files to mode 0600. Symlinks are not followed.
+
+## Session-history discovery
+
+From the canonical checkout root:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --match "playwright" --limit 25
+```
+
+The helper prints JSONL metadata (`path`, `id`, `timestamp`, `cwd`) for the newest
+matching top-level Pi sessions, ordered by session start time. Matching is a
+case-insensitive substring search across message records, including tool calls
+and results. It excludes nested subagent transcripts, skips symlinks and
+protected paths, and never writes transcripts or reports. Read the returned
+paths with the read tool for detailed evidence; transcript contents can still
+contain sensitive data.
+
+The automatic Bash grant accepts exactly the command above (or an absolute
+canonical helper path), a literal query containing letters, digits, spaces,
+periods, underscores or hyphens, and a limit from 1 to 100. No pipes,
+redirections, shell expansion, extra flags, or command chaining are granted.
+Bun is required. After editing this extension, run `/reload` in Pi to activate
+the changed policy; editing the file alone does not update a running guard.
+
+## Boundary limitations
 
 This is a tool-call guard, not an OS sandbox. The command-safety policy uses
 lexical inspection: shell syntax it cannot prove or programs that discover paths

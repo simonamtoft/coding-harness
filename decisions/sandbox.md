@@ -96,3 +96,16 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** Sessions outside `coding-harness` may modify only their active repository's `.agent/verify.sh` and `.agent/diagnostics.sh`; Bash may stage them or mark them executable but cannot execute them directly. Nested copies and other control-plane paths remain restricted.
 **Why:** These two scripts are the documented cross-harness verifier contract, and blocking them prevented normal commits. Moving the contract would add churn without strengthening the boundary because the existing writable Taskfile `verify` fallback has equivalent execution capability. Pi's verifier trust gate approves repository-controlled verifier content before execution, so the Bash exception must not bypass that gate.
 **Revisit if:** The verifier contract no longer uses these project-root scripts, or verification execution receives a stronger isolated trust boundary.
+
+### SBX-16 · Session-history inspection belongs to harness maintenance
+`accepted` · 2026-09-13 · `01a09c5b`
+**Decision:** Permit Pi transcript read tools and a literal read-only discovery command only from the canonical coding-harness root. General outside Bash access, transcript writes, and grants from other projects remain refused.
+**Why:** Reviewing recent sessions is necessary to improve the harness, but ordinary project work should not automatically see unrelated conversations. The user explicitly chose a bounded analysis helper rather than weakening the general Bash boundary.
+**Revisit if:** Session analysis needs additional read-only operations or another explicitly trusted maintenance root.
+**Evidence:** "allow reads of ~/.pi/agent/sessions when the current folder is ~/coding-harness"; "Read tools + analysis helper".
+
+### SBX-17 · Allowlist Node-based shared skill helpers
+`accepted` · 2026-09-14 · `01a09ecb`
+**Decision:** Permit only `visual-verification`'s `capture-pages.mjs` and `capture-scenario.mjs` as Node helpers in the canonical shared skill tree; keep the existing shell-helper rule and refuse other shared `.mjs` files.
+**Why:** The visual-capture runners need direct Bash execution from project sessions. Trusting every shared Node helper would let a helper with manifest-controlled indirect reads bypass the guard's protected-path checks; an explicit allowlist preserves the shared-tree, symlink-resolution, and secret-path constraints.
+**Revisit if:** Another Node shared helper demonstrates a project-session execution need and restricts indirect filesystem inputs safely.

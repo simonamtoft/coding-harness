@@ -34,6 +34,25 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - Do not commit credentials, authentication state, machine-local provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`. Canonical built-in model defaults in `pi/agent/agents/` are the exception; local `subagents.json` overrides remain untracked.
 - Update `README.md` with changes to link behavior, layout, installation, or ownership boundaries.
 
+## Inspecting Pi session history
+
+When Pi starts at this canonical checkout root, discover matching transcripts with:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --match "playwright" --limit 25
+```
+
+Replace the topic and limit as needed (1–100). The helper searches message records,
+including tool calls/results, and returns top-level sessions newest-first by start
+time. Use the **read tool** on the returned paths. Do not use Bash `ls`, `find`, or
+`rg` on `~/.pi/agent/sessions`: general Bash access remains blocked even though
+this helper and transcript reads are permitted. A Bash denial alone does not mean
+logs need exporting or permissions need changing; try this approved workflow first.
+Keep reads scoped to the requested evidence and avoid exposing unrelated sensitive
+transcript content. This automatic access does not apply from other projects or
+checkout subdirectories; protected paths and symlinked session-store roots remain
+restricted.
+
 ## Decision ledger
 
 `DECISIONS.md` indexes the ledger of rejected approaches, reversals, standing constraints, and rationale that the code does not carry. Entries live in per-area files under `decisions/`.

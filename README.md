@@ -64,7 +64,10 @@ workspaces stay readable, while other retained scratch content prompts and
 writes remain scoped to the current session. Reads elsewhere prompt, apart from
 direct reads in the canonical shared tree (including installed Pi skills that
 resolve there) and read-tool access to installed Volta package content and
-Playwright's managed browser cache.
+Playwright's managed browser cache. Sessions started at the canonical checkout
+root also get read-tool access to `~/.pi/agent/sessions` and a narrowly permitted
+read-only [session-history discovery helper](pi/agent/extensions/sandbox/README.md#session-history-discovery);
+transcript writes and general Bash access remain blocked.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
 everywhere. Agent control files and plugin source are write-protected unless Pi

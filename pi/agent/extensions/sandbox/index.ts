@@ -10,6 +10,8 @@ import {
   hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
   hasResearchVaultReadAccess,
+  hasSessionHistoryReadAccess,
+  permitsSessionHistoryCommand,
   isControlPlaneWriteBlocked,
   isProtectedSecretPath,
   isTrustedSharedSkillHelper,
@@ -22,6 +24,7 @@ import {
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
 import { changesDirectoryToSessionTemp } from "./session-temp.ts";
+import { isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
@@ -143,6 +146,13 @@ export function createSandboxGuard(
 ) {
   const root = realpathSync.native(cwd);
   const resolvedResearchVaultRoot = realpathForCheck(researchVaultRoot);
+  const configuredHistoryRoot = sessionHistoryRoot();
+  const historyRoot = realpathForCheck(configuredHistoryRoot);
+  const historyHelper = join(CODING_HARNESS_ROOT, "pi/agent/extensions/sandbox/session-history.ts");
+  const canReadSessionHistory = (toolName: string, path: string) =>
+    hasSessionHistoryReadAccess(toolName, root, path, CODING_HARNESS_ROOT, historyRoot)
+    && isSessionHistoryDirectory(configuredHistoryRoot)
+    && realpathForCheck(configuredHistoryRoot) === historyRoot;
   const sessionReadApprovals = new Set<string>();
   const isPluginWorkspacePath = (path: string) => hasPluginWorkspaceAccess(root, path, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT);
   const isSessionTempPath = (path: string) => {
@@ -164,6 +174,12 @@ export function createSandboxGuard(
         if (inspection.outside) {
           if (!inspection.resolved) return block(`${input.path}: ${inspection.reason}`);
           if (isSessionTempPath(inspection.resolved) || isPluginWorkspacePath(inspection.resolved)) return undefined;
+          if (canReadSessionHistory(event.toolName, inspection.resolved)) {
+            if (["grep", "find"].includes(event.toolName) && !isSafeSessionHistoryTree(inspection.resolved)) {
+              return block(`${input.path}: recursive session-history reads cannot traverse symlinks or protected paths`);
+            }
+            return undefined;
+          }
           if (hasResearchVaultReadAccess(event.toolName, inspection.resolved, resolvedResearchVaultRoot)) return undefined;
           if (isWithin(resolvedResearchVaultRoot, inspection.resolved) && isWrite) {
             if (await requestResearchVaultConfirmation(ctx, event.toolName, inspection.resolved)) return undefined;
@@ -214,6 +230,9 @@ export function createSandboxGuard(
       const denyReason = deniedBashCommandReason(event.input.command, root, undefined, sessionTempDirectory);
       if (denyReason) return block(denyReason);
 
+      if (permitsSessionHistoryCommand(event.input.command, root, CODING_HARNESS_ROOT)
+        && realpathForCheck(historyHelper) === historyHelper) return undefined;
+
       if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory, realpathForCheck)) {
         return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
       }
@@ -233,6 +252,9 @@ export function createSandboxGuard(
       for (const candidate of shellPathCandidates(event.input.command)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
         const inspection = inspectPath(root, path);
+        if (inspection.resolved === historyHelper) {
+          return block("session-history helper requires the documented read-only command from the coding-harness root");
+        }
         const rootVerifierScript = inspection.resolved
           && isWithin(root, inspection.resolved)
           && (inspection.resolved === join(root, ".agent", "verify.sh")
@@ -248,7 +270,14 @@ export function createSandboxGuard(
           && (isSessionTempPath(inspection.resolved)
             || isPluginWorkspacePath(inspection.resolved)
             || isTrustedSharedSkillHelper(inspection.resolved, CODING_HARNESS_SHARED_ROOT));
-        if (inspection.reason && !permittedOutsidePath) return block(`${candidate}: ${inspection.reason}`);
+        if (inspection.reason && !permittedOutsidePath) {
+          if (inspection.outside && inspection.resolved && canReadSessionHistory("read", inspection.resolved)) {
+            return block(`${candidate}: general Bash access to session history is blocked, but transcript reads are allowed here. `
+              + 'Discover matching sessions with: bun pi/agent/extensions/sandbox/session-history.ts --match "search-term" --limit 25. '
+              + 'Replace "search-term" with the topic, then use the read tool on the returned paths. No export or permission change is needed for this workflow.');
+          }
+          return block(`${candidate}: ${inspection.reason}`);
+        }
       }
     }
 

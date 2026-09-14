@@ -39,16 +39,22 @@ test("symlinked shared skill helpers retain narrowly-scoped Bash access", () => 
   const root = mkdtempSync(join(tmpdir(), "pi-shared-skills-"));
   const shared = join(root, "shared");
   const helper = join(shared, "skills", "quick-commit", "scripts", "capture_snapshot.sh");
+  const scenarioHelper = join(shared, "skills", "visual-verification", "scripts", "capture-scenario.mjs");
   const installedSkills = join(root, "agent", "skills");
   mkdirSync(join(shared, "skills", "quick-commit", "scripts"), { recursive: true });
+  mkdirSync(join(shared, "skills", "visual-verification", "scripts"), { recursive: true });
   writeFileSync(helper, "#!/usr/bin/env bash\n");
+  writeFileSync(scenarioHelper, "export default {};\n");
   mkdirSync(join(root, "agent"), { recursive: true });
   symlinkSync(join(shared, "skills"), installedSkills);
 
   try {
     const canonicalShared = realpathSync(shared);
     const resolvedHelper = realpathSync(join(installedSkills, "quick-commit", "scripts", "capture_snapshot.sh"));
+    const resolvedScenarioHelper = realpathSync(join(installedSkills, "visual-verification", "scripts", "capture-scenario.mjs"));
     assert.equal(isTrustedSharedSkillHelper(resolvedHelper, canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(resolvedScenarioHelper, canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "assemble-report.mjs"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "SKILL.md"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", ".env.sh"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(root, "outside.sh"), canonicalShared), false);

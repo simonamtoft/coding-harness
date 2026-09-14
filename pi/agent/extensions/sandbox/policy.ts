@@ -5,7 +5,7 @@ import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 const POSIX_NULL_DEVICE = "/dev/null";
 
 const SECRET_PATTERNS = [
-  /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
+  /(^|\/)(?:\.env(?:[./]|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
   /(^|\/)(?:credentials\.json|service-account[^/]*\.json|id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc)$/,
   /(^|\/)\.config\/gcloud(?:\/|$)/,
   /(^|\/)Library\/Keychains(?:\/|$)/,
@@ -29,10 +29,33 @@ export function hasTrustedSharedReadAccess(
 export function isTrustedSharedSkillHelper(targetPath: string, codingHarnessSharedRoot: string): boolean {
   if (isProtectedSecretPath(targetPath) || !isWithin(codingHarnessSharedRoot, targetPath)) return false;
   const relativePath = relative(codingHarnessSharedRoot, targetPath).split(sep);
-  return relativePath.length === 4
-    && relativePath[0] === "skills"
-    && relativePath[2] === "scripts"
-    && relativePath[3]!.endsWith(".sh");
+  if (relativePath.length !== 4 || relativePath[0] !== "skills" || relativePath[2] !== "scripts") return false;
+  if (relativePath[3]!.endsWith(".sh")) return true;
+  return relativePath[1] === "visual-verification"
+    && ["capture-pages.mjs", "capture-scenario.mjs"].includes(relativePath[3]!);
+}
+
+export function hasSessionHistoryReadAccess(
+  toolName: string,
+  sessionRoot: string,
+  targetPath: string,
+  codingHarnessRoot: string,
+  historyRoot: string,
+): boolean {
+  return sessionRoot === codingHarnessRoot
+    && ["read", "grep", "find", "ls"].includes(toolName)
+    && isWithin(historyRoot, targetPath)
+    && !isProtectedSecretPath(targetPath);
+}
+
+export function permitsSessionHistoryCommand(command: string, sessionRoot: string, codingHarnessRoot: string): boolean {
+  if (sessionRoot !== codingHarnessRoot) return false;
+  const helper = "pi/agent/extensions/sandbox/session-history.ts";
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const script = `(?:${escape(helper)}|${escape(join(codingHarnessRoot, helper))})`;
+  // One literal query argument, no shell expansion, chaining, or redirection.
+  const query = `(?:[A-Za-z0-9._-]+|"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+')`;
+  return new RegExp(`^bun ${script} --match ${query} --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command);
 }
 
 export function hasResearchVaultReadAccess(toolName: string, targetPath: string, researchVaultRoot: string): boolean {
