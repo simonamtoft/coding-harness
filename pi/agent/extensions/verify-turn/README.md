@@ -1,6 +1,6 @@
 # Verify turn
 
-Runs a project verifier when Pi reaches `agent_settled` after a completed model run that changed tracked or non-ignored untracked project content outside Markdown files. Read-only, commit-only, and Markdown-only runs are skipped; mixed Markdown/code changes and runs that edit and then commit code are still verified. Cancelling model output does not trigger verification. A failing verifier is fed back to the agent so it can repair the change before handing control back.
+Runs a project verifier when Pi reaches `agent_settled` after a completed model run that changes tracked or non-ignored untracked project content outside Markdown files. Read-only, commit-only, Markdown-only, and edit-then-commit runs are skipped; mixed Markdown/code changes without a commit are verified. Cancelling model output does not trigger verification. A failing verifier is fed back to the agent so it can repair the change before handing control back.
 
 ## Verifier discovery
 

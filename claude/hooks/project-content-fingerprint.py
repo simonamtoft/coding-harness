@@ -49,6 +49,14 @@ def project_snapshot(project_dir: Path) -> Optional[dict[str, Any]]:
     project_digest = hashlib.sha256()
     files: dict[str, str] = {}
     try:
+        revision_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        revision = revision_result.stdout.strip() if revision_result.returncode == 0 else "unborn"
         for relative_path in sorted(git_paths(project_dir)):
             decoded_path = os.fsdecode(relative_path)
             try:
@@ -62,12 +70,15 @@ def project_snapshot(project_dir: Path) -> Optional[dict[str, Any]]:
             project_digest.update(b"\0")
     except (OSError, subprocess.CalledProcessError):
         return None
-    return {"fingerprint": project_digest.hexdigest(), "files": files}
+    return {"fingerprint": project_digest.hexdigest(), "files": files, "revision": revision}
 
 
 def classify_changes(before: Any, after: dict[str, Any]) -> str:
     if not isinstance(before, dict) or not isinstance(before.get("files"), dict):
         return "unknown"
+
+    if before.get("revision") != after.get("revision"):
+        return "committed"
 
     before_files = before["files"]
     after_files = after["files"]

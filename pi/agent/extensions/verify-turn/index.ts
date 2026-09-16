@@ -67,6 +67,8 @@ async function captureProjectSnapshot(
     { cwd, signal, timeout: 10_000 },
   );
   if (listed.code !== 0) return undefined;
+  const revision = await pi.exec("git", ["rev-parse", "--verify", "HEAD"], { cwd, signal, timeout: 10_000 });
+  const revisionId = revision.code === 0 ? revision.stdout.trim() : "unborn";
 
   const projectHash = createHash("sha256");
   const files = new Map<string, string>();
@@ -109,7 +111,7 @@ async function captureProjectSnapshot(
     return undefined;
   }
 
-  return { fingerprint: projectHash.digest("hex"), files };
+  return { fingerprint: projectHash.digest("hex"), files, revision: revisionId };
 }
 
 function terminateProcessTree(pid: number): void {
@@ -410,7 +412,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     const snapshotAfterRun = await captureProjectSnapshot(pi, cwd, controller.signal);
     if (!sessionActive || controller.signal.aborted) return;
     const changeScope = classifyProjectChanges(snapshotBeforeRun, snapshotAfterRun);
-    if (rounds === 0 && (changeScope === "unchanged" || changeScope === "markdown-only")) {
+    if (rounds === 0 && (changeScope === "unchanged" || changeScope === "markdown-only" || changeScope === "committed")) {
       verificationRunning = false;
       verificationController = undefined;
       ctx.ui.setStatus("verify-turn", undefined);

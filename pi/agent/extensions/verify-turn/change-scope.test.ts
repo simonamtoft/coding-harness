@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
 
-function snapshot(files: Record<string, string>): ProjectSnapshot {
-  return { fingerprint: "unused", files: new Map(Object.entries(files)) };
+function snapshot(files: Record<string, string>, revision = "before"): ProjectSnapshot {
+  return { fingerprint: "unused", files: new Map(Object.entries(files)), revision };
 }
 
 test("classifies unchanged snapshots", () => {
   assert.equal(
     classifyProjectChanges(snapshot({ "src/app.ts": "same" }), snapshot({ "src/app.ts": "same" })),
     "unchanged",
+  );
+});
+
+test("classifies a revision transition as committed even when files also changed", () => {
+  assert.equal(
+    classifyProjectChanges(snapshot({ "src/app.ts": "before" }), snapshot({ "src/app.ts": "after" }, "after")),
+    "committed",
   );
 });
 

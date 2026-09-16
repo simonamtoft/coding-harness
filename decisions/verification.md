@@ -69,3 +69,9 @@ Decision ledger area. Entry ids use the `VER-` prefix; see `../DECISIONS.md` for
 **Decision:** A language-agnostic extension invokes an optional executable `.agent/diagnostics.sh` with changed paths. Diagnostics inform; `.agent/verify.sh` remains the blocking gate.
 **Why:** The project chooses its own fast checks; the extension invents no language detection or tool policy.
 **Revisit if:** Diagnostics need debouncing, coalescing, or a richer manifest.
+
+### VER-12 · A turn that creates a commit completes verification
+`reverted` · 2026-09-14 · `01a09fda`
+**Decision:** Reversed VER-06's rule that edit-then-commit turns verify. When `HEAD` changes during a normal turn, Pi and Claude skip automatic verification; Pi also leaves deferred review unreleased. Active failure-repair rounds still run verification.
+**Why:** `quick-commit` is the deliberate completion boundary. The cited session `01a09fc9` committed successfully but then triggered redundant verification and review.
+**Revisit if:** Committing ceases to represent a completed unit of work, or automatic checks must enforce a post-commit policy.

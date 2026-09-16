@@ -6,8 +6,8 @@
 #
 # A UserPromptSubmit invocation snapshots project content before the model runs.
 # The Stop invocation verifies only when tracked or non-ignored untracked content
-# changed outside Markdown files, so read-only, commit-only, and documentation-only
-# turns do not run project checks.
+# changed outside Markdown files without creating a commit, so read-only, commit-only,
+# documentation-only, and edit-then-commit turns do not run project checks.
 #
 # Bounded retries: instead of verifying exactly once and then letting any state
 # through (the old `stop_hook_active` short-circuit, which meant a *wrong* fix
@@ -87,7 +87,7 @@ rounds=0
 [[ -f "$counter" ]] && rounds=$(cat "$counter" 2>/dev/null || echo 0)
 [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
 
-if (( rounds == 0 )) && [[ "$change_scope" == "unchanged" || "$change_scope" == "markdown-only" ]]; then
+if (( rounds == 0 )) && [[ "$change_scope" == "unchanged" || "$change_scope" == "markdown-only" || "$change_scope" == "committed" ]]; then
   exit 0
 fi
 

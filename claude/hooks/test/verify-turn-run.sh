@@ -15,9 +15,6 @@ printf 'initial\n' > "$project/example.txt"
 git -C "$project" init -q
 git -C "$project" config user.email test@example.com
 git -C "$project" config user.name Test
-git -C "$project" add example.txt
-git -C "$project" commit -qm initial
-
 cat > "$project/.agent/verify.sh" <<'SH'
 #!/usr/bin/env bash
 count=0
@@ -46,6 +43,13 @@ assert_count() {
     exit 1
   fi
 }
+
+invoke snapshot
+invoke
+assert_count 0
+
+git -C "$project" add example.txt
+git -C "$project" commit -qm initial
 
 invoke snapshot
 invoke
@@ -82,28 +86,28 @@ printf 'changed and committed\n' > "$project/example.txt"
 git -C "$project" add example.txt
 git -C "$project" commit -qm changed-and-committed
 invoke
-assert_count 2
+assert_count 1
 
 invoke snapshot
 printf 'untracked\n' > "$project/new-file.txt"
 invoke
-assert_count 3
+assert_count 2
 
 invoke snapshot
 printf 'mixed docs\n' > "$project/README.md"
 printf 'mixed code\n' > "$project/example.txt"
 invoke
-assert_count 4
+assert_count 3
 
 invoke snapshot
 printf 'changed again\n' > "$project/example.txt"
 VERIFY_FAIL=1 invoke
 [[ $? -eq 2 ]] || { echo "expected first failed verification to block" >&2; exit 1; }
-assert_count 5
+assert_count 4
 
 printf 'repair notes\n' >> "$project/README.md"
 VERIFY_FAIL=1 invoke
 [[ $? -eq 2 ]] || { echo "expected Markdown-only repair round to rerun" >&2; exit 1; }
-assert_count 6
+assert_count 5
 
 printf 'verify-turn regression checks passed\n'
