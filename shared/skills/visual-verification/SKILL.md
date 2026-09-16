@@ -1,6 +1,6 @@
 ---
 name: visual-verification
-description: Use after changing anything a user sees — colours, spacing, layout, components, responsive behaviour — to confirm the rendered result with browser screenshots instead of asserting it from the diff. Covers capturing pages with Playwright and reading the images back.
+description: Use after changing how a served web page renders in a browser — colours, spacing, layout, components, responsive behaviour — to confirm the rendered result with browser screenshots instead of asserting it from the diff. Covers capturing pages with Playwright and reading the images back. Not for terminal, CLI, or TUI output.
 ---
 
 # Visual verification

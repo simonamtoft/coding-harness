@@ -124,3 +124,17 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** The ten latest concrete executions reconstructed the same snapshot in 3–7 shell calls, causing retries and sandbox failures before planning. Script the mechanical, repeatable capture without weakening the planner, confirmation, or staging-isolation boundaries.
 **Revisit if:** The helper itself becomes a source of harness-specific incompatibility, or commit planning no longer needs a private snapshot.
 **Evidence:** "Script the mechanics"
+
+### SKL-21 · Skill descriptions state the surface, not the intent category
+`accepted` · 2026-09-14 · `01a09fad`
+**Decision:** `visual-verification` triggers on browser-rendered pages and explicitly excludes terminal/CLI/TUI output; `domain-modeling` no longer lists "record an architectural decision" as a trigger and takes decision recording only when the decision turns on unsettled domain concepts, rules, or invariants. Neither workflow, nor the ADR section, was otherwise changed.
+**Why:** "anything a user sees" and "record an architectural decision" name the user's intent category rather than the surface each workflow can actually serve, so a terminal table change selected the Playwright capture workflow and a storage-engine ADR selected domain modeling. Fixed-fixture probes on `IM-GPT/gpt-5.6-terra` reproduced both false selections before the change and neither after, with the browser and domain positives unchanged.
+**Revisit if:** A terminal capture workflow is added, or ADR authoring gains a single owning skill.
+**Limitation:** Probes are single-model, small-sample selection checks, not a guarantee across harnesses or models.
+
+### SKL-22 · Wayfinder and explain-code roots dispatch; paths load on demand
+`accepted` · 2026-09-14 · `01a09fbf`
+**Decision:** `wayfinder/SKILL.md` keeps the first-action tracker contract, path dispatch, session limits, modes, naming and Backlog ownership, and moves each entry path into `workflows/` with command reference and task templates in `reference/backlog-operations.md`; `explain-code/SKILL.md` keeps the read-only contract, mode dispatch, neighbor boundaries, evidence contract and presentation policy, and moves the three mode procedures into `modes/`. Nested documents use skill-root-relative paths, stated once in the root, rather than harness-absolute paths. Explain-code's HTML permission was also narrowed to explicit user request to match `shared/AGENTS.md`. SKL-06 and SKL-13 through SKL-15 are unchanged in substance.
+**Why:** Every invocation previously loaded all three paths or all three modes. Keeping modes, session limits and the tracker-first rule in the root preserves the safety contracts that an on-demand read could miss, while path-specific procedure is the only part that varies per invocation.
+**Revisit if:** A path or mode needs material from another path, or the harnesses stop resolving skill-relative document paths.
+**Limitation:** Verified by single-model headless probes (`IM-GPT/gpt-5.6-terra`) on disposable fixtures: all three Wayfinder paths and all three explain-code modes dispatched correctly, with loaded skill bytes down 26–48%. The intermittent ask-first defect behind SKL-15 was not reproduced before or after, so it remains unproven either way.

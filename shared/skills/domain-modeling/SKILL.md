@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, when stateful logic, repeated branching, correlated fields, or invalid combinations reveal an unresolved domain model, or when another skill (e.g. wayfinder, to-spec, to-tickets) needs to maintain the domain model.
+description: Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, when stateful logic, repeated branching, correlated fields, or invalid combinations reveal an unresolved domain model, when a decision to record turns on unsettled domain concepts, rules, or invariants, or when another skill (e.g. wayfinder, to-spec, to-tickets) needs to maintain the domain model.
 ---
 
 # Domain Modeling
@@ -95,3 +95,5 @@ Only offer to create an ADR when all three are true:
 3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
 
 If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+
+Record ADRs from here only for decisions that turn on the domain model. A purely technical decision — storage engine, protocol, framework, deployment topology — belongs to `/technical-design`, even when the user asks for an architectural decision record.
