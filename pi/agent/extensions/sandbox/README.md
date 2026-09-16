@@ -113,10 +113,32 @@ protected paths, and never writes transcripts or reports. Read the returned
 paths with the read tool for detailed evidence; transcript contents can still
 contain sensitive data.
 
-The automatic Bash grant accepts exactly the command above (or an absolute
-canonical helper path), a literal query containing letters, digits, spaces,
-periods, underscores or hyphens, and a limit from 1 to 100. No pipes,
-redirections, shell expansion, extra flags, or command chaining are granted.
+For a record too large for the read tool's single-line limit, select its session
+UUID, record ID (the top-level `id`, not a tool-call ID), and a JSON field:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --session 01a0aaa7-b627-708e-abb1-df479a2162c1 --record 133df9ba --field message.content --offset 0 --limit 2000
+```
+
+The helper returns one JSON page with `text`, `totalCharacters`, and `nextOffset`
+(`null` at the end). Continue with the returned offset. Fields use dot-separated
+object keys or array indexes: `message.content.0.text` selects just the answer;
+`message.details.results.0.messages.4` selects one internal worker message.
+Strings are returned directly; other JSON values are pretty-printed. Offsets and
+limits count JavaScript UTF-16 code units; concatenate decoded `text` pages to
+reconstruct the selected value, including any split surrogate pairs. Output is
+limited to 2,000 code units per call (below the Bash output cap even with JSON
+escaping), not the size of the record parsed in memory. Missing sessions, records,
+or fields fail explicitly. Extraction validates the session header and refuses
+ambiguous session IDs; it never writes to the store.
+
+The automatic Bash grant accepts only discovery or extraction in the exact flag
+order shown (or an absolute canonical helper path). Discovery accepts a literal
+query containing letters, digits, spaces, periods, underscores or hyphens, and a
+limit from 1 to 100. Extraction accepts a lowercase UUID, an eight-hex-digit
+record ID, a field of at most 256 letters/digits/underscores/dots, a nonnegative
+safe-integer offset, and a limit from 1 to 2000. No pipes, redirections, shell
+expansion, extra flags, or command chaining are granted.
 Bun is required. After editing this extension, run `/reload` in Pi to activate
 the changed policy; editing the file alone does not update a running guard.
 

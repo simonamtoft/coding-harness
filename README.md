@@ -66,7 +66,8 @@ direct reads in the canonical shared tree (including installed Pi skills that
 resolve there) and read-tool access to installed Volta package content and
 Playwright's managed browser cache. Sessions started at the canonical checkout
 root also get read-tool access to `~/.pi/agent/sessions` and a narrowly permitted
-read-only [session-history discovery helper](pi/agent/extensions/sandbox/README.md#session-history-discovery);
+read-only [session-history helper](pi/agent/extensions/sandbox/README.md#session-history-discovery)
+for discovery and bounded JSON-field extraction from oversized records;
 transcript writes and general Bash access remain blocked.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
@@ -173,8 +174,15 @@ temporarily, but it does not remove the accumulated context.
 
 ### Bulk-read routing
 
-Large reference reads can be delegated without loading their contents into the
-parent conversation. Pi's `read-routing` extension and Claude's
+Broad discovery across source, tests, and reference files starts with the shared
+`bulk-read` skill, before loading their bodies into the parent conversation. The
+parent locates candidate paths through focused searches and delegates one factual
+question, then inspects the relevant original-source sections for reasoning or
+edits. Small lookups and required complete reads stay direct; coding and debugging
+tasks do not exempt their broad factual discovery. This is instruction-driven,
+not automatic dispatch or an enforced cumulative read budget.
+
+Pi's `read-routing` extension and Claude's
 `route-bulk-read.py` PreToolUse hook redirect broad `Read` calls for regular files
 larger than 16 KiB to the shared `bulk-read` skill. The parent supplies explicit paths and a
 question; the read-only worker returns findings, source locations, and coverage

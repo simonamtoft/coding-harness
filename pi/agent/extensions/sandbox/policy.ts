@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { parseSessionHistoryExtraction } from "./session-history-command.ts";
 
 const POSIX_NULL_DEVICE = "/dev/null";
 
@@ -55,7 +56,10 @@ export function permitsSessionHistoryCommand(command: string, sessionRoot: strin
   const script = `(?:${escape(helper)}|${escape(join(codingHarnessRoot, helper))})`;
   // One literal query argument, no shell expansion, chaining, or redirection.
   const query = `(?:[A-Za-z0-9._-]+|"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+')`;
-  return new RegExp(`^bun ${script} --match ${query} --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command);
+  if (command.includes("\n") || command.includes("\r")) return false;
+  if (new RegExp(`^bun ${script} --match ${query} --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command)) return true;
+  const extraction = new RegExp(`^bun ${script} (.+)$`).exec(command);
+  return extraction !== null && parseSessionHistoryExtraction(extraction[1]!.split(" ")) !== undefined;
 }
 
 export function hasResearchVaultReadAccess(toolName: string, targetPath: string, researchVaultRoot: string): boolean {

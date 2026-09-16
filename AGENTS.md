@@ -44,7 +44,17 @@ bun pi/agent/extensions/sandbox/session-history.ts --match "playwright" --limit 
 
 Replace the topic and limit as needed (1–100). The helper searches message records,
 including tool calls/results, and returns top-level sessions newest-first by start
-time. Use the **read tool** on the returned paths. Do not use Bash `ls`, `find`, or
+time. Use the **read tool** on the returned paths. If a single JSONL record exceeds its
+size limit, use bounded field extraction instead:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --session <uuid> --record <record-id> --field message.content --offset 0 --limit 2000
+```
+
+Use the record's top-level eight-hex-digit `id`. Follow `nextOffset` until null;
+select nested worker evidence with fields such as
+`message.details.results.0.messages.4`. See the sandbox README for the field and
+pagination contract. Do not use Bash `ls`, `find`, or
 `rg` on `~/.pi/agent/sessions`: general Bash access remains blocked even though
 this helper and transcript reads are permitted. A Bash denial alone does not mean
 logs need exporting or permissions need changing; try this approved workflow first.

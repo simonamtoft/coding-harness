@@ -39,9 +39,12 @@ try {
     assert.ok(recoveryCommand, "session-store Bash denial must include an executable discovery command");
     assert.equal(await guard({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command: recoveryCommand } }, ctx), undefined);
   }
-  const command = `bun ${helper} --match playwright --limit 25`;
-  assert.equal(await guard({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command } }, ctx), undefined);
+  const extractionArgs = "--session 01a0aaa7-b627-708e-abb1-df479a2162c1 --record 133df9ba --field message.content --offset 0 --limit 2000";
+  for (const command of [`bun ${helper} ${extractionArgs}`, `bun ${helper} --match playwright --limit 25`]) {
+    assert.equal(await guard({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command } }, ctx), undefined);
+  }
   const other = createSandboxGuard(join(cwd, "shared"));
+  assert.equal((await other({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command: `bun ${cwd}/${helper} ${extractionArgs}` } }, ctx))?.block, true);
   assert.equal((await other({ type: "tool_call", toolCallId: "test", toolName: "read", input: { path: store } }, ctx))?.block, true);
   assert.equal((await other({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command: `bun ${cwd}/${helper} --match playwright --limit 25` } }, ctx))?.block, true);
 

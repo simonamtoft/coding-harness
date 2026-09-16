@@ -115,3 +115,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** Permit normal writes anywhere under `~/pi-plugins` when Pi starts in `~/pi-plugins` or the canonical `~/coding-harness` checkout. Keep plugin writes blocked from unrelated project sessions and retain secret-path denial everywhere.
 **Why:** Treating all plugin source as control-plane content prevented ordinary plugin development in its own trusted workspace. The existing location-scoped plugin access boundary is sufficient to distinguish that work from unrelated projects.
 **Revisit if:** Plugin source moves outside the trusted workspace or receives a stronger machine-enforced trust boundary.
+
+### SBX-19 · Bounded session-field extraction, not general shell access
+`accepted` · 2026-09-16 · `01a0aa6e-cecf-7666-a2e3-fc8aff4b3c5e`
+**Decision:** Extend the root-scoped session-history helper with literal session ID, record ID, field, offset, and limit arguments. Return a bounded page of the selected JSON field, so worker answers and individual internal messages can be inspected separately. Retain existing protected-path and symlink exclusions, no transcript writes, and no general Bash grant.
+**Why:** Bulk-reader results in the supplied trial sessions occupy single 222–303 KB JSONL lines. The read tool cannot return even one such line under its 50 KB cap, and smaller line limits cannot recover the final answer. Field extraction avoids copying the entire record or weakening the shell boundary; the original record remains unchanged.
+**Revisit if:** Pi supplies native bounded JSON-field reads or session records no longer embed oversized child histories.
+**Evidence:** "Extend the helper"
