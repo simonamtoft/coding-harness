@@ -145,6 +145,7 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** In session `01a0a9d0`, the parent delegated documentation extraction but read candidate source and tests directly in 350-line chunks. The former skill's coding/debugging exception made the task category a blanket escape from delegation. The user chose the instruction-first approach rather than tighter runtime enforcement. Spotify's Portal article supports the same extraction/reasoning split, but its reported token savings do not establish savings here.
 **Revisit if:** Fresh-session trials continue broad parent paging, duplicate the worker's reads, miss relevant evidence, or show combined cost/latency outweighing context reduction.
 **Evidence:** "Let's try 1."
+**Superseded by:** SKL-26 removes mandatory worker-first discovery; the read-only extraction and parent-judgment boundaries remain.
 
 ### SKL-24 · Code explanations inspect source by claim, not by file inventory
 `accepted` · 2026-09-16 · `01a0aa6e-cecf-7666-a2e3-fc8aff4b3c5e`
@@ -152,6 +153,7 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** Trial `01a0aa9c` loaded bulk-read and delegated before source reads, then made 22 parent source/test reads across 18 files. The old evidence contract was a plausible competing instruction, not proof that the worker failed. Requiring a purpose for follow-up reads preserves grounding without automatically duplicating discovery; it does not impose a hard budget or accept worker judgments as verified truth.
 **Revisit if:** Explanations become poorly grounded, or fresh-session trials still reproduce broad parent rereading despite the narrower contract.
 **Evidence:** "Does explain-code then have bad instructions? Can we change them?"
+**Superseded in part by:** SKL-26 makes delegation selective; claim-driven inspection and the stopping condition remain.
 
 ### SKL-25 · Bulk-reader answers replace factual rereading
 `accepted` · 2026-09-16 · `01a0ab15-dbed-7666-a2e3-fc96e727ce37`
@@ -159,3 +161,10 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** All three SEE trials (`01a0ab11-469d`, `01a0ab11-55d6`, `01a0ab11-65c1`) delegated successfully but then made substantial overlapping parent reads. Detailed worker line ranges in the third trial did not prevent duplication. A reading-map contract can turn extraction into a preliminary investigation rather than replacing factual reading; another generic no-rereading rule or tighter size gate does not address that handoff. The retrospective worker also mistook oversized transcript records for missing results, showing why coverage limits must be explicit. This is an instruction pilot, not a claim of proven savings.
 **Revisit if:** Fresh-session trials show unsupported answers, excessive parent rereading, or combined cost/latency that outweighs context reduction.
 **Evidence:** "OK please implement the suggestion"
+
+### SKL-26 · Selective extraction replaces mandatory code-discovery delegation
+`accepted` · 2026-09-16 · `01a0ab15-dbed-7666-a2e3-fc96e727ce37`
+**Decision:** Remove mandatory worker-first broad code discovery from global instructions, bulk-read, and explain-code. Select delegation when a bounded factual answer can replace substantial reading, including settings, log events, document facts, and code inventories. Interconnected explanations, debugging, architecture, safety judgments, and edits may inspect original source directly; independent extraction within them remains eligible. Retain SKL-25's answer-first handoff and existing hooks, bounded-read limits, models, and permissions.
+**Why:** The three updated SEE sessions (`01a0ab2f-83bc`, `01a0ab2f-b385`, `01a0ab2f-cf9a`) loaded the new instructions and delegated successfully, yet made 17, 17, and 19 parent source/test reads afterward. The workflow added extraction without reliably replacing parent reading. These are not controlled economic comparisons, and one parent used a different provider, so they do not prove a cost regression. They do meet the prior decisions' revisit conditions and justify narrowing the pilot rather than adding another prohibition or abandoning extraction.
+**Revisit if:** Representative controlled trials show a broader delegation trigger reduces combined cost at equivalent answer quality and acceptable latency without repeating source inspection.
+**Evidence:** Selected "Narrow the policy" over explicit-only use or further evaluation before editing.
