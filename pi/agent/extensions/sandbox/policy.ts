@@ -184,6 +184,7 @@ export function isControlPlaneWriteBlocked(
   pluginWorkspaceRoot: string,
 ): boolean {
   if (isWithin(codingHarnessRoot, sessionRoot)) return false;
+  if (isWithin(pluginWorkspaceRoot, sessionRoot) && isWithin(pluginWorkspaceRoot, targetPath)) return false;
   if (isWithin(pluginWorkspaceRoot, targetPath)) return true;
   if (isProjectInstructionPath(targetPath) && isWithin(sessionRoot, targetPath)) return false;
   if (isRootVerifierScript(sessionRoot, targetPath)) return false;
@@ -221,6 +222,73 @@ function inlineEvalStringLiterals(command: string): string[] {
     [...body.slice(1, -1).matchAll(/'([^']*)'|"((?:\\.|[^"\\])*)"/g)].map(([, single, double]) => single ?? double));
 }
 
+function searchCommandIndex(tokens: string[]): number {
+  return tokens.findIndex((token) => /(?:^|\/)(?:rg|grep)$/.test(token));
+}
+
+function ignoredSearchArgumentIndexes(tokens: string[]): Set<number> {
+  const commandIndex = searchCommandIndex(tokens);
+  if (commandIndex === -1) return new Set();
+
+  const ignored = new Set<number>();
+  const metadataOptions = new Set(["-g", "--glob", "--iglob", "--include", "--exclude", "--exclude-dir", "--include-dir", "-t", "-T", "--type", "--type-not"]);
+  const patternOptions = new Set(["-e", "--regexp"]);
+  let hasPattern = false;
+  let filesOnly = false;
+
+  for (let index = commandIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (metadataOptions.has(token)) {
+      ignored.add(index + 1);
+      index += 1;
+      continue;
+    }
+    if (patternOptions.has(token)) {
+      ignored.add(index + 1);
+      hasPattern = true;
+      index += 1;
+      continue;
+    }
+    if (/^-e.+/.test(token) || token.startsWith("--regexp=")) {
+      hasPattern = true;
+      continue;
+    }
+    if (token === "--files") {
+      filesOnly = true;
+      continue;
+    }
+    if (token.startsWith("-")) continue;
+    if (!filesOnly && !hasPattern) {
+      ignored.add(index);
+      hasPattern = true;
+    }
+  }
+  return ignored;
+}
+
+function attachedSearchFileOptionValue(token: string): string | undefined {
+  return /^(?:-f|--file=|--ignore-file=|--exclude-from=)(.+)$/.exec(token)?.[1];
+}
+
+function searchFileOptionValues(tokens: string[]): string[] {
+  if (searchCommandIndex(tokens) === -1) return [];
+
+  const values: string[] = [];
+  const fileOptions = new Set(["-f", "--file", "--ignore-file", "--exclude-from"]);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (fileOptions.has(token)) {
+      const value = tokens[index + 1];
+      if (value) values.push(value);
+      index += 1;
+      continue;
+    }
+    const attachedValue = attachedSearchFileOptionValue(token);
+    if (attachedValue) values.push(attachedValue);
+  }
+  return values;
+}
+
 export function shellPathCandidates(command: string): string[] {
   const segments = stripInlineEvalBodies(command).split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
@@ -242,14 +310,16 @@ export function shellPathCandidates(command: string): string[] {
       .split(/\s+/)
       .map((token) => token.replace(/^[([{;,]+|[)\]},;&]+$/g, ""));
     const isBracketTest = /^\s*(?:if\s+)?(?:\[\[|\[)(?:\s|$)/.test(segment);
-    return tokens.filter((token, index) => {
-      if (!token) return false;
+    const ignoredSearchArguments = ignoredSearchArgumentIndexes(tokens);
+    const positionalPaths = tokens.filter((token, index) => {
+      if (!token || ignoredSearchArguments.has(index) || attachedSearchFileOptionValue(token)) return false;
       if (index === 0 && isSystemCommand(token)) return false;
       const isRootComparisonValue = isBracketTest
         && token === "/"
         && ["=", "==", "!=", "=~"].some((operator) => operator === tokens[index - 1] || operator === tokens[index + 1]);
       return !isRootComparisonValue && (looksLikePath(token) || isProtectedSecretPath(token));
     });
+    return [...positionalPaths, ...searchFileOptionValues(tokens).filter((token) => looksLikePath(token) || isProtectedSecretPath(token))];
   });
 }
 

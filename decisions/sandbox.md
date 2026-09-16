@@ -109,3 +109,9 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** Permit only `visual-verification`'s `capture-pages.mjs` and `capture-scenario.mjs` as Node helpers in the canonical shared skill tree; keep the existing shell-helper rule and refuse other shared `.mjs` files.
 **Why:** The visual-capture runners need direct Bash execution from project sessions. Trusting every shared Node helper would let a helper with manifest-controlled indirect reads bypass the guard's protected-path checks; an explicit allowlist preserves the shared-tree, symlink-resolution, and secret-path constraints.
 **Revisit if:** Another Node shared helper demonstrates a project-session execution need and restricts indirect filesystem inputs safely.
+
+### SBX-18 · Plugin workspaces are editable from trusted plugin sessions
+`accepted` · 2026-09-16 · `01a0aa33`
+**Decision:** Permit normal writes anywhere under `~/pi-plugins` when Pi starts in `~/pi-plugins` or the canonical `~/coding-harness` checkout. Keep plugin writes blocked from unrelated project sessions and retain secret-path denial everywhere.
+**Why:** Treating all plugin source as control-plane content prevented ordinary plugin development in its own trusted workspace. The existing location-scoped plugin access boundary is sufficient to distinguish that work from unrelated projects.
+**Revisit if:** Plugin source moves outside the trusted workspace or receives a stronger machine-enforced trust boundary.

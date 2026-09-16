@@ -40,9 +40,10 @@ host-side boundary to model tool calls:
   `AGENTS.md` also includes this workflow so new sessions can find it before a
   denied call.
 - Sessions started inside the canonical `coding-harness` checkout or
-  `~/pi-plugins` may use all filesystem tools across `~/pi-plugins`. This is a
-  scoped development exception for user-owned executable package source; it is
-  unavailable to sessions started in other projects.
+  `~/pi-plugins` may use all filesystem tools, including writes to normal plugin
+  source, across `~/pi-plugins`. This is a scoped development exception for
+  user-owned executable package source; it is unavailable to sessions started in
+  other projects. Protected secret paths remain denied.
 - The canonical personal research vault at `~/research` is resolved before every
   check. Direct `read` calls are automatic; recursive tools retain the ordinary
   approval requirement so they cannot traverse into protected descendants. The
@@ -78,9 +79,11 @@ host-side boundary to model tool calls:
   `chmod 777`, deletion outside the workspace or temporary directories, and
   protected-secret access. It returns an actionable reason; `git push
   --force-with-lease` remains permitted.
-- Bash is also blocked when it contains an explicit path outside the current,
-  permitted plugin workspace, or session temp directory; changes its working
-  directory to the session temp directory; or names a protected secret pattern.
+- Bash is also blocked when it contains an explicit filesystem path outside the
+  current, permitted plugin workspace, or session temp directory; changes its
+  working directory to the session temp directory; or names a protected secret
+  pattern. `rg` and `grep` search patterns and glob values are not filesystem
+  paths, while their explicit file operands remain inspected.
   The research-vault and session-history exceptions are limited to their
   documented commands.
   The exact POSIX null device path is exempt so commands can safely discard output

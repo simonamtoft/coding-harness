@@ -177,12 +177,14 @@ test("Bash can stage or mark root verifier scripts executable without executing 
   assert.equal(permitsRootVerifierScriptBashReference("chmod +x .agent/verify.sh .agent/diagnostics.sh", project, verifyScript), false);
 });
 
-test("other control-plane writes are allowed only from coding-harness sessions", () => {
+test("plugin sessions can modify plugin source, while unrelated sessions remain blocked", () => {
   const project = "/Users/example/projects/app";
 
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.pi/extensions/demo.ts`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/.git/hooks/pre-commit`, harness, plugins), true);
-  assert.equal(isControlPlaneWriteBlocked(worktreePlugin, `${worktreePlugin}/extensions/index.ts`, harness, plugins), true);
+  assert.equal(isControlPlaneWriteBlocked(worktreePlugin, `${worktreePlugin}/extensions/index.ts`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(worktreePlugin, `${statusPlugin}/extensions/index.ts`, harness, plugins), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${worktreePlugin}/extensions/index.ts`, harness, plugins), true);
   assert.equal(isControlPlaneWriteBlocked(harness, `${harness}/pi/agent/extensions/sandbox/index.ts`, harness, plugins), false);
   assert.equal(isControlPlaneWriteBlocked(`${harness}/shared`, `${worktreePlugin}/extensions/index.ts`, harness, plugins), false);
   assert.equal(isControlPlaneWriteBlocked(project, `${project}/src/index.ts`, harness, plugins), false);
@@ -256,6 +258,17 @@ test("the Playwright browser cache resolves per platform and override", () => {
     "/opt/browsers",
   );
   assert.equal(playwrightBrowsersRoot({ PLAYWRIGHT_BROWSERS_PATH: "0" }, "darwin", "/Users/example"), "/Users/example/Library/Caches/ms-playwright");
+});
+
+test("search patterns and globs are not filesystem candidates", () => {
+  assert.deepEqual(shellPathCandidates('rg "/models" README.md'), []);
+  assert.deepEqual(shellPathCandidates("rg --files -g AGENTS.md"), []);
+  assert.deepEqual(shellPathCandidates("grep -e /models /tmp/input"), ["/tmp/input"]);
+  assert.deepEqual(shellPathCandidates("grep -e. ~/.ssh/id_rsa"), ["~/.ssh/id_rsa"]);
+  assert.deepEqual(shellPathCandidates("rg -f ~/.ssh/id_rsa ."), ["~/.ssh/id_rsa"]);
+  assert.deepEqual(shellPathCandidates("rg --ignore-file=~/.ssh/id_rsa ."), ["~/.ssh/id_rsa"]);
+  assert.ok(deniedBashCommandReason("grep -e. ~/.ssh/id_rsa", "/Users/example/project", "/Users/example"));
+  assert.ok(deniedBashCommandReason("rg -f ~/.ssh/id_rsa .", "/Users/example/project", "/Users/example"));
 });
 
 test("Bash path inspection still catches explicit and protected paths", () => {
