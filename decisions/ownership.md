@@ -51,3 +51,10 @@ Decision ledger area. Entry ids use the `OWN-` prefix; see `../DECISIONS.md` for
 **Why:** A fidelity-first hierarchy encouraged browser tests that encoded presentation copy, structure, ordering, and layout details, creating volatile tests with little regression value.
 **Revisit if:** Repositories demonstrate that the guidance systematically misses regressions that a broader browser suite would catch.
 **Evidence:** "stop creating useless tests that are very volatile"
+
+### OWN-09 · Adapt STE principles without enforcing full compliance
+`accepted` · 2026-09-16 · `01a0ab17`
+**Decision:** Add selected Simplified Technical English principles to the shared “Present Clearly” instructions, not a separate skill. Do not impose the full controlled dictionary or rigid sentence-length limits, or claim ASD-STE100 compliance.
+**Why:** Consistent terminology, explicit referents, and separate user actions can reduce reading effort in every response. Strict vocabulary and length restrictions could obscure software terminology and constrain design explanations. Distinguishing evidence from inference is an agent-specific addition, not a claim about STE requirements.
+**Revisit if:** A documentation workflow requires formal ASD-STE100 compliance.
+**Evidence:** "OK please adapt the suggested changes"

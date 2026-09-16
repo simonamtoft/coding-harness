@@ -138,3 +138,24 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** Every invocation previously loaded all three paths or all three modes. Keeping modes, session limits and the tracker-first rule in the root preserves the safety contracts that an on-demand read could miss, while path-specific procedure is the only part that varies per invocation.
 **Revisit if:** A path or mode needs material from another path, or the harnesses stop resolving skill-relative document paths.
 **Limitation:** Verified by single-model headless probes (`IM-GPT/gpt-5.6-terra`) on disposable fixtures: all three Wayfinder paths and all three explain-code modes dispatched correctly, with loaded skill bytes down 26–48%. The intermittent ask-first defect behind SKL-15 was not reproduced before or after, so it remains unproven either way.
+
+### SKL-23 · Worker-first factual discovery, parent-owned reasoning
+`accepted` · 2026-09-16 · `01a0aa6e-cecf-7666-a2e3-fc8aff4b3c5e`
+**Decision:** Trigger the shared bulk-read workflow before broad discovery across candidate source, test, and reference files, not only after a blocked read. The parent locates paths and frames the factual question; the existing read-only worker extracts evidence; the parent inspects relevant original source for reasoning and edits. Preserve small direct lookups, required complete reads, worker permissions, and current routing limits. Do not add cumulative read enforcement or autonomous repository investigation.
+**Why:** In session `01a0a9d0`, the parent delegated documentation extraction but read candidate source and tests directly in 350-line chunks. The former skill's coding/debugging exception made the task category a blanket escape from delegation. The user chose the instruction-first approach rather than tighter runtime enforcement. Spotify's Portal article supports the same extraction/reasoning split, but its reported token savings do not establish savings here.
+**Revisit if:** Fresh-session trials continue broad parent paging, duplicate the worker's reads, miss relevant evidence, or show combined cost/latency outweighing context reduction.
+**Evidence:** "Let's try 1."
+
+### SKL-24 · Code explanations inspect source by claim, not by file inventory
+`accepted` · 2026-09-16 · `01a0aa6e-cecf-7666-a2e3-fc8aff4b3c5e`
+**Decision:** Replace explain-code's default complete-function-or-module reading instruction with delegated factual discovery and claim-driven direct inspection. Cited factual extraction can support an explanation without blanket rereading; original source remains necessary for behavioral inference, conflicting evidence, and consequential conclusions. Read complete functions when control flow matters, and stop when the requested explanation is supported or its uncertainties are explicit.
+**Why:** Trial `01a0aa9c` loaded bulk-read and delegated before source reads, then made 22 parent source/test reads across 18 files. The old evidence contract was a plausible competing instruction, not proof that the worker failed. Requiring a purpose for follow-up reads preserves grounding without automatically duplicating discovery; it does not impose a hard budget or accept worker judgments as verified truth.
+**Revisit if:** Explanations become poorly grounded, or fresh-session trials still reproduce broad parent rereading despite the narrower contract.
+**Evidence:** "Does explain-code then have bad instructions? Can we change them?"
+
+### SKL-25 · Bulk-reader answers replace factual rereading
+`accepted` · 2026-09-16 · `01a0ab15-dbed-7666-a2e3-fc96e727ce37`
+**Decision:** Refine the shared worker brief from a symbol map/next-read list to answered facts with source support, unresolved facts, and coverage limits. The parent uses supported facts directly, inspects unresolved reasoning or consequential claims, or discloses gaps that need not be resolved. Preserve exact-source inspection for edits and consequential conclusions, worker permissions, and existing routing thresholds. Do not interpret inaccessible or truncated evidence as absence, or confuse parent and worker transcript records.
+**Why:** All three SEE trials (`01a0ab11-469d`, `01a0ab11-55d6`, `01a0ab11-65c1`) delegated successfully but then made substantial overlapping parent reads. Detailed worker line ranges in the third trial did not prevent duplication. A reading-map contract can turn extraction into a preliminary investigation rather than replacing factual reading; another generic no-rereading rule or tighter size gate does not address that handoff. The retrospective worker also mistook oversized transcript records for missing results, showing why coverage limits must be explicit. This is an instruction pilot, not a claim of proven savings.
+**Revisit if:** Fresh-session trials show unsupported answers, excessive parent rereading, or combined cost/latency that outweighs context reduction.
+**Evidence:** "OK please implement the suggestion"

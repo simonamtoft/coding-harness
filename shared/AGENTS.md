@@ -7,6 +7,7 @@
 Before implementing:
 
 - Inspect the repository before asking questions it can answer.
+- In the parent session, before broad discovery across source, tests, or reference files, use the `bulk-read` skill: locate candidate paths with focused searches, then delegate factual extraction before reading their bodies. Keep small lookups, targeted source inspection, and required complete reads in the parent; a coding or debugging task is not by itself a reason to do all discovery directly.
 - For domain-affecting work, before planning or implementing: read `CONTEXT-MAP.md`, when present, then the relevant `CONTEXT.md` and ADRs; otherwise read the root `CONTEXT.md` and ADRs. Use its vocabulary, flag boundary-conflicting terms or concept mergers, and preserve the requested user or business outcome—not only a technical proxy—in plans and success criteria.
 - When different interpretations would materially change the implementation, name the distinction, recommend one, and ask before acting. Otherwise state the assumption briefly and proceed.
 - Skip that check for trivial, mechanical, or ordinary CRUD work; do not create missing artifacts. If terms or rules remain unresolved, use `domain-modeling` to clarify them collaboratively and incrementally capture the resolution, not generate a comprehensive model.
@@ -78,7 +79,11 @@ Rules for the loop itself:
 
 - Keep prose concise and do not repeat what a visual already shows.
 - Lead with the concrete answer. Cut generic introductions, recaps, conclusions, praise, and offers to continue when they add no value.
-- Use plain words and active voice. Prefer specific facts, paths, commands, and measurements over abstract claims.
+- Use plain words and active voice. Prefer specific facts, paths, commands, and measurements over abstract claims. Preserve precise domain terms, code identifiers, and commands instead of simplifying away their meaning.
+- Use the same term for the same concept; do not introduce synonyms for variety or merge distinct concepts under one name.
+- In instructions to the user, give one action per sentence and state prerequisites before the action.
+- Name the actor, component, or action when a pronoun such as “it” or “this” could have more than one referent.
+- Distinguish observed facts, inferences, and proposals. State what was verified and what remains unverified; do not turn uncertainty into a confident claim for brevity.
 - Keep formatting proportional to the content. Avoid excessive headings, bold labels, and repetitive summary sections.
 - Vary sentence structure naturally. Do not force ideas into a fixed number of bullets or reuse the same sentence pattern throughout.
 - Use pseudocode, call trees, component trees, or shallow annotated file trees when they clarify behavior, ownership, or placement.

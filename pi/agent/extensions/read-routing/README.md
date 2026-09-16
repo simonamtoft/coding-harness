@@ -1,12 +1,14 @@
 # Pi bulk-read routing
 
-This extension keeps large reference files out of the parent model's context when a read-only worker can extract the needed facts. It is a **redirect, not automatic dispatch**: the hook blocks a broad read; the parent supplies the question and calls `bulk-reader` through the shared skill.
+The shared instructions and `bulk-read` skill direct the parent to delegate broad factual discovery across source, tests, and reference files before reading their bodies. The parent locates candidate paths with focused searches and supplies the factual questions its answer needs. The worker returns answered facts with source support, unresolved facts, and coverage limits. The parent uses supported facts directly, inspects original source for unresolved reasoning or edits, and discloses remaining gaps rather than repeating the worker's investigation. Small lookups and required complete reads remain direct.
+
+This extension is a backstop for oversized broad reads, not the workflow's entry requirement. It is a **redirect, not automatic dispatch**: the hook blocks a broad read; the parent supplies the question and calls `bulk-reader` through the shared skill. Worker-first discovery is instruction-driven; the hook does not enforce it.
 
 ## Why the parent can still read 350 lines repeatedly
 
 [`routing.ts`](routing.ts) allows any positive integer `limit` from 1 through 350, even without an offset. It keeps no per-file or per-session read history. Four successive reads at offsets 1, 351, 701, and 1051 therefore pass. A parent that starts with bounded reads never sees a redirect.
 
-This preserves direct source inspection for debugging, editing, architecture, safety-critical reasoning, and instructions that must be read completely. It also means **passing hook tests does not demonstrate delegation or context savings**. For reference extraction, repeated full-file paging is a workflow-adoption failure, not a broken size check.
+This preserves direct source inspection for debugging, editing, architecture, safety-critical reasoning, and instructions that must be read completely. Those tasks still delegate broad factual discovery; the parent retains judgment and the source needed to support it. It also means **passing hook tests does not demonstrate delegation or context savings**. Repeated full-file paging for discovery is a workflow-adoption failure, not a broken size check.
 
 Since the gate became size-based, the allowance is no longer implied by it: a blocked file of at most 350 lines can still be returned whole by one bounded read. That is deliberate. Tightening the allowance was considered and rejected — one extra read turn costs more than a whole delegation on a large parent context — so the skill's no-evasion rule, not the hook, is what keeps bounded reads honest. See [EXT-10](../../../../decisions/extensions.md).
 
@@ -60,8 +62,8 @@ flowchart TD
     B --> C
     Q -->|Extraction| D["Parent calls subagent: bulk-reader, paths, question, cwd"]
     D --> W["Child loads shared brief and reads evidence"]
-    W --> R["Findings, source locations, coverage gaps, uncertainty; at most 600 words"]
-    R --> P["Parent uses evidence; verifies exact source before consequential decisions"]
+    W --> R["Answered facts, unresolved facts, coverage limits; at most 600 words"]
+    R --> P["Parent: use facts, inspect unresolved reasoning, or disclose gaps; verify source before edits or consequential decisions"]
 ```
 
 Exemptions include governing filenames such as `AGENTS.md`, `SKILL.md`, `CONTEXT.md`, and `DECISIONS.md`; Markdown under skills/agents/adr/adrs/decisions or `.claude/rules`; and native image, PDF, and notebook inputs. Both the requested path and resolved symlink target can qualify. Missing or inaccessible paths defer to the native tool.
