@@ -1,14 +1,16 @@
 # Pi bulk-read routing
 
-The shared instructions and `bulk-read` skill direct the parent to delegate broad factual discovery across source, tests, and reference files before reading their bodies. The parent locates candidate paths with focused searches and supplies the factual questions its answer needs. The worker returns answered facts with source support, unresolved facts, and coverage limits. The parent uses supported facts directly, inspects original source for unresolved reasoning or edits, and discloses remaining gaps rather than repeating the worker's investigation. Small lookups and required complete reads remain direct.
+The shared instructions and `bulk-read` skill select bounded factual extraction when a worker's answer can replace substantial reading, such as settings, log events, document facts, or code inventories. The parent locates candidate paths and supplies a specific question. The worker returns answered facts with source support, unresolved facts, and coverage limits. The parent uses supported facts directly, inspects unresolved reasoning, or discloses gaps. Interconnected code explanations, debugging, and edits can use direct source inspection without first delegating discovery. Small lookups and required complete reads remain direct.
 
-This extension is a backstop for oversized broad reads, not the workflow's entry requirement. It is a **redirect, not automatic dispatch**: the hook blocks a broad read; the parent supplies the question and calls `bulk-reader` through the shared skill. Worker-first discovery is instruction-driven; the hook does not enforce it.
+This extension is a backstop for oversized broad reads. It is a **redirect, not automatic dispatch**: after a block, the parent chooses extraction through `bulk-reader` or bounded original-source inspection. A file's size does not establish that delegation will help; the shared skill owns that decision.
 
 ## Why the parent can still read 350 lines repeatedly
 
-[`routing.ts`](routing.ts) allows any positive integer `limit` from 1 through 350, even without an offset. It keeps no per-file or per-session read history. Four successive reads at offsets 1, 351, 701, and 1051 therefore pass. A parent that starts with bounded reads never sees a redirect.
+[`routing.ts`](routing.ts) allows any positive integer `limit` from 1 through 350, even without an offset. It keeps no per-file read history and never blocks a bounded read. Four successive reads at offsets 1, 351, 701, and 1051 therefore pass. A parent that starts with bounded reads never sees a redirect.
 
-This preserves direct source inspection for debugging, editing, architecture, safety-critical reasoning, and instructions that must be read completely. Those tasks still delegate broad factual discovery; the parent retains judgment and the source needed to support it. It also means **passing hook tests does not demonstrate delegation or context savings**. Repeated full-file paging for discovery is a workflow-adoption failure, not a broken size check.
+That is exactly where the observed waste happens. In session `01a0ab2f-cf9a-7188-8759-8eb5e49dfbd6` the worker succeeded and returned a 6.6 KB source-backed answer; the parent then ran `wc -l` to size reads under the gate and re-read about 1,800 lines of the same files in ≤350-line pages, so no block ever fired. Because the block message is not seen in that path, the extension also reacts to the **worker result** (see [Coverage footer](#coverage-footer)) rather than relying on stronger block wording.
+
+This preserves direct source inspection for behavioral explanations, debugging, editing, architecture, safety-critical reasoning, and instructions that must be read completely. Independent factual extraction may still be delegated when it avoids duplicate reading. It also means **passing hook tests does not demonstrate delegation or context savings**. Evaluate read ranges against the question: necessary original-source inspection is not a delegation failure, while paging unrelated material or repeating a worker's supported extraction can waste context.
 
 Since the gate became size-based, the allowance is no longer implied by it: a blocked file of at most 350 lines can still be returned whole by one bounded read. That is deliberate. Tightening the allowance was considered and rejected — one extra read turn costs more than a whole delegation on a large parent context — so the skill's no-evasion rule, not the hook, is what keeps bounded reads honest. See [EXT-10](../../../../decisions/extensions.md).
 
@@ -26,7 +28,7 @@ flowchart TD
     L --> S["shared/skills → ~/.pi/agent/skills"]
     L --> A["pi/agent/agents → ~/.pi/agent/agents"]
     E --> P["Pi startup or /reload"]
-    P --> R["Discover read-routing/index.ts: register tool_call hook"]
+    P --> R["Discover read-routing/index.ts: register tool_call and tool_result hooks"]
     P --> D["Discover subagent/index.ts: register subagent tool"]
     S --> K["Discover bulk-read skill description; read body on use"]
     A --> C["Subagent discovery on dispatch: bulk-reader.md"]
@@ -70,6 +72,16 @@ Exemptions include governing filenames such as `AGENTS.md`, `SKILL.md`, `CONTEXT
 
 The hook resolves the path, applies the exemptions, and compares the resolved file's size against the threshold. It never opens the file, so it cannot hang on a FIFO, return contents, or grant access. The hook does not intercept Bash or count cumulative reads. The child starts with `--no-extensions` plus the sandbox extension explicitly enabled: it does not recursively load read-routing or the subagent extension. Worker failures or inadequate evidence call for an explicit limitation and permitted bounded direct inspection—not silent model substitution.
 
+The block message frames a bounded read as exact source behind one specific claim, not as a paging method. Its wording depends on session state from the coverage footer below: when `bulk-reader` already read the blocked file, it says so and points to the worker's findings or a follow-up dispatch; when the most recent `bulk-reader` dispatch failed with no successful run since, it tells the parent not to redispatch and to use a bounded read or report the limitation instead of pointing back at the dead worker.
+
+## Coverage footer
+
+[`coverage.ts`](coverage.ts) handles `tool_result` for the `subagent` tool. For each result whose `agent` is `bulk-reader`, it collects the files the worker actually read (the `read` tool calls in `details.results[].messages` whose tool result is not an error, resolved against that dispatch's `cwd`; a sandbox-denied read is not coverage) and appends a footer to the tool result the parent is about to reason over:
+
+> `[read-routing] bulk-reader read N file(s): …. Its findings are source-backed for these files; treat its path and line-range citations as observed evidence and do not reread them to confirm or re-cite. For a further factual question, dispatch bulk-reader again with the follow-up question and paths. For exact source behind one specific unresolved claim, read the smallest relevant section. Paging these files in 350-line reads is a routing failure.`
+
+A failed dispatch with no successful sibling run gets a failure footer instead (`Do not redispatch the same assignment…`) and sets the session's worker-failed state; a later successful run clears it. Results without a `bulk-reader` run are left untouched, and `session_start` clears the state so a new or resumed session does not inherit another session's coverage or failure. The footer is instruction placed at the decision point, listing exact files — it does not block. If trials show the parent still paging covered files, the same file set is the state a cumulative-allowance block would need; see [EXT-11](../../../../decisions/extensions.md).
+
 ## Automated checks
 
 From the repository root:
@@ -89,6 +101,9 @@ The routing suite checks:
 - The registered `tool_call` handler returns a block with the skill path and worker name.
 - After a block, repeated 350-line reads still pass; an offset-only or 351-line read still blocks.
 - Unrelated tools receive no cost-policy decision.
+- A successful `bulk-reader` result gains the coverage footer (relative paths, follow-up dispatch and smallest-section guidance) and later blocks on covered files say so; bounded reads of covered files still pass.
+- A failed `bulk-reader` result gains the failure footer, later blocks stop recommending redispatch, and a subsequent successful run restores the default wording.
+- Parallel dispatches resolve worker reads against each task's `cwd`; results without a `bulk-reader` run and non-`subagent` tools are untouched.
 
 These are deterministic policy and handler-contract tests. The handler uses a stub API: they do **not** start Pi, call a model, prove skill compliance, or measure savings. The subagent suite separately covers agent ownership/brief pointers and model selection. Keep model-dependent evaluation outside the fast unit suite.
 
@@ -149,6 +164,17 @@ These three Pi sessions ran in `~/research` with Terra on 2026-09-12, before the
 | `01a095f7-595a-7565-93d3-875f5ab66d78` | Parent converted the MHTML through the repository's Bash extractor, which already returned article text into parent context. Reading its spill artifact with `limit: 600` hit the byte gate. The parent loaded the skill and dispatched `bulk-reader`; the worker reported a sandbox denial for the parent's temporary artifact. One subsequent `limit: 350` read returned the complete 348-line, 23,723-byte article text. This was successful routing adoption followed by inaccessible worker input, not repeated full-file paging. |
 | `01a095f9-6d96-7565-93d3-8761913c9b5a` | The short curated source note was read directly without a limit or redirect. |
 | `01a095f9-cb8f-7565-93d3-8762ff191a12` | The deliberately unbounded MHTML read was blocked; the parent stopped as instructed. This proves hook activation, not extraction success. |
+
+These `jznee-cbam-demo` sessions ran on 2026-09-16 with Terra at medium thinking. The first two predate the coverage footer; the last two ran with it, on `IM-GPT/gpt-5.6-terra` rather than the baseline's `openai-codex` pin (same model, different provider):
+
+| Session | Observed behavior |
+| --- | --- |
+| `01a0ab20-41d0-72b9-a60f-cde869d2ccf2` | Worker failed (local `IM-GPT` 401). Block message still recommended `bulk-reader`; the parent paged the files under 350 lines. |
+| `01a0ab2f-cf9a-7188-8759-8eb5e49dfbd6` | Baseline for the footer. Worker succeeded with a 6.6 KB answer; the parent ran `wc -l`, then re-read ~1,800 lines of the covered files in ≤350-line pages (`datasets.ts` in three chunks covering all 830 lines). No block fired. |
+| `01a0abc8-2424-734d-8455-572b105cde17` | Same prompt with the footer. Twelve unbounded reads up front, three blocked; the parent then read the skill and dispatched. After the footer (10 files listed): one `rg`, **zero** re-reads of covered files, answer cited worker ranges (`actions.ts:424`, `schema.sql:319-351`). |
+| `01a0abc9-7c0c-715c-9d48-911c920d4ecd` | Forced-dispatch probe on `datasets.ts` and `see.ts`. After the footer: no tool calls at all; answer cited worker ranges (`datasets.ts:483-713`, `:720-736`, `:221-225`). |
+
+Two runs on one provider are a positive signal, not proof; repeat the natural replay on the `openai-codex` pin before treating the footer as settled.
 
 That 348-line, 23,723-byte article originally motivated removing the 16 KiB gate. The measurements below reversed that: at ~6,600 tokens it costs about $0.033 to read directly on Opus against $0.0136 to delegate, so it is exactly the file the gate should catch, and the 16 KiB threshold now routes it again. The separate child-access restriction remains unchanged; see [SBX-05](../../../../decisions/sandbox.md). These traces do not establish cost savings; the sections below verify the policy in fresh client sessions and measure the parent-context reduction.
 

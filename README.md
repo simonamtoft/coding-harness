@@ -174,19 +174,20 @@ temporarily, but it does not remove the accumulated context.
 
 ### Bulk-read routing
 
-Broad discovery across source, tests, and reference files starts with the shared
-`bulk-read` skill, before loading their bodies into the parent conversation. The
-parent locates candidate paths through focused searches and delegates one factual
-question, then inspects the relevant original-source sections for reasoning or
-edits. Small lookups and required complete reads stay direct; coding and debugging
-tasks do not exempt their broad factual discovery. This is instruction-driven,
-not automatic dispatch or an enforced cumulative read budget.
+Use the shared `bulk-read` skill for bounded factual extraction when its answer
+can replace substantial reading: settings, log events, document facts, or code
+inventories. Multi-file code discovery does not require delegation. The parent
+inspects source directly for interconnected explanations, debugging, and edits;
+independent extraction within those tasks can still benefit from a worker.
+Small lookups and required complete reads stay direct. Selection is
+instruction-driven, not automatic dispatch or an enforced cumulative read budget.
 
 Pi's `read-routing` extension and Claude's
 `route-bulk-read.py` PreToolUse hook redirect broad `Read` calls for regular files
 larger than 16 KiB to the shared `bulk-read` skill. The parent supplies explicit paths and a
-question; the read-only worker returns findings, source locations, and coverage
-gaps, targeting at most 600 words. Pi resolves the worker's configured canonical
+question when extraction fits; otherwise it uses bounded original-source reads.
+The read-only worker returns answered facts with source support, unresolved facts,
+and coverage limits, targeting at most 600 words. Pi resolves the worker's configured canonical
 or local provider/model pin independently of the parent, passing both values
 explicitly to the child; an unpinned worker inherits the parent's exact model.
 This is predictable routing, not a same-provider data-egress boundary: the child

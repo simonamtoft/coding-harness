@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import cases from "../../../../shared/read-routing-cases.json";
+import { bulkReaderFooter, createBulkReaderSession, recordBulkReaderResult } from "./coverage.ts";
 import readRouting from "./index.ts";
 import { bulkReadRedirect } from "./routing.ts";
 
@@ -97,16 +98,39 @@ test("bounded limits include 1 and 350, but not 351 or non-finite values", () =>
   }
 });
 
+type Handler = (event: Record<string, unknown>, ctx: { cwd: string }) => unknown;
+
+function registerStub(): Record<string, Handler> {
+  const handlers: Record<string, Handler> = {};
+  readRouting({ on: (event: string, callback: Handler) => { handlers[event] = callback; } } as unknown as ExtensionAPI);
+  expect(Object.keys(handlers).sort()).toEqual(["session_start", "tool_call", "tool_result"]);
+  return handlers;
+}
+
+function workerRun(agent: string, readPaths: string[], status: "completed" | "failed" = "completed", deniedPaths: string[] = []) {
+  const calls = [...readPaths, ...deniedPaths].map((path, index) => ({ type: "toolCall", id: `call-${index}`, name: "read", arguments: { path } }));
+  const results = calls.map((call) => ({
+    role: "toolResult", toolCallId: call.id, toolName: "read", isError: deniedPaths.includes(call.arguments.path),
+    content: [{ type: "text", text: "..." }],
+  }));
+  return {
+    agent,
+    status,
+    errorMessage: status === "failed" ? "Selected provider/model failed: 401" : undefined,
+    messages: [
+      { role: "user", content: [{ type: "text", text: "task" }] },
+      { role: "assistant", content: calls },
+      ...results,
+      { role: "assistant", content: [{ type: "toolCall", id: "grep-1", name: "grep", arguments: { path: "src", pattern: "x" } }, { type: "text", text: "## Answered facts" }] },
+    ],
+  };
+}
+
 test("extension redirects broad reads but permits repeated bounded reads without granting permissions", () => {
-  // The extension only registers tool_call; the stub captures that public boundary.
-  let handler: (event: { toolName: string; input: { path: string; offset?: number; limit?: number } }, ctx: { cwd: string }) => unknown;
-  readRouting({ on: (event: string, callback: typeof handler) => {
-    expect(event).toBe("tool_call");
-    handler = callback;
-  } } as ExtensionAPI);
+  const handler = registerStub().tool_call;
   const path = join(root, "integration.txt");
   writeFileSync(path, `${"x".repeat(40)}\n`.repeat(1400));
-  const blocked = handler!({ toolName: "read", input: { path } }, { cwd: root });
+  const blocked = handler({ toolName: "read", input: { path } }, { cwd: root });
   if (!blocked || typeof blocked !== "object" || !("block" in blocked) || !("reason" in blocked)) {
     throw new Error("Expected a routing block with handoff instructions");
   }
@@ -114,11 +138,105 @@ test("extension redirects broad reads but permits repeated bounded reads without
   expect(blocked.reason).toContain(join(homedir(), ".pi/agent/skills/bulk-read/SKILL.md"));
   expect(blocked.reason).toContain("bulk-reader");
   expect(blocked.reason).toContain("1\u2013350 lines");
-  expect(handler!({ toolName: "read", input: { path, limit: 350 } }, { cwd: root })).toBeUndefined();
+  expect(blocked.reason).toContain("one specific claim");
+  expect(handler({ toolName: "read", input: { path, limit: 350 } }, { cwd: root })).toBeUndefined();
   for (const offset of [1, 351, 701, 1051]) {
-    expect(handler!({ toolName: "read", input: { path, offset, limit: 350 } }, { cwd: root })).toBeUndefined();
+    expect(handler({ toolName: "read", input: { path, offset, limit: 350 } }, { cwd: root })).toBeUndefined();
   }
-  expect(handler!({ toolName: "read", input: { path, offset: 1401 } }, { cwd: root })).toEqual(blocked);
-  expect(handler!({ toolName: "read", input: { path, limit: 351 } }, { cwd: root })).toEqual(blocked);
-  expect(handler!({ toolName: "bash", input: { path } }, { cwd: root })).toBeUndefined();
+  expect(handler({ toolName: "read", input: { path, offset: 1401 } }, { cwd: root })).toEqual(blocked);
+  expect(handler({ toolName: "read", input: { path, limit: 351 } }, { cwd: root })).toEqual(blocked);
+  expect(handler({ toolName: "bash", input: { path } }, { cwd: root })).toBeUndefined();
+});
+
+test("a successful bulk-reader result gets a coverage footer and changes later block wording", () => {
+  const handlers = registerStub();
+  const dir = join(root, "covered");
+  mkdirSync(dir, { recursive: true });
+  const covered = join(dir, "covered.ts");
+  const other = join(dir, "other.ts");
+  writeFileSync(covered, aboveThreshold);
+  writeFileSync(other, aboveThreshold);
+
+  const original = [{ type: "text", text: "## Answered facts" }];
+  const patched = handlers.tool_result({
+    toolName: "subagent",
+    input: { agent: "bulk-reader", cwd: dir, task: "q" },
+    content: original,
+    details: { mode: "single", results: [workerRun("bulk-reader", ["covered.ts", `@${covered}`])] },
+  }, { cwd: root }) as { content: { type: string; text: string }[] };
+  expect(patched.content.slice(0, 1)).toEqual(original);
+  const footer = patched.content[1].text;
+  expect(footer).toContain("read 1 file(s): covered/covered.ts");
+  expect(footer).toContain("dispatch bulk-reader again");
+  expect(footer).toContain("smallest relevant section");
+
+  const blockedCovered = handlers.tool_call({ toolName: "read", input: { path: covered } }, { cwd: root }) as { reason: string };
+  expect(blockedCovered.reason).toContain("already read this file");
+  const blockedOther = handlers.tool_call({ toolName: "read", input: { path: other } }, { cwd: root }) as { reason: string };
+  expect(blockedOther.reason).toContain(join(homedir(), ".pi/agent/skills/bulk-read/SKILL.md"));
+  expect(handlers.tool_call({ toolName: "read", input: { path: covered, offset: 1, limit: 350 } }, { cwd: root })).toBeUndefined();
+
+  handlers.session_start({ reason: "new" }, { cwd: root });
+  const afterReset = handlers.tool_call({ toolName: "read", input: { path: covered } }, { cwd: root }) as { reason: string };
+  expect(afterReset.reason).not.toContain("already read this file");
+});
+
+test("denied reads and the worker's own brief are not recorded as coverage", () => {
+  const session = createBulkReaderSession();
+  const outcome = recordBulkReaderResult(session, { cwd: "/w" }, {
+    results: [workerRun("bulk-reader", ["ok.ts", join(homedir(), ".pi/agent/skills/bulk-read/BULK-READER.md")], "completed", ["denied.ts"])],
+  }, root);
+  expect(outcome?.coveredFiles).toEqual(["/w/ok.ts"]);
+  expect(session.coveredFiles.has("/w/denied.ts")).toBe(false);
+});
+
+test("a failed bulk-reader result steers away from redispatch until a later run succeeds", () => {
+  const handlers = registerStub();
+  const path = join(root, "after-failure.txt");
+  writeFileSync(path, aboveThreshold);
+  const failed = handlers.tool_result({
+    toolName: "subagent",
+    input: { agent: "bulk-reader", cwd: root },
+    content: [{ type: "text", text: "Agent error" }],
+    details: { mode: "single", results: [workerRun("bulk-reader", [], "failed")] },
+  }, { cwd: root }) as { content: { text: string }[] };
+  expect(failed.content[1].text).toContain("bulk-reader failed (Selected provider/model failed: 401)");
+  expect(failed.content[1].text).toContain("Do not redispatch");
+
+  const blocked = handlers.tool_call({ toolName: "read", input: { path } }, { cwd: root }) as { reason: string };
+  expect(blocked.reason).toContain("failed earlier in this session");
+  expect(blocked.reason).not.toContain("SKILL.md");
+
+  handlers.tool_result({
+    toolName: "subagent",
+    input: { agent: "bulk-reader", cwd: root },
+    content: [],
+    details: { mode: "single", results: [workerRun("bulk-reader", ["unrelated.txt"])] },
+  }, { cwd: root });
+  const recovered = handlers.tool_call({ toolName: "read", input: { path } }, { cwd: root }) as { reason: string };
+  expect(recovered.reason).toContain("SKILL.md");
+});
+
+test("results without a bulk-reader run and non-subagent tools are left untouched", () => {
+  const handlers = registerStub();
+  expect(handlers.tool_result({
+    toolName: "subagent",
+    input: { agent: "correctness-reviewer" },
+    content: [],
+    details: { mode: "single", results: [workerRun("correctness-reviewer", ["a.ts"])] },
+  }, { cwd: root })).toBeUndefined();
+  expect(handlers.tool_result({ toolName: "read", input: {}, content: [], details: {} }, { cwd: root })).toBeUndefined();
+});
+
+test("parallel dispatches resolve worker reads against each task cwd", () => {
+  const session = createBulkReaderSession();
+  const outcome = recordBulkReaderResult(session, {
+    tasks: [{ agent: "bulk-reader", cwd: "/a" }, { agent: "bulk-reader", cwd: "/b" }],
+  }, {
+    results: [workerRun("bulk-reader", ["x.ts"]), workerRun("bulk-reader", ["y.ts"], "failed")],
+  }, root);
+  expect(outcome).toEqual({ coveredFiles: ["/a/x.ts"], succeeded: true, errorMessage: "Selected provider/model failed: 401" });
+  expect(session.workerFailed).toBe(false);
+  expect(bulkReaderFooter(outcome!, root)).toContain("/a/x.ts");
+  expect(bulkReaderFooter({ coveredFiles: [], succeeded: true }, root)).toBeUndefined();
 });
