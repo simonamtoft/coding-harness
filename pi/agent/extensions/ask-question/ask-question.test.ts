@@ -52,23 +52,36 @@ const ONE_QUESTION = {
 const RPC_CONTEXT = { mode: "rpc", hasUI: true };
 
 describe("ask_question prompt guidance", () => {
-  test("routes decision context into the question details field, and plans into the message", () => {
+  test("states the whole clarification policy once, in the injected gate", () => {
     const injectedPrompt = CLARIFICATION_GATE;
-    const toolGuidance = askQuestionTool.promptGuidelines.join("\n");
 
+    expect(injectedPrompt).toContain("MUST use ask_question");
     expect(injectedPrompt).toContain("Put the deciding context in each question's details field");
     expect(injectedPrompt).toContain("put the plan itself in the assistant response");
-    expect(injectedPrompt).toContain("do not batch it with other tool calls");
-    expect(injectedPrompt).toContain("MUST use ask_question");
+    expect(injectedPrompt).toContain("do not batch it with edit, write, bash, or other tool calls");
+    expect(injectedPrompt).toContain("do not restate the details in prose");
+    expect(injectedPrompt).toContain("interactive UI is unavailable");
+    expect(injectedPrompt).toContain("do not infer answers");
     expect(injectedPrompt).toContain("up to five");
-    expect(injectedPrompt).not.toContain("write a concise context block in the same assistant response");
-    expect(toolGuidance).toContain("details field stating the decision needed");
-    expect(toolGuidance).toContain("never ask those questions as ordinary assistant prose");
-    expect(toolGuidance).toContain("interactive UI is unavailable");
-    expect(toolGuidance).toContain("up to five");
     expect(registerTool().parameters.questions.items.options.maxItems).toBe(5);
-    expect(toolGuidance).toContain("Do not repeat ask_question details in prose");
-    expect(toolGuidance).toContain("do not batch it with edit, write, bash, or other tool calls");
+  });
+
+  test("permits read-only discovery before asking, and still gates consequential action", () => {
+    expect(CLARIFICATION_GATE).toContain("Read-only discovery comes first");
+    expect(CLARIFICATION_GATE).toContain("do not ask what that inspection answers");
+    expect(CLARIFICATION_GATE).toContain("Before any consequential action");
+    expect(CLARIFICATION_GATE).toContain("Inspection settles facts, not authorization");
+    expect(CLARIFICATION_GATE).not.toContain("Before using any tool");
+  });
+
+  test("keeps tool guidance to option mechanics the gate omits", () => {
+    const toolGuidance = registerTool().promptGuidelines ?? [];
+
+    expect(toolGuidance).toHaveLength(1);
+    expect(toolGuidance[0]).toContain("never by labelling it recommended");
+    for (const guideline of toolGuidance) {
+      expect(CLARIFICATION_GATE).not.toContain(guideline);
+    }
   });
 });
 

@@ -40,3 +40,9 @@ Decision ledger area. Entry ids use the `ASK-` prefix; see `../DECISIONS.md` for
 **Decision:** Prompt guidance explicitly requires `ask_question` rather than prose for blocking clarifications. Options are optional and model-chosen, capped at five.
 **Why:** A `/grill` session asked fifteen blocking questions in prose despite the prior mandatory gate; three choices were unnecessarily restrictive. The existing panel remains for up to three choices; four and five use Pi’s scrolling native selector.
 **Revisit if:** Models still bypass the explicit instruction, requiring runtime enforcement, or option counts need scrolling or search.
+
+### ASK-07 · One Pi owner for the clarification policy, discovery before questions
+`accepted` · 2026-09-14 · `01a09f75`
+**Decision:** The extension-injected `CLARIFICATION_GATE` is the single Pi statement of clarification policy. `pi/agent/APPEND_SYSTEM.md`, whose whole content restated it, was deleted together with its `link.sh` entry; `promptGuidelines` keeps only the option-label mechanic the gate omits (ASK-01). The gate now leads with read-only discovery and gates consequential action rather than "before using any tool", and adds "inspection settles facts, not authorization" for ambiguous destructive requests. `shared/AGENTS.md` §1 is unchanged and stays harness-neutral.
+**Why:** Four layers repeated the same policy, and "before using any tool" contradicted the instruction to inspect the repository first. Probes on gpt-5.6-terra showed the before-state asking about export formats and legacy deletions with zero repository reads; the after-state inspected first and asked grounded questions. The destructive clause was added because the first after-state wording let the model delete ambiguously scoped files once inspection found plausible targets.
+**Revisit if:** Pi-only prose guidance is needed again outside extension code, or models begin under-asking on material choices.
