@@ -39,7 +39,17 @@ Set machine-specific agent models in `~/.pi/agent/subagents.json`:
 }
 ```
 
-A local override takes precedence over an agent's frontmatter model. Without either value, the subagent inherits the active parent model and thinking level. Every child receives its resolved provider and model as separate CLI arguments: an override or frontmatter pin is honored independently of the parent, while an unpinned agent receives the parent's exact provider/model. Dispatch fails clearly if no provider-qualified model can be resolved or the selected provider/model is unavailable; it never silently switches providers. The local file is runtime configuration and is not linked from or committed to this repository.
+A local override takes precedence over an agent's frontmatter model. Without either value, the subagent inherits the active parent model and, unless explicitly configured below, its thinking level. Every child receives its resolved provider and model as separate CLI arguments: an override or frontmatter pin is honored independently of the parent, while an unpinned agent receives the parent's exact provider/model. Dispatch fails clearly if no provider-qualified model can be resolved or the selected provider/model is unavailable; it never silently switches providers. The local file is runtime configuration and is not linked from or committed to this repository.
+
+## Thinking levels
+
+Agent frontmatter may set `thinking` to `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Invalid values exclude the definition during discovery, like other malformed frontmatter.
+
+```yaml
+thinking: low
+```
+
+An explicit value is passed as `--thinking` regardless of parent thinking or local model overrides; Pi applies the selected model's supported thinking levels. Without it, unpinned agents inherit parent thinking and model-pinned agents retain Pi's startup behavior. Only `bulk-reader` currently sets an explicit level (`low`). This is a bounded-extraction trial, not a measured cost or quality improvement.
 
 ## Isolation change from the bundled example
 

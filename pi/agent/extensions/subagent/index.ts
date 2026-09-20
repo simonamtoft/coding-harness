@@ -320,12 +320,9 @@ async function runSingleAgent(
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
 	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
 
-	const modelSelection = resolveDispatchModel(agent, dispatchDefaults.model);
+	const modelSelection = resolveDispatchModel(agent, dispatchDefaults.model, dispatchDefaults.thinkingLevel);
 	const model = modelSelection.model;
 	args.push(...modelSelection.cliArgs);
-	if (modelSelection.inheritsParent && dispatchDefaults.thinkingLevel) {
-		args.push("--thinking", dispatchDefaults.thinkingLevel);
-	}
 	args.push("--tools", agent.tools.join(","));
 
 	const currentResult: SingleResult = {

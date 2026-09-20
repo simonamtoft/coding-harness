@@ -2,6 +2,7 @@
 name: bulk-reader
 description: Source-backed extraction from explicit large reference files without filling the parent context
 model: openai-codex/gpt-5.6-luna
+thinking: low
 tools: read, grep
 ---
 

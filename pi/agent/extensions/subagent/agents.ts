@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 export type AgentScope = "user" | "project" | "both";
@@ -25,6 +26,7 @@ export interface AgentConfig {
 	description: string;
 	tools: AgentTool[];
 	model?: string;
+	thinking?: ThinkingLevel;
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
@@ -54,18 +56,21 @@ export interface DispatchModelSelection {
  * Resolve every child to an exact provider/model pair. Specifying both CLI
  * arguments prevents Pi from finding a similarly named model on another provider.
  */
-export function resolveDispatchModel(agent: AgentConfig, parentModel: string | undefined): DispatchModelSelection {
+export function resolveDispatchModel(
+	agent: AgentConfig,
+	parentModel: string | undefined,
+	parentThinking?: ThinkingLevel,
+): DispatchModelSelection {
 	const inheritsParent = !agent.model;
 	const model = agent.model ?? parentModel;
 	if (!model) throw new Error(`Agent ${agent.name} requires a configured model or an active parent model`);
 
 	const selected = splitProviderModel(model);
 	if (!selected) throw new Error(`Agent ${agent.name} selected model must be a provider/model string: ${model}`);
-	return {
-		model,
-		cliArgs: ["--provider", selected.provider, "--model", selected.modelId],
-		inheritsParent,
-	};
+	const cliArgs = ["--provider", selected.provider, "--model", selected.modelId];
+	const thinking = agent.thinking ?? (inheritsParent ? parentThinking : undefined);
+	if (thinking !== undefined) cliArgs.push("--thinking", thinking);
+	return { model, cliArgs, inheritsParent };
 }
 
 export function validateAgentDefinition(agent: AgentConfig): string | undefined {
@@ -154,6 +159,7 @@ type AgentFrontmatter = {
 	description?: unknown;
 	tools?: unknown;
 	model?: unknown;
+	thinking?: unknown;
 };
 
 type SubagentConfig = {
@@ -208,6 +214,21 @@ function parseToolList(value: unknown): AgentTool[] | undefined {
 	return tools.length > 0 ? tools : undefined;
 }
 
+function parseThinkingLevel(value: unknown): ThinkingLevel | undefined {
+	switch (value) {
+		case "off":
+		case "minimal":
+		case "low":
+		case "medium":
+		case "high":
+		case "xhigh":
+		case "max":
+			return value;
+		default:
+			return undefined;
+	}
+}
+
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
 	const agents: AgentConfig[] = [];
 
@@ -242,12 +263,15 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
+		const thinking = parseThinkingLevel(frontmatter.thinking);
+		if (frontmatter.thinking !== undefined && thinking === undefined) continue;
 		const tools = parseToolList(frontmatter.tools);
 		const candidate: AgentConfig = {
 			name: typeof frontmatter.name === "string" ? frontmatter.name : "",
 			description: typeof frontmatter.description === "string" ? frontmatter.description : "",
 			tools: tools ?? [],
 			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+			thinking,
 			systemPrompt: body,
 			source,
 			filePath,

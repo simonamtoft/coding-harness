@@ -60,9 +60,10 @@ function agent(name: string, tools: AgentConfig["tools"] = [...READ_ONLY_TOOLS],
 
 function writeAgent(directory: string, config: Partial<AgentConfig> & Pick<AgentConfig, "name">): void {
 	const model = config.model ? `\nmodel: ${config.model}` : "";
+	const thinking = config.thinking ? `\nthinking: ${config.thinking}` : "";
 	writeFileSync(
 		join(directory, `${config.name}.md`),
-		`---\nname: ${config.name}\ndescription: ${config.description ?? `${config.name} description`}\ntools: ${(config.tools ?? [...READ_ONLY_TOOLS]).join(", ")}${model}\n---\n${config.systemPrompt ?? "Do the bounded task."}\n`,
+		`---\nname: ${config.name}\ndescription: ${config.description ?? `${config.name} description`}\ntools: ${(config.tools ?? [...READ_ONLY_TOOLS]).join(", ")}${model}${thinking}\n---\n${config.systemPrompt ?? "Do the bounded task."}\n`,
 	);
 }
 
@@ -126,6 +127,51 @@ describe("agent discovery", () => {
 		expect(discovery.agents).toHaveLength(1);
 		expect(discovery.agents[0]).toMatchObject({ name: "repository-scout", model: "override/model" });
 		expect(validateRequestedAgents(discovery.agents, ["malformed"])).toContain("unknown agent");
+	});
+});
+
+describe("thinking configuration", () => {
+	test("canonical bulk-reader requests low thinking even with a local model override", () => {
+		const userDir = join(import.meta.dir, "../../agents");
+		for (const overrides of [{}, { "bulk-reader": "override/model" }]) {
+			const { agents } = discoverAgentsInDirectories(userDir, null, "user", overrides);
+			const reader = agents.find((entry) => entry.name === "bulk-reader");
+			expect(reader?.thinking).toBe("low");
+			if (!reader) throw new Error("bulk-reader not discovered");
+			const selection = resolveDispatchModel(reader, "parent/model", "high");
+			expect(selection.cliArgs.slice(-2)).toEqual(["--thinking", "low"]);
+			expect(selection.model).toBe(overrides["bulk-reader"] ?? "openai-codex/gpt-5.6-luna");
+			expect(agents.filter((entry) => entry.name !== "bulk-reader").every((entry) => entry.thinking === undefined)).toBeTrue();
+		}
+	});
+
+	test("discovers valid levels and excludes invalid thinking frontmatter", () => {
+		const userDir = temporaryDirectory("agent-thinking-");
+		for (const thinking of ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const) {
+			writeAgent(userDir, { name: `reader-${thinking}`, thinking });
+		}
+		for (const [index, value] of ["", "invalid", "false", "123", "[low]", "{level: low}"].entries()) {
+			writeFileSync(join(userDir, `invalid-${index}.md`),
+				`---\nname: invalid-${index}\ndescription: invalid thinking\ntools: read\nthinking: ${value}\n---\nExtract facts.\n`);
+		}
+		const { agents } = discoverAgentsInDirectories(userDir, null, "user");
+		expect(agents.map((entry) => entry.thinking).sort()).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"].sort());
+	});
+
+	test("explicit thinking overrides inheritance, including off", () => {
+		for (const thinking of ["low", "off"] as const) {
+			const selection = resolveDispatchModel(agent("reader", [...READ_ONLY_TOOLS], { thinking }), "parent/model", "high");
+			expect(selection.cliArgs).toEqual(["--provider", "parent", "--model", "model", "--thinking", thinking]);
+		}
+	});
+
+	test("omitted thinking preserves pinned and inherited defaults", () => {
+		expect(resolveDispatchModel(agent("reader"), "parent/model", "high").cliArgs)
+			.toEqual(["--provider", "parent", "--model", "model", "--thinking", "high"]);
+		expect(resolveDispatchModel(agent("reader", [...READ_ONLY_TOOLS], { model: "pinned/model" }), "parent/model", "high").cliArgs)
+			.toEqual(["--provider", "pinned", "--model", "model"]);
+		expect(resolveDispatchModel(agent("reader"), "parent/model").cliArgs)
+			.toEqual(["--provider", "parent", "--model", "model"]);
 	});
 });
 
