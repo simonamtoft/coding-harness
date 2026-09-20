@@ -1,0 +1,13 @@
+# Explicitly allow setup files; keep downloads and runtime state local.
+/*
+!/.gitignore
+!/README.md
+!/setup.sh
+!/start.sh
+!/RESULTS.md
+!/PERFORMANCE.md
+!/probe.py
+!/trial.py
+!/provider.json
+!/configure.py
+!/test_configure.py

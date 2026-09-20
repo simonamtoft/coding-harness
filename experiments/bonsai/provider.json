@@ -1,0 +1,35 @@
+{
+  "baseUrl": "http://127.0.0.1:18080/v1",
+  "api": "openai-completions",
+  "apiKey": "local-only",
+  "compat": {
+    "supportsStore": false,
+    "supportsDeveloperRole": false,
+    "supportsReasoningEffort": true,
+    "maxTokensField": "max_tokens"
+  },
+  "models": [{
+    "id": "bonsai-2-pq2",
+    "name": "Bonsai 2 27B PQ2_0 (local experiment)",
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": "medium",
+      "high": null,
+      "xhigh": null,
+      "max": null
+    },
+    "input": ["text"],
+    "contextWindow": 24576,
+    "maxTokens": 2048,
+    "samplingParams": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 20,
+      "min_p": 0.0
+    },
+    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+  }]
+}

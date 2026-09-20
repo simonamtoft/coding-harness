@@ -122,3 +122,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Bulk-reader results in the supplied trial sessions occupy single 222–303 KB JSONL lines. The read tool cannot return even one such line under its 50 KB cap, and smaller line limits cannot recover the final answer. Field extraction avoids copying the entire record or weakening the shell boundary; the original record remains unchanged.
 **Revisit if:** Pi supplies native bounded JSON-field reads or session records no longer embed oversized child histories.
 **Evidence:** "Extend the helper"
+
+### SBX-20 · Bonsai trials retain the existing Pi guard
+`accepted` · 2026-09-18 · `01a0b4b8`
+**Decision:** PI-75 trials must retain the existing tool-call guard, including minimal-harness trials that otherwise disable extension discovery. Do not make OS confinement a prerequisite for this local-model experiment; retain SBX-13's distinction between inspection and isolation.
+**Why:** The baseline launcher accidentally disabled the guard together with unrelated extensions. The user chose normal Pi protections for continued tuning rather than expanding the experiment into a new isolation environment. Generated programs and operator-run tests still execute with host permissions; disposable fixtures are not a security boundary.
+**Revisit if:** Trials need to execute untrusted repository content under an enforced filesystem/process boundary, or the separate isolation work provides a verified launcher.
+**Evidence:** "Yes let's use existing guards in every trial."

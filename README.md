@@ -42,6 +42,8 @@ leaves the override in place.
 
 ## Layout
 
+- `experiments/bonsai/`: local-model playground with tracked setup notes;
+  downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
 - `shared/`: the common `AGENTS.md`, skills, and command-safety/read-routing regression contracts consumed by both harnesses.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
