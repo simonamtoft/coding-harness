@@ -1,10 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
+profile=${1:-pq2_0}
+case "$profile" in
+    pq2_0)
+        model=Ternary-Bonsai-2-27B-PQ2_0.gguf
+        alias=bonsai-2-pq2
+        ;;
+    ptq1_0)
+        model=Ternary-Bonsai-2-27B-PTQ1_0.gguf
+        alias=bonsai-2-ptq1
+        ;;
+    *)
+        echo 'Usage: start.sh [pq2_0|ptq1_0]' >&2
+        exit 2
+        ;;
+esac
 # Intentionally foreground-only; Ctrl-C stops the server. No automatic startup.
 exec local/prism-b10683-d8f26ee/llama-server \
-    --model local/models/Ternary-Bonsai-2-27B-PQ2_0.gguf \
-    --alias bonsai-2-pq2 --host 127.0.0.1 --port 18080 \
+    --model "local/models/$model" \
+    --alias "$alias" --host 127.0.0.1 --port 18080 \
     --cors-origins http://127.0.0.1:18080 --no-webui --no-agent \
     --ctx-size 24576 --parallel 1 --n-gpu-layers 99 --flash-attn on --log-verbosity 4 \
     --jinja --reasoning-format deepseek --reasoning-budget 512 --n-predict 2048 \

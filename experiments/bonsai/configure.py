@@ -5,6 +5,17 @@ from pathlib import Path
 import tempfile
 
 
+def provider_upgrade_is_additive(current, target):
+    current_base = {key: value for key, value in current.items() if key != "models"}
+    target_base = {key: value for key, value in target.items() if key != "models"}
+    if current_base != target_base:
+        return False
+    target_models = {model["id"]: model for model in target.get("models", [])}
+    current_models = current.get("models", [])
+    return (len(target_models) == len(target.get("models", [])) and
+            all(target_models.get(model.get("id")) == model for model in current_models))
+
+
 def merge(path, provider):
     if path.is_symlink():
         raise ValueError("Refusing to replace a symlinked models.json")
@@ -16,7 +27,9 @@ def merge(path, provider):
         if providers["bonsai-local"] == provider:
             print("bonsai-local already matches; no changes")
             return
-        raise ValueError("Refusing to overwrite existing bonsai-local provider")
+        if not provider_upgrade_is_additive(providers["bonsai-local"], provider):
+            raise ValueError("Refusing non-additive bonsai-local provider change")
+        print("Adding tracked bonsai-local model profile")
     providers["bonsai-local"] = provider
     path.parent.mkdir(parents=True, exist_ok=True)
     if existed:

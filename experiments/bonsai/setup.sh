@@ -7,7 +7,21 @@ cd "$(dirname "$0")"
 release=prism-b10683-d8f26ee
 archive="llama-${release}-bin-macos-arm64.tar.gz"
 revision=6ed5e12bf84b7a63069882c91dd9e9218647d17b
-model=Ternary-Bonsai-2-27B-PQ2_0.gguf
+profile=${1:-pq2_0}
+case "$profile" in
+    pq2_0)
+        model=Ternary-Bonsai-2-27B-PQ2_0.gguf
+        model_checksum=3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1
+        ;;
+    ptq1_0)
+        model=Ternary-Bonsai-2-27B-PTQ1_0.gguf
+        model_checksum=53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3
+        ;;
+    *)
+        echo 'Usage: setup.sh [pq2_0|ptq1_0]' >&2
+        exit 2
+        ;;
+esac
 mkdir -p local/downloads local/models local/logs
 
 fetch() {
@@ -33,5 +47,5 @@ if [[ ! -d "local/$release" ]]; then
 fi
 "local/$release/llama-server" --version
 fetch "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/$revision/$model" \
-    "local/models/$model" 3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1
-printf 'Setup complete. Start manually with: bash experiments/bonsai/start.sh\n'
+    "local/models/$model" "$model_checksum"
+printf 'Setup complete. Start manually with: bash experiments/bonsai/start.sh %s\n' "$profile"

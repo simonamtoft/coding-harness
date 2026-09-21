@@ -1,15 +1,18 @@
 """Verify native streaming and a real tool round trip; keep evidence under local/."""
+import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
 import urllib.request
 
 BASE = "http://127.0.0.1:18080"
-OUT = Path(__file__).resolve().parent / "local" / "logs"
+ROOT = Path(__file__).resolve().parent
+MODELS = {"pq2_0": "bonsai-2-pq2", "ptq1_0": "bonsai-2-ptq1"}
 
 
-def chat(messages, tools=None, effort="medium"):
-    payload = dict(model="bonsai-2-pq2", messages=messages, stream=True,
+def chat(model, messages, tools=None, effort="medium"):
+    payload = dict(model=model, messages=messages, stream=True,
                    max_tokens=2048, reasoning_effort=effort,
                    stream_options={"include_usage": True})
     if tools:
@@ -48,16 +51,25 @@ def chat(messages, tools=None, effort="medium"):
 
 
 if __name__ == "__main__":
-    OUT.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("profile", nargs="?", choices=MODELS, default="pq2_0")
+    args = parser.parse_args()
+    model = MODELS[args.profile]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = ROOT / "local" / "logs" / f"probe-{args.profile}-{stamp}"
+    out.mkdir(parents=True)
     with urllib.request.urlopen(BASE + "/health", timeout=10) as r:
         assert json.load(r)["status"] == "ok"
+    with urllib.request.urlopen(BASE + "/v1/models", timeout=10) as r:
+        active_ids = {item["id"] for item in json.load(r)["data"]}
+    assert active_ids == {model}, f"Expected {model}, server exposes {active_ids}"
     tools = [{"type": "function", "function": {
         "name": "lookup_code", "description": "Look up a secret code by label.",
         "parameters": {"type": "object", "properties": {"label": {"type": "string"}},
                        "required": ["label"]}}}]
     messages = [{"role": "user", "content": "Use lookup_code for label cedar. Tell me the returned code. Do not guess."}]
-    first = chat(messages, tools)
-    (OUT / "probe-tool.json").write_text(json.dumps(first, indent=2))
+    first = chat(model, messages, tools)
+    (out / "probe-tool.json").write_text(json.dumps(first, indent=2))
     calls = first["message"].get("tool_calls", [])
     assert len(calls) == 1, first["message"]
     call = calls[0]
@@ -65,12 +77,14 @@ if __name__ == "__main__":
     assert json.loads(call["function"]["arguments"]) == {"label": "cedar"}
     messages.extend([first["message"], {"role": "tool", "tool_call_id": call["id"],
                                       "content": '{"code":"CEDAR-4821"}'}])
-    second = chat(messages, tools)
-    (OUT / "probe-answer.json").write_text(json.dumps(second, indent=2))
+    second = chat(model, messages, tools)
+    (out / "probe-answer.json").write_text(json.dumps(second, indent=2))
     assert "CEDAR-4821" in second["message"]["content"], second["message"]
-    off = chat([{"role": "user", "content": "Reply with exactly OK."}], effort="none")
-    (OUT / "probe-off.json").write_text(json.dumps(off, indent=2))
+    off = chat(model, [{"role": "user", "content": "Reply with exactly OK."}], effort="none")
+    (out / "probe-off.json").write_text(json.dumps(off, indent=2))
     assert not off["message"]["reasoning_content"], off["message"]
     assert off["message"]["content"].strip() == "OK", off["message"]
-    print(json.dumps({k: {f: v[f] for f in ("first_output_seconds", "total_seconds")}
-                      for k, v in [("tool", first), ("answer", second), ("off", off)]}, indent=2))
+    print(json.dumps({"profile": args.profile, "model": model, "logdir": str(out),
+                      "timings": {k: {f: v[f] for f in ("first_output_seconds", "total_seconds")}
+                                  for k, v in [("tool", first), ("answer", second), ("off", off)]}},
+                     indent=2))

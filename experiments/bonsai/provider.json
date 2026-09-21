@@ -31,5 +31,28 @@
       "min_p": 0.0
     },
     "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+  }, {
+    "id": "bonsai-2-ptq1",
+    "name": "Bonsai 2 27B PTQ1_0 (local experiment)",
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "off": "none",
+      "minimal": null,
+      "low": null,
+      "medium": "medium",
+      "high": null,
+      "xhigh": null,
+      "max": null
+    },
+    "input": ["text"],
+    "contextWindow": 24576,
+    "maxTokens": 2048,
+    "samplingParams": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 20,
+      "min_p": 0.0
+    },
+    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
   }]
 }

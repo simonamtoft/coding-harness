@@ -13,6 +13,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 LOCAL = ROOT / "local"
+MODELS = {"pq2_0": "bonsai-2-pq2", "ptq1_0": "bonsai-2-ptq1"}
 SOURCE = '''def chunks(items, size):
     """Split items into consecutive chunks; retain a short final chunk.
 
@@ -50,7 +51,7 @@ def swap_mb():
     return float(re.search(r"used = ([\d.]+)M", value).group(1))
 
 
-def run(kind, normal, fixture=None, thinking="medium"):
+def run(kind, normal, fixture=None, thinking="medium", profile="pq2_0"):
     (LOCAL / "fixtures").mkdir(parents=True, exist_ok=True)
     if fixture is None:
         fixture = Path(tempfile.mkdtemp(prefix=kind + "-", dir=LOCAL / "fixtures"))
@@ -60,15 +61,21 @@ def run(kind, normal, fixture=None, thinking="medium"):
         fixture = fixture.resolve()
         if fixture.parent != LOCAL / "fixtures":
             raise ValueError("Follow-up requires a fixture under local/fixtures")
-    logdir = Path(tempfile.mkdtemp(prefix=kind + "-", dir=LOCAL / "logs"))
+    logdir = Path(tempfile.mkdtemp(prefix=f"{profile}-{kind}-", dir=LOCAL / "logs"))
     provider = json.loads((ROOT / "provider.json").read_text())
+    model_id = MODELS[profile]
+    model = next(item for item in provider["models"] if item["id"] == model_id)
     with urllib.request.urlopen("http://127.0.0.1:18080/props", timeout=10) as response:
         server = json.load(response)
+    with urllib.request.urlopen("http://127.0.0.1:18080/v1/models", timeout=10) as response:
+        active_ids = {item["id"] for item in json.load(response)["data"]}
     context_window = server["default_generation_settings"]["n_ctx"]
-    if context_window != provider["models"][0]["contextWindow"] or server["total_slots"] != 1:
+    if context_window != model["contextWindow"] or server["total_slots"] != 1:
         raise ValueError("Server does not match the tracked context/slot profile")
+    if active_ids != {model_id}:
+        raise ValueError(f"Expected {model_id}, server exposes {active_ids}")
     (logdir / "provider-template.json").write_text(json.dumps(provider, indent=2))
-    command = ["pi", "--offline", "--provider", "bonsai-local", "--model", "bonsai-2-pq2",
+    command = ["pi", "--offline", "--provider", "bonsai-local", "--model", model_id,
                "--thinking", thinking, "--mode", "json", "--session", str(fixture / "session.jsonl"),
                "--print"]
     if not normal:
@@ -76,8 +83,15 @@ def run(kind, normal, fixture=None, thinking="medium"):
                     str(ROOT.parents[1] / "pi/agent/extensions/sandbox/index.ts"),
                     "--no-skills", "--no-prompt-templates", "--no-context-files"]
     command += [PROMPTS[kind]]
-    server_pid = json.loads((LOCAL / "logs/server-pid.json").read_text())["pid"]
-    server_log = LOCAL / "logs/server.log"
+    server_record = json.loads((LOCAL / "logs/server-pid.json").read_text())
+    server_pid = server_record["pid"]
+    if "log" in server_record:
+        server_log = Path(server_record["log"])
+        if not server_log.is_absolute():
+            server_log = ROOT.parents[1] / server_log
+    else:
+        profile_log = LOCAL / "logs" / f"server-{profile}.log"
+        server_log = profile_log if profile_log.exists() else LOCAL / "logs/server.log"
     server_log_offset = server_log.stat().st_size
     first_output = None
     final_stop_reason = None
@@ -135,8 +149,8 @@ def run(kind, normal, fixture=None, thinking="medium"):
     memory = subprocess.run(["vmmap", "-summary", str(server_pid)], text=True,
                             capture_output=True, timeout=20)
     (logdir / "memory.txt").write_text(memory.stdout + memory.stderr)
-    summary = dict(kind=kind, normal_harness=normal, thinking=thinking,
-                   server_context_window=context_window,
+    summary = dict(kind=kind, profile=profile, model=model_id,
+                   normal_harness=normal, thinking=thinking, server_context_window=context_window,
                    guard_profile="normal-discovery" if normal else "explicit-sandbox",
                    final_stop_reason=final_stop_reason,
                    answer_complete=final_stop_reason == "stop" and not timed_out,
@@ -155,7 +169,8 @@ if __name__ == "__main__":
     parser.add_argument("--normal-harness", action="store_true")
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--thinking", choices=("off", "medium"), default="medium")
+    parser.add_argument("--profile", choices=MODELS, default="pq2_0")
     args = parser.parse_args()
     if (args.kind == "followup") != (args.fixture is not None):
         parser.error("Only followup requires --fixture pointing to a completed repair fixture")
-    run(args.kind, args.normal_harness, args.fixture, args.thinking)
+    run(args.kind, args.normal_harness, args.fixture, args.thinking, args.profile)
