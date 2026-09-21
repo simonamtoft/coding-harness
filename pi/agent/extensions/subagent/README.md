@@ -53,7 +53,7 @@ An explicit value is passed as `--thinking` regardless of parent thinking or loc
 
 ## Isolation change from the bundled example
 
-Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions. The sandbox is explicitly re-enabled for every child; parent read-routing is not, so bulk readers can inspect source without recursive cost routing while retaining filesystem restrictions.
+Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions. The sandbox and secret-result guard are explicitly re-enabled for every child; parent read-routing is not, so bulk readers can inspect source without recursive cost routing while retaining filesystem and model-egress protections.
 
 ## Swarm workflow
 

@@ -212,9 +212,17 @@ varied fourfold. The 16 KiB gate sits inside the measured delegation break-even
 band; see the [routing README](pi/agent/extensions/read-routing/README.md) for the
 numbers. Bash output limiting remains independent. The guards do not
 intercept Bash, search output, or files already injected into context. Worker calls are exempt
-from cost routing: Pi children load only the sandbox extension; Claude uses the
-hook's `agent_id` to distinguish children from top-level custom agents. No
+from cost routing: Pi children load only the sandbox and secret-result guard extensions;
+Claude uses the hook's `agent_id` to distinguish children from top-level custom agents. No
 routing-specific toggle, full-read exemption state, or automatic writer is added.
+
+Pi's secret-result guard replaces finalized tool output containing an exact protected
+environment value before the result reaches the model or normal session log. It
+automatically selects nontrivial values from secret-like names such as `*_API_KEY`,
+`*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL`, and `*_PRIVATE_KEY`.
+Set `PI_PROTECTED_ENV_VARS` to a comma-separated list of additional variable names;
+explicitly selected values may be shorter. The guard covers parent and subagent tool
+results, but it does not prevent direct network use or transformed versions of a value.
 
 Existing directory links deploy all resources without changing `link.sh`.
 Reload Pi with `/reload` and start a new Claude session to load the new resources.
@@ -240,3 +248,4 @@ reads, not a silent model upgrade or security bypass.
 - https://github.com/mattpocock/skills/tree/main/skills
 - https://fabiensanglard.net/agent.md/index.html
 - https://github.com/amosblomqvist/pi-config/tree/main
+- https://www.asd-europe.org/standards-specifications/simplified-technical-english/ 
