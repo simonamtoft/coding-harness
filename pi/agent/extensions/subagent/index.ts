@@ -318,7 +318,12 @@ async function runSingleAgent(
 	let tmpPromptPath: string | null = null;
 
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
-	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", sandboxExtension];
+	const secretResultGuardExtension = path.resolve(path.dirname(__filename), "../secret-result-guard/index.ts");
+	const args: string[] = [
+		"--mode", "json", "-p", "--no-session", "--no-extensions",
+		"--extension", sandboxExtension,
+		"--extension", secretResultGuardExtension,
+	];
 
 	const modelSelection = resolveDispatchModel(agent, dispatchDefaults.model, dispatchDefaults.thinkingLevel);
 	const model = modelSelection.model;
