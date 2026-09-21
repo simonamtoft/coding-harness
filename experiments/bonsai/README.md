@@ -16,12 +16,14 @@ Pi defaults and model-routing policy are unchanged.
 ## Reproduce setup
 
 Requires Apple Silicon macOS, Python 3, curl, and Pi (tested with 0.85.1).
-Allow approximately 8 GB of disk for the model and runtime, plus trial logs.
-Run these commands from the checkout root. Downloads do not start a server or
-change Pi configuration.
+Allow approximately 8 GB of disk for one model and the runtime, or 14 GB for
+both models, plus trial logs. Run these commands from the checkout root.
+Downloads do not start a server or change Pi configuration. The default remains
+PQ2_0; fetch each profile explicitly for comparisons:
 
 ```bash
-bash experiments/bonsai/setup.sh
+bash experiments/bonsai/setup.sh pq2_0
+bash experiments/bonsai/setup.sh ptq1_0
 ```
 
 The script checks SHA-256 before extracting or accepting downloads. It resumes
@@ -31,7 +33,8 @@ these weights. Pins and checksums are recorded in `setup.sh`:
 | Artifact | Pin | SHA-256 |
 | --- | --- | --- |
 | Prism macOS ARM64 archive | `prism-b10683-d8f26ee` | `0ae163ca2c9cce92470316ed743f76985beea4d5cf31b8dc546711cf6fc8dd35` |
-| `Ternary-Bonsai-2-27B-PQ2_0.gguf` | HF revision `6ed5e12bf84b7a63069882c91dd9e9218647d17b` | `3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1` |
+| `Ternary-Bonsai-2-27B-PQ2_0.gguf` (7,206,168,928 bytes) | HF revision `6ed5e12bf84b7a63069882c91dd9e9218647d17b` | `3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1` |
+| `Ternary-Bonsai-2-27B-PTQ1_0.gguf` (5,946,648,928 bytes) | HF revision `6ed5e12bf84b7a63069882c91dd9e9218647d17b` | `53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3` |
 
 The runtime matches the official demo's pin at
 [`c398c6ee`](https://github.com/PrismML-Eng/Bonsai-demo/blob/c398c6eeef7533dd9398682cc1297e33670df0cd/scripts/download_binaries.sh).
@@ -43,10 +46,13 @@ drafter, Open WebUI, source build, or automatic startup is installed.
 Start the foreground server in a dedicated terminal:
 
 ```bash
-bash experiments/bonsai/start.sh 2>&1 | tee experiments/bonsai/local/logs/server.log
+bash experiments/bonsai/start.sh pq2_0 2>&1 | tee experiments/bonsai/local/logs/server-pq2_0.log
+bash experiments/bonsai/start.sh ptq1_0 2>&1 | tee experiments/bonsai/local/logs/server-ptq1_0.log
 ```
 
-Wait for `listening on http://127.0.0.1:18080`. Stop with Ctrl-C. The server uses
+Run only one command at a time. Omitting the profile still selects PQ2_0 for
+backward compatibility. Wait for `listening on http://127.0.0.1:18080`. Stop
+with Ctrl-C. The server uses
 Metal, 24576-token context, one inference slot, the embedded Jinja tool template,
 and a 512-token default reasoning budget. Pi and the probes request at most 2048
 output tokens per completion. CORS is restricted to its own loopback origin; the
@@ -56,11 +62,13 @@ other processes on this machine can call it. Do not expose or proxy this port.
 In another terminal, verify streaming and a complete tool-call/result/answer:
 
 ```bash
-python3 experiments/bonsai/probe.py
+python3 experiments/bonsai/probe.py pq2_0
+python3 experiments/bonsai/probe.py ptq1_0
 ```
 
-The probe also checks that `reasoning_effort: none` disables reasoning. It saves
-raw stream events and timings to `local/logs/probe-*.json`. The startup log records
+Run the profile matching the active server. The probe also checks that
+`reasoning_effort: none` disables reasoning. It saves raw stream events and
+timings to a timestamped `local/logs/probe-<profile>-*/` directory. The startup log records
 GPU offload and the active 512-token budget. Model-card `low` reasoning is not
 supported; this provider exposes only `off` and `medium`. The server enforces the
 reasoning default; Pi's thinking setting does not configure a dynamic token cap.
@@ -77,13 +85,34 @@ pi --provider bonsai-local --model bonsai-2-pq2 --thinking medium
 `configure.py` backs up an existing `~/.pi/agent/models.json` to a private
 `models.json.pi75-*.bak` beside it, merges `provider.json`, and preserves other
 providers and fields. It refuses a conflicting `bonsai-local` entry or a symlinked
-configuration file. An identical entry is a no-op. No `settings.json` is changed.
-If upgrading an existing 16K experiment entry, back up `models.json` first, then
+configuration file. An identical entry is a no-op. A prior tracked PQ2_0-only entry is upgraded by
+adding PTQ1_0 after making the same private backup; any changed provider field,
+changed model, or unknown model remains a refused conflict. No `settings.json`
+is changed. If upgrading an existing 16K experiment entry, back up `models.json` first, then
 change only `providers.bonsai-local.models[0].contextWindow` to `24576` to match
 `start.sh`; the merge helper deliberately refuses conflicting existing entries.
 To undo, remove only `providers.bonsai-local` from the current configuration;
 restore the whole backup only if no subsequent configuration edits need keeping.
 Backups may contain credentials: leave them machine-local.
+
+## Matched server benchmark
+
+Restart the selected server before each fresh/cached pair, then run the matching
+profile:
+
+```bash
+python3 experiments/bonsai/benchmark.py pq2_0
+python3 experiments/bonsai/benchmark.py ptq1_0
+```
+
+The benchmark uses the same fixed 595-row prompt for both profiles: 9,000 content
+tokens and 9,012 templated prompt tokens, reasoning off, 256 output tokens,
+temperature 0, and seed 75. It records the uncached request and an identical
+repeat with 9,008 cached tokens, including first-output time, server prefill and
+generation throughput, total time, RSS samples, `vmmap`, power state, and raw SSE
+events under timestamped ignored `local/logs/benchmark-<profile>-*/` directories.
+"Fresh" means an empty server prompt cache after restart, not a cold filesystem
+cache.
 
 ## Bounded trials
 
@@ -103,6 +132,10 @@ python3 experiments/bonsai/trial.py repair
 python3 experiments/bonsai/trial.py followup --fixture <absolute-repair-fixture-path>
 python3 experiments/bonsai/trial.py explain --normal-harness
 python3 experiments/bonsai/trial.py explain --normal-harness --thinking off
+
+# Add the candidate explicitly while its server is active:
+python3 experiments/bonsai/trial.py explain --normal-harness --profile ptq1_0
+python3 experiments/bonsai/trial.py repair --profile ptq1_0
 ```
 
 Each repair starts with the same seeded bug in a new directory. Use the printed

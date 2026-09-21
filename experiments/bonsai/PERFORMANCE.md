@@ -496,6 +496,122 @@ PID assumptions; inspect before reuse. Global settings, local models and routing
 hashes matched before documentation; existing uncommitted source changes were
 preserved. No cloud-worker output is credited as local performance.
 
+## PTQ1_0 comparison (PI-85, 2026-09-21)
+
+### Question, source, and controls
+
+This run tested whether the official dense-trit PTQ1_0 packing improves speed or
+memory on the same M4 Pro while preserving the existing Pi behavior. The tested
+artifact was
+`Ternary-Bonsai-2-27B-PTQ1_0.gguf` at Hugging Face revision
+`6ed5e12bf84b7a63069882c91dd9e9218647d17b`, 5,946,648,928 published bytes,
+SHA-256 `53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3`.
+The PQ2_0 baseline at the same revision is 7,206,168,928 bytes. The official
+[model card][bonsai-card] says PTQ1_0 is the memory-oriented packing, PQ2_0 has
+faster prompt processing on every published platform, and only PQ2_0 has a
+published Apple measurement. It also requires the Prism llama.cpp fork; stock
+llama.cpp does not recognize either packing.
+
+All three measurement phases used the M4 Pro MacBook Pro (`Mac16,8`), 24 GB
+unified memory, macOS 27.0, AC power, Pi 0.86.1, and
+`prism-b10683-d8f26ee`. Server controls were unchanged: 24,576-token context,
+one slot, 65/65 Metal layers, flash attention, embedded Jinja tool template,
+512-token reasoning budget, 2,048-token server completion ceiling, and thinking
+sampling at temperature 1.0, top-p 0.95, top-k 20, and min-p 0.0.
+
+The synthetic request used the same fixed 595-row content in every phase: 9,000
+content tokens and 9,012 tokens after chat templating, 256 output tokens,
+`reasoning_effort: none`, temperature 0, and seed 75. Each server was newly
+started before its uncached request. The repeat sent the identical body to the
+same server and reused 9,008 prompt tokens.
+
+### Synthetic server timings
+
+| Phase | Request | Cached tokens | First output (s) | Server prefill (tok/s) | Generation (tok/s) | Total (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| PQ2_0 initial | fresh | 0 | 95.31 | 94.58 | 15.27 | 112.01 |
+| PQ2_0 initial | repeat | 9,008 | 0.62 | 6.83 for 4 new tokens | 15.93 | 16.62 |
+| PTQ1_0 | fresh | 0 | 121.65 | 74.10 | 13.40 | 140.68 |
+| PTQ1_0 | repeat | 9,008 | 0.65 | 6.43 for 4 new tokens | 13.23 | 19.93 |
+| PQ2_0 restored | fresh | 0 | 100.46 | 89.72 | 15.24 | 117.20 |
+| PQ2_0 restored | repeat | 9,008 | 0.52 | 8.03 for 4 new tokens | 15.32 | 17.16 |
+
+PTQ1_0 was slower in both metrics that matter. Relative to initial/restored
+PQ2_0, its fresh prefill throughput was 21.7%/17.4% lower and fresh generation
+throughput was 12.3%/12.1% lower. Fresh first output was 27.6%/21.1% later and
+total time was 25.6%/20.0% longer. Cached generation was 17.0%/13.7% lower, so
+prefix reuse did not turn PTQ1_0 into the faster decoder.
+
+The PTQ1_0 file is 17.5% smaller. Prism projected 7,298 MiB of device use for
+PTQ1_0 versus 8,442 MiB for both PQ2_0 starts, a 1,144 MiB (13.6%) reduction.
+Mapped model buffers were 5,660.56 MiB Metal plus 265.23 MiB CPU for PTQ1_0,
+versus 6,861.73 MiB plus 322.07 MiB for PQ2_0. Context and compute allocations
+were identical. Process RSS and `vmmap` residency varied with system paging and
+do not provide a cleaner model-footprint comparison; system swap moved by
+hundreds of MiB during phases and rose during the longer guarded trials.
+
+These are native server timings, not full Pi-harness timings. “Fresh” means no
+reused server prompt tokens after restart, not cold filesystem caches or cold
+model pages.
+
+### Compatibility and bounded Pi behavior
+
+The PTQ1_0 native compatibility probe passed streaming, one parsed
+`lookup_code({"label":"cedar"})` call, tool-result follow-up containing
+`CEDAR-4821`, and a reasoning-free exact `OK`. Its tool/answer/off first-output
+times were 4.90/0.78/1.01 seconds after the synthetic pair had populated the
+server.
+
+| PTQ1_0 Pi trial | First output (s) | Total (s) | Complete | Post-trial tests | Outcome |
+| --- | ---: | ---: | --- | --- | --- |
+| Explain, normal harness | 121.56 | 300.12 cap | No | Seeded failures remained, as expected for read-only explanation | Failed to produce a final answer; ended in another tool call after repeated reads and extra shell checks |
+| Repair 1 | 25.36 | 133.04 | Yes | Pass | Correct fix and notes |
+| Repair 2 | 8.04 | 87.57 | Yes | Pass | Correct fix and notes |
+| Repair 3 | 8.69 | 109.38 | Yes | Pass | Correct fix and notes |
+| Same-session follow-up on repair 1 | 2.91 | 104.26 | Yes | Pass | Added keyword-only strict mode and tests |
+
+All three repairs used fresh seeded fixtures, reproduced the expected failing
+tests, made valid local tool calls, passed the five fixture tests, and passed an
+independent 210 input/size combinations plus three invalid-size cases. The
+follow-up passed independent default, divisible-strict, and rejecting-strict
+checks. No subagent was invoked or credited. The explanation did identify the
+bug through tools, but its timeout, incomplete answer, and one avoidable failed
+shell probe are a guarded-behavior regression for this run. Successful repair
+samples do not establish broad model quality.
+
+### Evidence and recommendation
+
+Raw ignored evidence:
+
+- initial PQ2_0: `local/logs/benchmark-pq2_0-20260921T062814Z/` and
+  `local/logs/server-initial-pq2_0.log`
+- PTQ1_0 synthetic/probe: `local/logs/benchmark-ptq1_0-20260921T063112Z/`,
+  `local/logs/probe-ptq1_0-20260921T063423Z/`, and
+  `local/logs/server-ptq1_0.log`
+- PTQ1_0 Pi trials: `local/logs/ptq1_0-explain-pti7loe8/`,
+  `local/logs/ptq1_0-repair-hhsmcjdf/`,
+  `local/logs/ptq1_0-repair-shg498cv/`,
+  `local/logs/ptq1_0-repair-1gr387mj/`, and
+  `local/logs/ptq1_0-followup-5i19b9rw/`
+- independent checks: `local/logs/ptq1_0-independent-validation.txt`
+- restored PQ2_0: `local/logs/benchmark-pq2_0-20260921T064759Z/` and
+  `local/logs/server-restored-pq2_0.log`
+
+**Recommendation: retain PQ2_0.** PTQ1_0 saves about 1.1 GiB of projected device
+memory, but this machine already fit PQ2_0 with the required context. In the
+single matched sequence PTQ1_0 made both fresh prefill and decode materially
+slower, made cached decode slower, and failed to complete the guarded normal-
+harness explanation. Keep PTQ1_0 as an explicit experimental profile for cases
+where the memory saving is itself required; do not make it the default or change
+routing.
+
+The sample is one synthetic pair per phase, one compatibility sequence, one
+explanation, three repairs, and one follow-up. Background load, thermal state,
+filesystem residency, memory compression, and system-wide swap were not
+controlled. Sampling can alter full-harness trajectories. The restored baseline
+bounds drift but does not eliminate it, and the bounded repairs are not a broad
+quality benchmark.
+
 ## Evidence retention
 
 Raw captures and the exact collector scripts have been copied out of the session
@@ -517,6 +633,7 @@ The tracked tables above preserve the findings without requiring those files.
 Neither historical profiling run changed server or Pi configuration. PI-76's
 separate runtime restarts and restoration are recorded above.
 
+[bonsai-card]: https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/blob/6ed5e12bf84b7a63069882c91dd9e9218647d17b/README.md
 [pin]: https://github.com/PrismML-Eng/Bonsai-demo/blob/17b143e889a45c090816b520e79a50c996164e1f/scripts/download_binaries.sh
 [release]: https://github.com/PrismML-Eng/llama.cpp/releases/tag/prism-b10709-9a9394a
 [metal]: https://github.com/PrismML-Eng/llama.cpp/blob/9a9394a/ggml/src/ggml-metal/ggml-metal-device.m#L1058-L1075
