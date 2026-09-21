@@ -23,3 +23,9 @@ Decision ledger area. Entry ids use the `LLM-` prefix; see `../DECISIONS.md` for
 **Why:** Stable-prefix prefill reused 9305 of 9502 tokens while retaining the complete interactive guarded profile. First output took 3.45 seconds after dispatch plus 2.41 seconds before dispatch; the repair passed the original tests and independent checks. The user accepted the small target overrun. One observation does not establish repeatability, and acceptance of first-output latency does not imply acceptance of the separate 110.21-second warm-up or 115.84-second total repair time.
 **Revisit if:** Repeated measurements or real use show materially different first-output latency, correctness or guard behavior, or the user changes the acceptance criterion.
 **Evidence:** "OK it's fine with this close to 5-second"
+
+### LLM-04 · Retain PQ2_0 over PTQ1_0 on the M4 Pro
+`accepted` · 2026-09-21 · `01a0c29d`
+**Decision:** Keep PQ2_0 as the Bonsai experiment baseline. Retain PTQ1_0 only as an explicit experimental profile for situations where its smaller footprint is required; do not make it the default or change routing.
+**Why:** In the matched PQ2_0 → PTQ1_0 → restored-PQ2_0 sequence, PTQ1_0 reduced projected device use by 1,144 MiB but reduced fresh prefill throughput by 17–22%, fresh decode by about 12%, and cached decode by 14–17%. It also timed out without a final answer in the guarded normal-harness explanation, although native compatibility, three repairs, and the same-session follow-up passed. The existing 24 GB setup already fits PQ2_0, so the memory saving does not compensate for slower prefill and decode plus the observed behavior failure. See `experiments/bonsai/PERFORMANCE.md`.
+**Revisit if:** A newer compatible Prism runtime materially improves PTQ1_0 on Apple Silicon, memory pressure prevents PQ2_0 from running the required context, or repeated controlled trials overturn the speed or guarded-behavior result.
