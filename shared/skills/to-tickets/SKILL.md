@@ -31,13 +31,15 @@ Each slice should:
 
 A task with no blockers can start immediately.
 
-**Wide refactors are the exception.** A mechanical change whose blast radius cannot land green as a vertical slice should use expand–contract:
+**Wide refactors are the exception.** Before choosing a migration shape, inventory every caller and compatibility surface: public APIs, external or multi-repository consumers, independently deployed services, staged rollouts, and persisted schema or data.
 
-1. Add the new form beside the old.
+When every consumer is controlled, internal, changeable, and verifiable together, one same-wave task may migrate every caller and delete the legacy path after verification. Otherwise use expand–contract:
+
+1. Add the new form beside the old, with the required compatibility plan.
 2. Migrate callers in independently green batches sized by package or directory.
-3. Remove the old form after every migration task is done.
+3. Remove the old form and temporary compatibility code after all migration and final integration verification make deletion safe.
 
-If migration batches cannot stay green independently, use a shared integration branch only with explicit approval and add a final integrate-and-verify task blocked by every batch.
+Give every phase its own verification boundary. If migration batches cannot stay green independently, use a shared integration branch only with explicit approval and add a final integrate-and-verify task blocked by every batch.
 
 ### 4. Get approval
 
