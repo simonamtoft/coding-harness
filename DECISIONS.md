@@ -18,6 +18,7 @@ Entries live in `decisions/`, one file per area. Read only the area your change 
 | Reports | `decisions/reports.md` | `REP-` | `shared/skills/present` |
 | Backlog workflow | `decisions/backlog.md` | `BKL-` | `backlog/`, the tracker section of `shared/AGENTS.md`, `pi/agent/extensions/backlog-guard` |
 | Local model experiments | `decisions/local-models.md` | `LLM-` | `experiments/` |
+| Instruction-behavior probes | `decisions/probes.md` | `PRB-` | `probes/` |
 
 ## Using this ledger
 

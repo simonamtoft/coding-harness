@@ -15,6 +15,7 @@ pi/agent/
   extensions/                     other Pi-only runtime extensions
   prompts/                        Pi-only slash-prompt workflows
 claude/                           Claude-only runtime resources
+probes/                           manual instruction-behavior evaluation; see probes/AGENTS.md
 link.sh                           deployment topology and Pi package installation
 README.md                         human-facing setup and architecture guide
 DECISIONS.md + decisions/         durable decision ledger
@@ -28,6 +29,7 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - `pi/agent/` owns Pi-only instructions, agents, extensions, prompts, MCP configuration, and the package manifest.
 - Keep test files out of `pi/agent/extensions/` root. Pi auto-loads every root `*.ts`; colocate tests inside extension subdirectories, where only `index.ts` is auto-discovered.
 - `claude/` owns Claude-only agents, hooks, settings, statusline, and themes.
+- `probes/` owns isolated instruction comparisons, whole-Pi-harness behavior scenarios, and their committed result records. Runs make paid model calls, so keep the suite manual and out of automatic verification; `probes/results/` is committed evidence, not generated state.
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.
 - `link.sh` defines link topology and Pi package installation. Preserve its refusal and backup behavior for existing targets.
@@ -78,6 +80,9 @@ Run checks for the changed component:
 - Pi extensions: `bun test pi/agent/extensions`
 - Claude Bash guard: `bash claude/hooks/test/run.sh`
 - Claude verify hook: `bash claude/hooks/test/verify-turn-run.sh`
+- Probe runner libraries (offline): `bun test probes/lib`
+
+For a change to `shared/AGENTS.md` that is meant to alter agent behavior, `bun probes/run.ts --compare` isolates and compares baseline against candidate. Before finalizing any change to effective canonical Pi runtime inputs, run `bun probes/run.ts --harness-mode whole`. Both commands cost real model calls and minutes, so run them deliberately and read `probes/README.md` first; never put them in an automatic hook.
 
 For link-topology changes, exercise `link.sh` with an isolated temporary `HOME`; never test a forced install against the real home directory.
 

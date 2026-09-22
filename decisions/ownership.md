@@ -58,3 +58,10 @@ Decision ledger area. Entry ids use the `OWN-` prefix; see `../DECISIONS.md` for
 **Why:** Consistent terminology, explicit referents, and separate user actions can reduce reading effort in every response. Strict vocabulary and length restrictions could obscure software terminology and constrain design explanations. Distinguishing evidence from inference is an agent-specific addition, not a claim about STE requirements.
 **Revisit if:** A documentation workflow requires formal ASD-STE100 compliance.
 **Evidence:** "OK please adapt the suggested changes"
+
+### OWN-10 · Continuation-permission paragraph rejected on a null probe result
+`rejected` · 2026-09-21 · `01a0c532`
+**Decision:** Do not add a paragraph to `shared/AGENTS.md` granting explicit permission to continue through result inspection, change-caused failure repair, and affected rechecks. Written, measured, and removed.
+**Why:** No measured effect. Seven single-turn scenarios produced identical continue/ask verdicts with and without it. A multi-turn fixture scored 2/12 with the paragraph versus 6/12 without at 24 trials (Fisher two-sided ≈ 0.19), and after the scenario was corrected to VER-08 semantics the direction reversed per model (sonnet 2/3 baseline vs 0/3 candidate; luna 0/3 vs 1/3). Session history also showed no premature-handoff instance to fix. OWN-03 asks for guidance that addresses a demonstrated gap, and the demonstrated gap turned out to be a different one: agents skip the project's own focused tests and hand-verify instead.
+**Revisit if:** Probe evidence shows agents stopping mid-task for permission, which the `focused-check-own-change` scenario would surface as an early handoff rather than a missing check.
+**Evidence:** "Can we somehow check that this change makes sense?"

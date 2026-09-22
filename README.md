@@ -44,6 +44,11 @@ leaves the override in place.
 
 - `experiments/bonsai/`: local-model playground with tracked setup notes;
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
+- `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
+  whole-Pi-harness checks, plus committed records reused by later runs. Paid runs
+  remain manual, but whole-harness probes are required before finalizing changes
+  to effective canonical Pi runtime inputs. See [probes/README.md](probes/README.md).
+  Not deployed by `link.sh`.
 - `shared/`: the common `AGENTS.md`, skills, and command-safety/read-routing regression contracts consumed by both harnesses.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
