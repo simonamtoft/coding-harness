@@ -23,6 +23,7 @@ import {
 } from "@earendil-works/pi-tui";
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
 import { formatVerificationLiveness } from "./liveness.ts";
+import { automaticVerifierNotice } from "./notice.ts";
 import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
@@ -362,11 +363,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     if (!sessionActive || controller.signal.aborted) return;
 
     return {
-      systemPrompt:
-        event.systemPrompt +
-        `\n\nAn automatic end-of-turn project verifier (${verifier.label}) is active. ` +
-        "Do not run that full verifier yourself as a final check; it runs after you settle and feeds failures back for repair. " +
-        "During implementation, run only narrower checks that provide useful immediate feedback.",
+      systemPrompt: `${event.systemPrompt}\n\n${automaticVerifierNotice(verifier.label)}`,
     };
   });
 

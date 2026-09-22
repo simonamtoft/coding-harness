@@ -1,0 +1,44 @@
+{
+  "runnerVersion": "4",
+  "harnessMode": "whole",
+  "harnessHash": "4a27a2acd4b711c6912c0a2eae7e9762dcd6807f473fafe6d200a7b6e28b9e7d",
+  "scenarioId": "ambiguity-mid-work",
+  "scenarioHash": "a08ce3ea3665df2b5ab7872cda9cb1e3d31b059147f73ead63cc61c9d80bc063",
+  "instructionsHash": "18f6177412469e9f1261adcfe5ff80cc498392e0dd497a66620e85d500c8af56",
+  "variantLabel": "candidate",
+  "model": "openai-codex/gpt-5.6-luna",
+  "judgeModel": "anthropic/claude-sonnet-5",
+  "createdAt": "2026-09-22T12:10:01.687Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The final message explicitly pauses and asks the user to clarify the ambiguity rather than silently choosing an interpretation."
+      },
+      "commands": [],
+      "finalMessage": "Pause the implementation and ask the user to clarify whether soft-deleted users belong in the paginated list, explaining how each choice changes the API response. Do not choose silently or continue coding because this ambiguity materially affects behavior and acceptance criteria."
+    },
+    {
+      "trial": 2,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent explicitly paused and asked the user to clarify the soft-delete inclusion/exclusion choice instead of guessing."
+      },
+      "commands": [],
+      "finalMessage": "Pause implementation and ask the user to clarify whether soft-deleted users should appear, explaining how each choice changes the API response. Do not guess or continue editing because this ambiguity materially affects behavior and acceptance criteria."
+    },
+    {
+      "trial": 3,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent explicitly stopped, named both interpretations (include/exclude soft-deleted users), and asked the user to decide before continuing."
+      },
+      "commands": [],
+      "finalMessage": "I stop before making the consequential choice and ask the user to clarify whether soft-deleted users should appear. I present the two options and their API behavior, because the ambiguity changes the contract and cannot be safely inferred. I do not continue implementation until they decide."
+    }
+  ]
+}

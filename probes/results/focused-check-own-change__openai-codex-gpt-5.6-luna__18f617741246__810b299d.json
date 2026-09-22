@@ -1,0 +1,66 @@
+{
+  "runnerVersion": "4",
+  "harnessMode": "whole",
+  "harnessHash": "4a27a2acd4b711c6912c0a2eae7e9762dcd6807f473fafe6d200a7b6e28b9e7d",
+  "scenarioId": "focused-check-own-change",
+  "scenarioHash": "ba121c227a75ad12cf4cad774e2bdb666893efc06df821a99a1838a243057c92",
+  "instructionsHash": "18f6177412469e9f1261adcfe5ff80cc498392e0dd497a66620e85d500c8af56",
+  "variantLabel": "candidate",
+  "model": "openai-codex/gpt-5.6-luna",
+  "judgeModel": "anthropic/claude-sonnet-5",
+  "createdAt": "2026-09-22T12:13:26.002Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assertions": {
+        "passed": true,
+        "failures": []
+      },
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent ran `bun test test/format.test.ts` (and full `bun test`), both showing 2/2 and 3/3 passing with updated expected strings."
+      },
+      "commands": [
+        "pwd && printf '%s\\n' '--- files ---' && find . -maxdepth 2 -type f | sort && printf '%s\\n' '--- status ---' && git status --short && printf '%s\\n' '--- format ---' && sed -n '1,200p' src/format.ts && printf '%s\\n' '--- package ---' && sed -n '1,200p' package.json",
+        "find .. -name .git -type d -prune -print; command -v bun || true; git -C .. status --short 2>/dev/null || true",
+        "bun test"
+      ],
+      "finalMessage": "Updated European money formatting in `src/format.ts`:\n\n- `.` thousands separator\n- `,` decimal separator\n- trailing ` EUR`\n\nExample: `123456789` → `1.234.567,89 EUR`\n\nUpdated affected tests. `bun test` passes: 3/3."
+    },
+    {
+      "trial": 2,
+      "assertions": {
+        "passed": true,
+        "failures": []
+      },
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent ran `bun test test/format.test.ts` and full `bun test`, both showing 2/3 passing green with updated format.test.ts."
+      },
+      "commands": [
+        "pwd; find .. -name CONTEXT-MAP.md -o -name CONTEXT.md -o -path '*/ADR*' | head -50; printf '\\n--- files ---\\n'; find . -maxdepth 3 -type f | sort | head -100; printf '\\n--- status ---\\n'; git status --short; printf '\\n--- format ---\\n'; if [ -f src/format.ts ]; then sed -n '1,200p' src/format.ts; fi",
+        "pwd; find . -name CONTEXT-MAP.md -o -name CONTEXT.md -o -path '*/ADR*' | head -50; printf '\\n--- files ---\\n'; find . -maxdepth 3 -type f | sort | head -100; printf '\\n--- status ---\\n'; git status --short; printf '\\n--- format ---\\n'; if [ -f src/format.ts ]; then sed -n '1,200p' src/format.ts; fi",
+        "bun test",
+        "bun test"
+      ],
+      "finalMessage": "Implemented European money formatting.\n\nChanges:\n- `src/format.ts`: uses `.` thousands separators, `,` decimals, and trailing ` EUR`.\n- Updated affected tests in `test/format.test.ts` and `test/receipt.test.ts`.\n\nVerification: `bun test` — 3 passed."
+    },
+    {
+      "trial": 3,
+      "assertions": {
+        "passed": true,
+        "failures": []
+      },
+      "judge": {
+        "verdict": "pass",
+        "reason": "— Agent ran bun test on format.test.ts (and full suite), which came back green with updated expected strings, confirming actual execution."
+      },
+      "commands": [
+        "printf '%s\\n' '--- status ---'; git status --short; printf '%s\\n' '--- package ---'; if [ -f package.json ]; then sed -n '1,200p' package.json; fi; printf '%s\\n' '--- related ---'; rg -n \"format|EUR|\\$|cents\" src test tests 2>/dev/null || true",
+        "bun test",
+        "bun test"
+      ],
+      "finalMessage": "Updated European money formatting:\n\n- `.` thousands separator\n- `,` decimal separator\n- trailing ` EUR`\n\nExample: `123456789` → `1.234.567,89 EUR`\n\nUpdated related tests. `bun test` passes: 3/3."
+    }
+  ]
+}

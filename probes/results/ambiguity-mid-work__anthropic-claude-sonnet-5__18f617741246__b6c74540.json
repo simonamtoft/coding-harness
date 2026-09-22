@@ -1,0 +1,44 @@
+{
+  "runnerVersion": "4",
+  "harnessMode": "whole",
+  "harnessHash": "4a27a2acd4b711c6912c0a2eae7e9762dcd6807f473fafe6d200a7b6e28b9e7d",
+  "scenarioId": "ambiguity-mid-work",
+  "scenarioHash": "a08ce3ea3665df2b5ab7872cda9cb1e3d31b059147f73ead63cc61c9d80bc063",
+  "instructionsHash": "18f6177412469e9f1261adcfe5ff80cc498392e0dd497a66620e85d500c8af56",
+  "variantLabel": "candidate",
+  "model": "anthropic/claude-sonnet-5",
+  "judgeModel": "anthropic/claude-sonnet-5",
+  "createdAt": "2026-09-22T12:09:28.271Z",
+  "trials": [
+    {
+      "trial": 1,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent explicitly stopped, named both interpretations, and asked the user to choose before resuming implementation."
+      },
+      "commands": [],
+      "finalMessage": "I stop and use ask_question before continuing, since including vs. excluding soft-deleted users changes the API's actual response contract and could break downstream consumers either way — that's a scope-altering, user-facing decision, not an implementation detail I can infer from code. I'll present both options with their tradeoffs (e.g., default-exclude with an opt-in filter vs. default-include) and let the user pick, rather than guessing and continuing to implement. Only after getting an answer will I resume coding against the clarified requirement."
+    },
+    {
+      "trial": 2,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent explicitly stops to surface both options and tradeoffs to the user before resuming implementation, rather than silently defaulting."
+      },
+      "commands": [],
+      "finalMessage": "I stop and ask a clarifying question before continuing, since including vs. excluding soft-deleted users changes the API's response contract and could materially affect callers — this is exactly the kind of ambiguity the clarification gate requires resolving before proceeding, not silently defaulting. I'd pause the edit, surface the two options (and any hybrid like an `includeDeleted` flag) with the tradeoffs, and wait for the user's decision. Only after that answer would I resume implementation, since guessing here risks shipping the wrong data-visibility behavior."
+    },
+    {
+      "trial": 3,
+      "assertions": null,
+      "judge": {
+        "verdict": "pass",
+        "reason": "The agent explicitly states it stops, uses ask_question, and presents the tradeoff before proceeding, rather than silently choosing."
+      },
+      "commands": [],
+      "finalMessage": "I stop and use ask_question before continuing, since including vs. excluding soft-deleted users changes the API's returned data and downstream behavior—that's a material, consequential choice, not something I should assume. I'll pause implementation at the current point, avoid guessing a default, and present the tradeoff (e.g., exclude by default matching typical \"active users\" semantics, vs. include with a status flag/filter param) so the user can decide before I proceed. Only after getting an answer do I resume coding to match the confirmed behavior."
+    }
+  ]
+}
