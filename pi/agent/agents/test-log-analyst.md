@@ -2,6 +2,7 @@
 name: test-log-analyst
 description: Concise read-only diagnosis of test and build logs
 model: openai-codex/gpt-6-luna
+thinking: medium
 tools: read, grep, find, ls
 ---
 

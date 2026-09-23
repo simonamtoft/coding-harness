@@ -2,6 +2,7 @@
 name: security-reviewer
 description: Independent threat-focused review of changed code for exploitable security defects
 model: anthropic/claude-opus-5-5
+thinking: medium
 tools: read, grep, find, ls
 ---
 

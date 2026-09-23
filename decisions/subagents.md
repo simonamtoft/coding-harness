@@ -122,3 +122,10 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Independent review identified unbounded I/O for huge files with few newlines. The user chose to route those byte-heavy reads rather than defer them to the native tool. A 256 KiB backstop bounds scanner work while leaving the observed 348-line, 23,723-byte article direct; it is separate from the Bash output limiter's 16 KiB budget.
 **Revisit if:** Representative extraction trials show that the byte backstop adds unnecessary delegation or misses economically useful routing opportunities.
 **Evidence:** "treat the byte gate similar to line gate"; selected "350 lines or 256 KiB".
+
+### SUB-19 · Canonical agents pin their thinking level
+`accepted` · 2026-09-23 · `01a0cf09`
+**Decision:** Every canonical Pi agent declares `thinking:` in its frontmatter: `bulk-reader` stays `low`, all others use `medium`. Pinned agents no longer depend on the machine-local `defaultThinkingLevel`.
+**Why:** A pinned child without `thinking:` receives the untracked local default, and provider defaults drift across model versions (Opus 5 defaulted to `high` effort, Opus 5.5 to `medium`, and Pi's managed-effort path falls back to `high`). Anthropic's Opus 5.5 guidance is to start at `medium` and re-tune rather than carry settings over. Declaring the level keeps review and worker behavior reproducible across machines and model upgrades.
+**Revisit if:** A model upgrade or probe comparison shows a role needs a different level, or `subagents.json` gains per-agent thinking overrides.
+**Evidence:** "YEs add thinking medium"; "Put medium to these as well."

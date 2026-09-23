@@ -141,7 +141,7 @@ describe("thinking configuration", () => {
 			const selection = resolveDispatchModel(reader, "parent/model", "high");
 			expect(selection.cliArgs.slice(-2)).toEqual(["--thinking", "low"]);
 			expect(selection.model).toBe(overrides["bulk-reader"] ?? "openai-codex/gpt-6-luna");
-			expect(agents.filter((entry) => entry.name !== "bulk-reader").every((entry) => entry.thinking === undefined)).toBeTrue();
+			expect(agents.filter((entry) => entry.name !== "bulk-reader").every((entry) => entry.thinking === "medium")).toBeTrue();
 		}
 	});
 
