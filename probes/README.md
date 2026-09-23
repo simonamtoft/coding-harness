@@ -10,7 +10,7 @@ The runner has two modes:
   skills, prompt templates, and all extensions disabled, except that tool-enabled trials load the
   canonical sandbox extension. It is controlled rather than instruction-only: the sandbox adds to
   the system prompt and changes tool behavior. Use it to attribute behavior to instruction wording
-  without giving a tool-enabled child unrestricted host access.
+  without removing the existing tool-call guard. It does not confine the child at the OS boundary.
 - `whole` loads the normally installed Pi extensions, skills, prompt templates, packages, and
   other local runtime configuration while still appending exactly one selected `shared/AGENTS.md`
   variant. It is a stateless integration smoke of the installed resources, not a reproduction of
@@ -156,8 +156,9 @@ agent's package managers at a closed localhost port or offline mode through its 
 | Go | `GOPROXY=off` | not checked; Go is not installed |
 
 This guards package installation only. Direct network tools such as `curl` or `git clone` are
-not blocked; that containment is PI-90. The fixtures deliberately do not say they are simulated,
-but an agent that reads a stub or inspects its environment can tell. No probe executes against a
+not blocked. See the [PI-90 containment design](CONTAINMENT.md); it is not implemented.
+The fixtures deliberately do not say they are simulated, but an agent that reads a stub or
+inspects its environment can tell. No probe executes against a
 real production service.
 
 ### Command evidence
@@ -213,7 +214,10 @@ Isolated children run with `--no-extensions --no-context-files --no-skills
 --no-prompt-templates`, then tool-enabled trials explicitly load only the canonical sandbox
 extension. `verify-turn`, skills, and other extensions therefore cannot mask or substitute for the
 instruction under test. The sandbox's Bash policy is a lexical denylist, not filesystem, process,
-or network containment; OS-level containment is tracked separately (PI-90).
+or network containment; see the [unimplemented PI-90 design](CONTAINMENT.md). The child inherits
+the host environment and Pi configuration, including possible provider credentials. Do not run
+untrusted scenarios or agent-generated commands expecting confinement. The runner also executes
+fixture checks on the host, including after the agent may have modified the checked code.
 
 Whole mode runs `pi -p --mode json --no-session --no-context-files`. It misses discovered project
 context, session state, and every lifecycle that needs an interactive session. Neither mode can
@@ -227,6 +231,10 @@ runtime fingerprint adds Pi's version and resolved package content, but it does
 not cover other local settings, package `node_modules`, Pi's built-in system prompt beyond its
 version, provider-side model revisions, or credentials. Record those limitations when
 interpreting a whole-harness result.
+
+Whole mode likewise runs on the host, loads local Pi settings and extensions, and has no OS
+containment. The PI-90 design intentionally does not change whole mode; only run it with trusted
+scenarios and installed resources.
 
 Process cleanup covers a child that is stopped. A background process an agent deliberately leaves
 behind after a normal completion has already been orphaned from Pi and is not tracked, and a
