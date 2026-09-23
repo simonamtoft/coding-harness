@@ -42,7 +42,7 @@ The working tree supplies the `candidate` content. `--compare` adds the `HEAD` c
 `--compare` runs one baseline-labelled variant. A `--variant` file should contain a complete
 alternative `shared/AGENTS.md`, not only a changed paragraph.
 
-Defaults: models `anthropic/claude-sonnet-5` and `openai-codex/gpt-5.6-luna` (one large, one
+Defaults: models `anthropic/claude-sonnet-5` and `openai-codex/gpt-6-luna` (one large, one
 small, two vendors), 3 trials, judge `anthropic/claude-sonnet-5`, harness mode `isolated`.
 
 ## Before and after without paying twice

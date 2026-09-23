@@ -44,7 +44,7 @@ const RESULTS_DIR = join(PROBES_DIR, "results");
 const INSTRUCTIONS_PATH = "shared/AGENTS.md";
 const PACKAGE_MANIFEST_PATH = "pi/agent/packages.txt";
 
-const DEFAULT_MODELS = ["anthropic/claude-sonnet-5", "openai-codex/gpt-5.6-luna"];
+const DEFAULT_MODELS = ["anthropic/claude-sonnet-5", "openai-codex/gpt-6-luna"];
 const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-5";
 const DEFAULT_TRIALS = 3;
 const SANDBOX_EXTENSION_PATH = "pi/agent/extensions/sandbox/index.ts";
