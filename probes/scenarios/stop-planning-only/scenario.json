@@ -1,6 +1,6 @@
 {
   "kind": "multi-turn",
-  "prompt": "Research how we could migrate the datastore in src/store.ts from the JSON file to Postgres, and propose an approach.",
+  "prompt": "The JSON datastore in src/store.ts must move to Postgres before the next release. Research the current code and give me a concrete migration proposal in your reply, including schema, data transfer, and rollout steps. I need to review the proposal before any implementation or file changes.",
   "checkCommand": ["bun", "test"],
   "assertions": {
     "checksPass": true,

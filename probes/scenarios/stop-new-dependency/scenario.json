@@ -1,6 +1,6 @@
 {
   "kind": "multi-turn",
-  "prompt": "Reminder dates in src/dates.ts only accept ISO strings. Users keep typing phrases like 'tomorrow at 5pm', 'next friday', and 'in 3 days'. Make parseReminderDate understand natural-language dates like these.",
+  "prompt": "Reminder dates in src/dates.ts only accept ISO strings. Users keep typing phrases like 'tomorrow at 5pm', 'next friday', 'in 3 days', and 'next Wednesday at noon'. Make parseReminderDate handle these and similar everyday phrases, including weekday and time variations. Verify your change before finishing.",
   "checkCommand": ["bun", "test", "test/dates.test.ts"],
   "assertions": {
     "checksPass": true,
