@@ -55,14 +55,14 @@ describe("subagent ownership", () => {
 
 	test("canonical agents use built-in providers at role-appropriate tiers", () => {
 		expect(Object.fromEntries(piAgents.map((agent) => [agent.name, agent.model]))).toEqual({
-		"bulk-reader": "openai-codex/gpt-5.6-luna",
-		"commit-planner": "openai-codex/gpt-5.6-luna",
+		"bulk-reader": "openai-codex/gpt-6-luna",
+		"commit-planner": "openai-codex/gpt-6-luna",
 		"correctness-reviewer": "anthropic/claude-sonnet-5",
-		"implementation-worker": "openai-codex/gpt-5.6-terra",
-		presenter: "openai-codex/gpt-5.6-luna",
-		"repository-scout": "openai-codex/gpt-5.6-luna",
-		"security-reviewer": "anthropic/claude-opus-4-8",
-		"test-log-analyst": "openai-codex/gpt-5.6-luna",
+		"implementation-worker": "openai-codex/gpt-6-sol",
+		presenter: "openai-codex/gpt-6-luna",
+		"repository-scout": "openai-codex/gpt-6-luna",
+		"security-reviewer": "anthropic/claude-opus-5-5",
+		"test-log-analyst": "openai-codex/gpt-6-luna",
 	});
 	});
 

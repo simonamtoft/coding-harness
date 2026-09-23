@@ -140,7 +140,7 @@ describe("thinking configuration", () => {
 			if (!reader) throw new Error("bulk-reader not discovered");
 			const selection = resolveDispatchModel(reader, "parent/model", "high");
 			expect(selection.cliArgs.slice(-2)).toEqual(["--thinking", "low"]);
-			expect(selection.model).toBe(overrides["bulk-reader"] ?? "openai-codex/gpt-5.6-luna");
+			expect(selection.model).toBe(overrides["bulk-reader"] ?? "openai-codex/gpt-6-luna");
 			expect(agents.filter((entry) => entry.name !== "bulk-reader").every((entry) => entry.thinking === undefined)).toBeTrue();
 		}
 	});
