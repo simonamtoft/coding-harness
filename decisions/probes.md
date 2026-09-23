@@ -16,6 +16,7 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Decision:** Store every run in `probes/results/`, keyed by instruction-bundle hash, scenario definition hash including fixture bytes, model, judge model, and runner version. Reuse a record whenever the key matches and it holds enough trials. Rejected rerunning both variants on every invocation and keeping results outside version control.
 **Why:** The recurring workflow is "I changed an instruction, what moved?", where the baseline was already measured. Hashing content rather than Git revisions means an unchanged baseline is reused across commits, while editing a scenario or fixture invalidates both sides automatically instead of silently comparing runs of different scenarios.
 **Revisit if:** The instruction bundle grows beyond `shared/AGENTS.md` and per-file provenance becomes necessary.
+**Superseded by:** PRB-10 for committing records; content-keyed local reuse remains.
 
 ### PRB-03 · Probe children run without extensions, context files, or skills
 `constraint` · 2026-09-21 · `01a0c532`
@@ -63,3 +64,10 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** Timeouts, signal cleanup, locks, and checkpointing are the runner behavior most likely to lose paid trials, and none of it needs a model to verify. Building the suite found two real races: a signal could exit while a temporary directory or lock release was still in flight. A process-level concurrency test cannot hit the microsecond reclaim window, so that invariant is tested directly against `record-lock.ts`.
 **Revisit if:** The fake stops matching Pi's JSON event protocol or process behavior closely enough to trust, or the suite becomes slow enough to discourage running it.
 **Evidence:** "Fix 4, 5 and 3" (item 3 was the missing permanent tests for `run.ts`).
+
+### PRB-10 · Keep paid probe records local instead of committing them
+`reverted` · 2026-09-23 · `01a0ce4b`
+**Decision:** Ignore `probes/results/*.json` and untrack the previously committed records while retaining every record on disk. Reversed PRB-02's committed-evidence policy; the runner continues to cache by content hash locally. This change does not rewrite published Git history to remove older records.
+**Why:** The user chose local-only records over the shared committed cache, accepting that another checkout or machine must pay for baseline trials again. The published `ccc7055` commit still contains the older records because the environment blocks history rewrites; an untracking commit does not erase historical blobs.
+**Revisit if:** Shared baseline reuse across machines becomes more important than keeping generated trial evidence out of Git.
+**Evidence:** "But keep them locally. Only remove from Git history"; when rewriting was blocked, the user chose "Untrack without rewrite".

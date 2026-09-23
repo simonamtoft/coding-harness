@@ -1,7 +1,8 @@
 # Local harness configuration and runtime state
 /pi/agent/models.json
 
-# Probe runner transient lock and staging files
+# Local probe evidence and runner transient files
+/probes/results/*.json
 /probes/results/*.lock
 /probes/results/*.tmp
 

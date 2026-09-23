@@ -12,12 +12,11 @@ caching; this file states the authoring constraints.
   in `record-lock.ts`. `bun test probes/lib probes/test` must pass without credentials or model
   calls. `probes/test` runs the real runner against `test/fake-pi.ts` in a temporary repository
   copy; extend it when changing runner lifecycle, locking, or cleanup, and never point it at the
-  committed `results/`.
-- Commit `results/`. They are the "before" side of the next comparison; deleting one means paying
-  for it again.
+  local `results/`.
+- Keep `results/` local and untracked. They are the "before" side of the next comparison on this
+  machine; deleting one means paying for it again.
 - Bump `RUNNER_VERSION` in `lib/cache.ts` when execution or scoring changes in a way that makes
-  older records incomparable. Do not edit stored records by hand. Never commit `results/*.lock`
-  or `results/*.tmp`; they are a live runner's lock and staging files.
+  older records incomparable. Do not edit stored records by hand or commit result, lock, or staging files.
 - Never let a child-process failure become an agent verdict. Timeouts, non-zero exits, and
   incomplete agent runs are infrastructure failures recorded apart from trials; a failed judge
   keeps the trial with an `unavailable` verdict.

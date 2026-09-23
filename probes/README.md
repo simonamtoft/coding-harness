@@ -47,12 +47,12 @@ small, two vendors), 3 trials, judge `anthropic/claude-sonnet-5`, harness mode `
 
 ## Before and after without paying twice
 
-Records in `probes/results/` are committed and keyed by harness mode, effective canonical Pi
-harness hash, whole-mode runtime fingerprint, instruction hash, scenario definition hash, model,
-judge model, and runner version. The scenario hash includes every fixture path and its UTF-8 file
-content. A run reuses any record whose key matches and that has at least the requested number of
-trials. Asking for more trials tops the record up with the difference instead of rerunning what is
-stored.
+Records in `probes/results/` stay local and are ignored by Git. They are keyed by harness mode,
+effective canonical Pi harness hash, whole-mode runtime fingerprint, instruction hash, scenario
+definition hash, model, judge model, and runner version. The scenario hash includes every fixture
+path and its UTF-8 file content. A run reuses any matching local record with enough trials;
+asking for more trials tops it up instead of rerunning what is stored. A fresh checkout or a
+machine without those records must pay for both sides again.
 
 Isolated mode hashes the canonical sandbox extension that it explicitly loads for tool-enabled
 trials. Whole mode hashes the canonical runtime inputs under `pi/agent/agents`, runtime TypeScript
