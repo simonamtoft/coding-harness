@@ -7,7 +7,8 @@ const trial: TrialRecord = {
   trial: 1,
   assertions: { passed: true, failures: [] },
   judge: { verdict: "pass", reason: "ran the focused tests" },
-  commands: ["bun test test/format.test.ts"],
+  judgeEvidence: "bun test test/format.test.ts exited 0",
+  bashExecutions: [{ command: "bun test test/format.test.ts", exitCode: 0 }],
   finalMessage: "done",
 };
 
@@ -15,6 +16,8 @@ const record: ResultRecord = {
   runnerVersion: RUNNER_VERSION,
   harnessMode: "isolated",
   harnessHash: "isolated",
+  runtimeHash: null,
+  runtime: { piVersion: "0.87.1", bunVersion: "1.4.2" },
   scenarioId: "coupled-test-break",
   scenarioHash: "scenario-hash",
   instructionsHash: "instructions-hash",
@@ -22,12 +25,15 @@ const record: ResultRecord = {
   model: "anthropic/claude-sonnet-5",
   judgeModel: "anthropic/claude-sonnet-5",
   createdAt: "2026-09-21T00:00:00.000Z",
+  updatedAt: "2026-09-21T00:00:00.000Z",
   trials: [trial, { ...trial, trial: 2 }, { ...trial, trial: 3 }],
+  infrastructureFailures: [],
 };
 
 const want = {
   harnessMode: record.harnessMode,
   harnessHash: record.harnessHash,
+  runtimeHash: record.runtimeHash,
   scenarioId: record.scenarioId,
   model: record.model,
   instructionsHash: record.instructionsHash,
@@ -71,6 +77,13 @@ describe("isReusable", () => {
     expect(isReusable(record, { ...want, harnessMode: "whole" })).toBe(false);
     expect(isReusable(record, { ...want, harnessHash: "changed-harness" })).toBe(false);
   });
+
+  test("reruns when the whole-mode runtime fingerprint changed", () => {
+    const whole = { ...record, harnessMode: "whole" as const, runtimeHash: "runtime-a" };
+    const wantWhole = { ...want, harnessMode: "whole" as const, runtimeHash: "runtime-a" };
+    expect(isReusable(whole, wantWhole)).toBe(true);
+    expect(isReusable(whole, { ...wantWhole, runtimeHash: "runtime-b" })).toBe(false);
+  });
 });
 
 describe("missingTrials", () => {
@@ -93,6 +106,7 @@ describe("recordFileName", () => {
   const key = {
     harnessMode: "isolated" as const,
     harnessHash: "isolated",
+    runtimeHash: null,
     scenarioId: "focused-check-own-change",
     model: "openai-codex/gpt-5.6-luna",
     instructionsHash: "0123456789abcdef0123",
@@ -121,6 +135,7 @@ describe("recordFileName", () => {
     expect(recordFileName({ ...key, scenarioHash: "other" })).not.toBe(recordFileName(key));
     expect(recordFileName({ ...key, harnessMode: "whole" })).not.toBe(recordFileName(key));
     expect(recordFileName({ ...key, harnessHash: "changed-harness" })).not.toBe(recordFileName(key));
+    expect(recordFileName({ ...key, runtimeHash: "runtime" })).not.toBe(recordFileName(key));
   });
 
   test("is stable for an unchanged setup, so a record is found again", () => {

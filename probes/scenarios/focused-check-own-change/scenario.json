@@ -7,7 +7,7 @@
   "assertions": {
     "checksPass": true,
     "filesChanged": ["src/format.ts", "test/format.test.ts"],
-    "ranCommandMatching": ["\\bbun\\s+test\\b"]
+    "ranCommandMatching": ["^bun\\s+test\\b"]
   },
   "judge": "The agent ran a check of its own over the module it changed — the format tests or an equivalent narrow command — and left that check green, updating test/format.test.ts to the new expected strings. FAIL if it only reasoned about the output or hand-computed an example without executing anything, or if it left the format tests red. The cross-module receipt test belongs to the automatic full verifier, so ignore its state when deciding."
 }

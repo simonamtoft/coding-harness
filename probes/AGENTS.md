@@ -8,15 +8,23 @@ caching; this file states the authoring constraints.
 - Never wire `run.ts` into `.agent/verify.sh`, a Taskfile `verify` task, or any hook. Runs cost
   money and take minutes. Run whole-harness probes deliberately before finalizing a change to an
   effective canonical Pi runtime input.
-- Keep `lib/` pure and offline. Network and process work belongs in `run.ts`, which has no tests.
-  `bun test probes/lib` must pass without credentials.
+- Keep `lib/` pure and offline. Process and model work belongs in `run.ts`; lock-file work belongs
+  in `record-lock.ts`. `bun test probes/lib probes/test` must pass without credentials or model
+  calls. `probes/test` runs the real runner against `test/fake-pi.ts` in a temporary repository
+  copy; extend it when changing runner lifecycle, locking, or cleanup, and never point it at the
+  committed `results/`.
 - Commit `results/`. They are the "before" side of the next comparison; deleting one means paying
   for it again.
 - Bump `RUNNER_VERSION` in `lib/cache.ts` when execution or scoring changes in a way that makes
-  older records incomparable. Do not edit stored records by hand.
+  older records incomparable. Do not edit stored records by hand. Never commit `results/*.lock`
+  or `results/*.tmp`; they are a live runner's lock and staging files.
+- Never let a child-process failure become an agent verdict. Timeouts, non-zero exits, and
+  incomplete agent runs are infrastructure failures recorded apart from trials; a failed judge
+  keeps the trial with an `unavailable` verdict.
 - Keep isolated and whole-harness records distinct. Isolated tool-enabled trials load only the
   canonical sandbox and hash it; whole mode hashes canonical runtime inputs but must not absorb
-  local settings, credentials, installed package state, or Claude-only resources.
+  raw local settings, credentials, installed package bytes, or Claude-only resources. Whole mode's
+  runtime fingerprint records only the sanitized identity described in `README.md`.
 
 ## Authoring a scenario
 
@@ -32,10 +40,16 @@ and — for multi-turn — a `fixture/` directory whose `checkCommand` passes be
   scenario that requires whole-suite green scores the agent for work the automatic verifier owns.
 - Use `ranCommandMatching` when every listed pattern is required. Use `ranAnyCommandMatching` when
   any one listed pattern is acceptable; use one specific pattern when only one command is valid.
+  Patterns match simple-command segments of executed Bash calls, so anchor them (`^bun\s+test\b`)
+  to reject incidental strings such as `echo bun test`.
+- Use `allowedChangedFiles` to prove a stop boundary held: `[]` for proposal-only or ask-first
+  behavior, or the exact files the requested change may touch.
 - Probes cannot observe the automatic verifier, because `agent_settled` does not fire in `-p`
   mode. Never write a scenario whose expected behavior is a repair round triggered by
   verification; set `verifierNotice` to reproduce its prompt conditions instead.
-- Add a single-turn scenario only when the behavior cannot be executed safely, and say so in the
-  scenario's prompt context. Otherwise make it multi-turn.
+- Simulate a dangerous boundary in the fixture instead of asking about it (PRB-07): a stub that
+  leaves a local marker, a reserved `.example` host, or the runner's closed package registry. The stub must
+  have no real external effect even if the agent runs it, and `README.md` must label it simulated.
+  Add a single-turn scenario only when no safe simulation exists; it measures stated intent only.
 - A scenario must be able to fail. Before trusting a new one, confirm at least one variant scores
   FAIL on it; a scenario every variant passes measures nothing.

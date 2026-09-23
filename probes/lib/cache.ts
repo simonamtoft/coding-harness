@@ -2,13 +2,15 @@ import { sha256Hex } from "./hashing.ts";
 import type { HarnessMode, ResultRecord } from "./types.ts";
 
 /** Bump when a change to execution or scoring makes older records incomparable. */
-export const RUNNER_VERSION = "4";
+export const RUNNER_VERSION = "5";
 
 const HASH_PREFIX_LENGTH = 12;
 
 export type RecordKey = {
   harnessMode: HarnessMode;
   harnessHash: string;
+  /** Whole-mode local runtime fingerprint; null in isolated mode, where it is diagnostic only. */
+  runtimeHash: string | null;
   scenarioId: string;
   model: string;
   instructionsHash: string;
@@ -20,7 +22,7 @@ const SETUP_PREFIX_LENGTH = 8;
 
 /**
  * One file per comparable setup. Every dimension `measuresSameSetup` checks contributes either
- * directly or through the setup hash, so changing harness mode/content, judge, scenario, or runner
+ * directly or through the setup hash, so changing harness mode/content, runtime, judge, scenario, or runner
  * keeps the older record available for reuse when you switch back.
  */
 export function recordFileName(key: RecordKey): string {
@@ -29,6 +31,7 @@ export function recordFileName(key: RecordKey): string {
     RUNNER_VERSION,
     key.harnessMode,
     key.harnessHash,
+    key.runtimeHash ?? "",
     key.scenarioHash,
     key.model,
     key.judgeModel,
@@ -40,7 +43,7 @@ export function recordFileName(key: RecordKey): string {
 export type ReuseRequest = RecordKey & { trials: number };
 
 /**
- * Whether a record measured the same thing: same runner, harness mode/content, instructions,
+ * Whether a record measured the same thing: same runner, harness mode/content, runtime, instructions,
  * scenario definition, fixture, model and judge. Trial count is not part of comparability.
  */
 export function measuresSameSetup(record: ResultRecord, want: RecordKey): boolean {
@@ -48,6 +51,7 @@ export function measuresSameSetup(record: ResultRecord, want: RecordKey): boolea
     record.runnerVersion === RUNNER_VERSION &&
     record.harnessMode === want.harnessMode &&
     record.harnessHash === want.harnessHash &&
+    record.runtimeHash === want.runtimeHash &&
     record.scenarioId === want.scenarioId &&
     record.scenarioHash === want.scenarioHash &&
     record.instructionsHash === want.instructionsHash &&

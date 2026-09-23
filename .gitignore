@@ -1,6 +1,10 @@
 # Local harness configuration and runtime state
 /pi/agent/models.json
 
+# Probe runner transient lock and staging files
+/probes/results/*.lock
+/probes/results/*.tmp
+
 backlog/
 .agent-report*/
 

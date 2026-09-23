@@ -62,6 +62,11 @@ export function parseScenario(raw: unknown, id: string): Scenario {
   if (assertionsRaw !== undefined) {
     const filesChanged = optionalStringArray(assertionsRecord.filesChanged, "assertions.filesChanged", id);
     const filesUnchanged = optionalStringArray(assertionsRecord.filesUnchanged, "assertions.filesUnchanged", id);
+    const allowedChangedFiles = optionalStringArray(
+      assertionsRecord.allowedChangedFiles,
+      "assertions.allowedChangedFiles",
+      id,
+    );
     scenario.assertions = {};
     if (assertionsRecord.checksPass !== undefined) {
       scenario.assertions.checksPass = assertionsRecord.checksPass as boolean;
@@ -69,6 +74,7 @@ export function parseScenario(raw: unknown, id: string): Scenario {
     const commandPatternFields = ["ranCommandMatching", "ranAnyCommandMatching"] as const;
     if (filesChanged) scenario.assertions.filesChanged = filesChanged;
     if (filesUnchanged) scenario.assertions.filesUnchanged = filesUnchanged;
+    if (allowedChangedFiles) scenario.assertions.allowedChangedFiles = allowedChangedFiles;
     for (const field of commandPatternFields) {
       const patterns = optionalStringArray(assertionsRecord[field], `assertions.${field}`, id);
       if (!patterns) continue;

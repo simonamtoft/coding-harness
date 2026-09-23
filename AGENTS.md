@@ -80,7 +80,7 @@ Run checks for the changed component:
 - Pi extensions: `bun test pi/agent/extensions`
 - Claude Bash guard: `bash claude/hooks/test/run.sh`
 - Claude verify hook: `bash claude/hooks/test/verify-turn-run.sh`
-- Probe runner libraries (offline): `bun test probes/lib`
+- Probe runner libraries and lifecycle (offline, fake `pi`): `bun test probes/lib probes/test`
 
 For a change to `shared/AGENTS.md` that is meant to alter agent behavior, `bun probes/run.ts --compare` isolates and compares baseline against candidate. Before finalizing any change to effective canonical Pi runtime inputs, run `bun probes/run.ts --harness-mode whole`. Both commands cost real model calls and minutes, so run them deliberately and read `probes/README.md` first; never put them in an automatic hook.
 

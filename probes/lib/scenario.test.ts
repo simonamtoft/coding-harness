@@ -86,9 +86,16 @@ describe("parseScenario", () => {
     expect(() => parseScenario({ ...multiTurn, judge: "" }, "x")).toThrow(/judge/);
   });
 
+  test("keeps an empty allowed-change list, which forbids every change", () => {
+    const scenario = parseScenario({ ...multiTurn, assertions: { checksPass: true, allowedChangedFiles: [] } }, "x");
+    expect(scenario.assertions?.allowedChangedFiles).toEqual([]);
+  });
+
   test("rejects malformed assertion fields", () => {
     expect(() => parseScenario({ ...multiTurn, assertions: { filesChanged: "src/format.ts" } }, "x"))
       .toThrow(/filesChanged/);
+    expect(() => parseScenario({ ...multiTurn, assertions: { checksPass: true, allowedChangedFiles: "a" } }, "x"))
+      .toThrow(/allowedChangedFiles/);
     expect(() => parseScenario({ ...multiTurn, assertions: { checksPass: "yes" } }, "x")).toThrow(/checksPass/);
   });
 });
