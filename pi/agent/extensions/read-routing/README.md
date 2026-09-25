@@ -155,6 +155,24 @@ For each run retain:
 
 To evaluate economics, compare the natural routing run against a fresh-session, explicitly bounded direct-read baseline on the same fixture and question. Keep settings fixed and record cache-read/cache-write usage. Report parent-context reduction separately from **combined parent + worker cost** and latency, and compare only answers meeting the same quality bar. A forced direct-read baseline isolates the strategy comparison; it is not evidence of what an unmodified parent would naturally do.
 
+### Recent Pi usage and cost-model audit (2026-09-24)
+
+Run `bun pi/agent/extensions/sandbox/session-history.ts --audit-bulk-reads --limit 200` from the canonical checkout root. The first JSONL row has totals; later rows are per-session metadata. The audit is Pi-only, selects the newest *unfiltered* top-level sessions by start time, and excludes child transcripts as separate sessions. Session composition changes over time, and this sample includes harness development and deliberate trials. See the [audit contract](../sandbox/README.md#session-history-discovery) for definitions and privacy limits.
+
+| Measure | Observed, 200 sessions started 2026-09-13–24 |
+| --- | ---: |
+| Parent `read` calls / broad-read redirects | 3,664 / 102 (2.8% of calls) |
+| Sessions with redirects / worker dispatches | 76 / 51 (35 with both; 16 dispatched without redirect) |
+| Worker runs with known success / failure | 60 / 6 (completion, **not** answer quality) |
+| Parent reads of paths the worker had read, after success | 146 calls, 959,030 result bytes across 19 sessions |
+| Verified reported worker spend | $1.068 (0 runs with unreported cost in this sample) |
+
+Redirects are attempted broad reads blocked by the 16 KiB gate, **not** the number of suitable extraction opportunities; bounded reads and search output are outside the gate. One dispatch may follow several redirects or none. The overlapping parent reads may be necessary source inspection, not waste. The counts do not establish a delegation hit rate or cost saving.
+
+For 46 of the 60 successful runs, the helper could *model* a same-material comparison (single-agent dispatch, successful worker source reads, complete reported costs and parent rates): $11.963 if the parent ingested every worker read once at its uncached input rate versus $1.538 for the worker plus estimated parent dispatch and result ingestion. That gives an **87% pooled hypothetical difference**, dominated by 11 very large read sequences. The median per-run modeled saving was **64.5%** and 44/46 modeled runs were positive; the unweighted mean was **−43.6%**, pulled down by a tiny 63-token read whose delegation overhead dwarfed direct ingestion. Excluding modeled runs over 50,000 read tokens gives 35 runs, $2.011 direct versus $0.719 delegated (64% pooled), with 33/35 positive. That size cutoff is a sensitivity check, not a context-cap guarantee. Six failed runs and 14 other successful runs have no modeled saving. None of these numbers is quality-matched *observed* savings; the model omits parent rereads, caching, skill-loading, and whether the parent would have read the same bytes at all. Do not use the pooled percentage to tune the gate.
+
+A separate disposable synthetic Opus 5.5 smoke A/B compared current parent instructions with a candidate sentence encouraging separation of factual inventory from code reasoning (one run per arm/task, no canonical change). On the mixed inventory-plus-code task, both delegated facts, inspected code directly, and answered correctly; combined parent + worker costs were $0.189 current and $0.226 candidate. On a search-friendly inventory alone, current delegated at $0.080 while candidate used direct targeted search at $0.059; both returned the planted facts. On a code-reasoning control, neither delegated ($0.164 and $0.154). These are noisy one-offs, not a measured improvement or reason to increase routing. Keep the current selective instruction and threshold until a quality-matched, repeated comparison shows a benefit.
+
 ## Observed session probes
 
 These three Pi sessions ran in `~/research` with Terra on 2026-09-12, before the byte gate was replaced:

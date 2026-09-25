@@ -113,6 +113,42 @@ protected paths, and never writes transcripts or reports. Read the returned
 paths with the read tool for detailed evidence; transcript contents can still
 contain sensitive data.
 
+To audit the newest *unfiltered* top-level Pi sessions by actual tool events:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --audit-bulk-reads --limit 200
+```
+
+The first JSONL row summarizes event-bearing sessions in the selected window;
+each remaining row reports session id, start time, cwd, whether a user prompt mentions
+PI-62/bulk-read, parent `read` tool calls (including blocked calls), broad-read
+redirects, bulk-reader dispatches, child successes and failures with known exit
+codes, and the count of all later parent `read`
+calls after a successful child. The last count does **not** establish rereading
+of the child's sources. `coveredParentReads` and `coveredParentReadBytes` count
+successful parent reads of paths also successfully read by a prior worker in that
+session (Pi's `@` path prefix is normalized; matching is otherwise lexical, not inode-based). `workerCost` sums *verified reported* child dollar costs; `unreportedWorkerCosts` counts runs with missing or inconsistent assistant-turn cost data. A missing cost is never treated as zero (a reported zero is valid). `estimates` contains per-run numeric same-material
+comparisons for successful single-agent bulk-reader calls with source reads,
+complete worker cost reporting, and recoverable parent prices. Direct cost assumes the
+parent ingests every successful worker `read` result once, using 3.6 characters
+per token and the parent's reported uncached input rate. Delegated cost adds
+reported worker cost, estimated dispatch output at the parent's output rate,
+and the returned result text at its input rate. The worker's mandatory
+`BULK-READER.md` read is excluded; duplicated source reads, source inspection
+by the parent afterward, skill-loading cost, caching, and answer quality are
+not modeled. Long child read sequences may not fit in one direct parent context.
+The summary reports pooled dollar totals and unweighted per-run mean and
+median saving ratios (the midpoint for an even number of runs). Very large
+payloads dominate pooled dollars, while tiny reads can produce extreme negative
+per-run percentages. Neither is an average net task saving: these models do not
+measure what the parent would have chosen to read without the worker.
+A dispatch without a known child exit code is neither
+success nor failure. Prompt mentions are a coarse experiment hint, not a
+reliable exclusion rule. The audit never prints prompts, tool arguments, or
+child output. It cannot inspect Claude history, establish whether a child loaded
+the shared brief, score answer quality, or prove cost savings. Inspect selected
+original records before making those claims.
+
 For a record too large for the read tool's single-line limit, select its session
 UUID, record ID (the top-level `id`, not a tool-call ID), and a JSON field:
 
@@ -132,8 +168,9 @@ escaping), not the size of the record parsed in memory. Missing sessions, record
 or fields fail explicitly. Extraction validates the session header and refuses
 ambiguous session IDs; it never writes to the store.
 
-The automatic Bash grant accepts only discovery or extraction in the exact flag
-order shown (or an absolute canonical helper path). Discovery accepts a literal
+The automatic Bash grant accepts only discovery, audit, or extraction in the exact flag
+order shown (or an absolute canonical helper path). Audit accepts a limit from
+1 to 200. Discovery accepts a literal
 query containing letters, digits, spaces, periods, underscores or hyphens, and a
 limit from 1 to 100. Extraction accepts a lowercase UUID, an eight-hex-digit
 record ID, a field of at most 256 letters/digits/underscores/dots, a nonnegative
