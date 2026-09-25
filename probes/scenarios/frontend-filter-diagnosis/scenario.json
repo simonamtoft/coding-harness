@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "petite-vue",
+  "prompt": "The grid demo at examples/grid.html stopped matching names when the query starts at the beginning of the name (e.g. 'Jet' for Jet Li). Diagnose and fix the regression without changing case-insensitive substring matching or sort behavior. Check it in the browser.",
+  "verifyCommand": ["node", "probe-tests/filter.cjs"]
+}

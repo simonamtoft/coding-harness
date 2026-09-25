@@ -19,6 +19,11 @@ describe("hashScenario", () => {
     expect(a).toBe(b);
   });
 
+  test("ignores the guard marker, which allocates trials without changing what they measure", () => {
+    const fixture = new Map([["a.ts", "1"]]);
+    expect(hashScenario({ ...scenario, guard: true }, fixture)).toBe(hashScenario(scenario, fixture));
+  });
+
   test("changes when fixture content changes", () => {
     const before = hashScenario(scenario, new Map([["a.ts", "1"]]));
     const after = hashScenario(scenario, new Map([["a.ts", "2"]]));

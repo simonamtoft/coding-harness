@@ -1,0 +1,7 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "petl",
+  "prompt": "A petl.tocsv(..., write_header=False) export now writes the column names and drops the first data row. Make a minimal fix so both header modes work with a local CSV file, and run a focused check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_headers.py"]
+}

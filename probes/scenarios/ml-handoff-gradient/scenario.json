@@ -1,0 +1,10 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "micrograd",
+  "prompt": "Phase 1 only: inspect how micrograd.engine.Value.backward traverses a graph and updates gradients. Do not edit code yet. Prepare a precise plan to add a non-mutating Value.gradients(inputs) method returning a tuple of gradients for a list of Value inputs, as floats, with the current graph's gradients restored to their pre-call values afterward. Handle shared nodes and repeated calls. No torch, downloads, or third-party packages; use the standard library for tests. The next session will implement from your handoff.",
+  "continuation": {
+    "prompt": "Implement the requested change from the prior session's handoff, with focused tests. Do not ask for another analysis-only round."
+  },
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_gradients.py"]
+}

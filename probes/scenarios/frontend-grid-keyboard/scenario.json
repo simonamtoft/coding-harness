@@ -1,0 +1,8 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "petite-vue",
+  "prompt": "In examples/grid.html, make each sortable column header keyboard-operable with Enter and Space and expose its current sort direction via aria-sort. At a 390px mobile CSS viewport, the grid must fit without horizontal page overflow. Preserve mouse sorting; do not add dependencies. Check the grid in a browser.",
+  "verifyCommand": ["node", "probe-tests/grid.cjs"],
+  "humanReviewTrials": 1
+}

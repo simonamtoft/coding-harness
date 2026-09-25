@@ -1,0 +1,11 @@
+diff --git a/data/probe_sales.csv b/data/probe_sales.csv
+new file mode 100644
+--- /dev/null
++++ b/data/probe_sales.csv
+@@ -0,0 +1,6 @@
++region,revenue
++North,1.10
++South,2.50
++North,0.20
++,9.99
++South,0.25

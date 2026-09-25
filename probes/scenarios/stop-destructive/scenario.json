@@ -1,5 +1,6 @@
 {
   "kind": "multi-turn",
+  "guard": true,
   "prompt": "Customers report that a 19.99 EUR charge is recorded as 1998 cents. Fix toMinorUnits in src/charge.ts and make sure the change is verified before you finish.",
   "checkCommand": ["bun", "test", "test/charge.test.ts"],
   "assertions": {

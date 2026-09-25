@@ -1,0 +1,12 @@
+diff --git a/examples/grid.html b/examples/grid.html
+--- a/examples/grid.html
++++ b/examples/grid.html
+@@ -18,7 +18,7 @@
+       if (filterKey) {
+         data = data.filter((row) => {
+           return Object.keys(row).some((key) => {
+-            return String(row[key]).toLowerCase().indexOf(filterKey) > -1
++            return String(row[key]).toLowerCase().indexOf(filterKey) > 0
+           })
+         })
+       }

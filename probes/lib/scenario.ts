@@ -1,4 +1,4 @@
-import type { Scenario } from "./types.ts";
+import type { BenchmarkScenario, BenchmarkScoring, ProbeScenario, Scenario } from "./types.ts";
 
 class ScenarioError extends Error {}
 
@@ -25,14 +25,20 @@ function optionalCommand(value: unknown, field: string, id: string): string[] | 
   return command;
 }
 
+function isGuard(value: unknown, id: string): boolean {
+  if (value !== undefined && value !== true) throw new ScenarioError(`scenario ${id}: guard must be true when present`);
+  return value === true;
+}
+
 export function parseScenario(raw: unknown, id: string): Scenario {
   if (typeof raw !== "object" || raw === null) {
     throw new ScenarioError(`scenario ${id}: definition must be an object`);
   }
   const record = raw as Record<string, unknown>;
   const kind = record.kind;
+  if (kind === "benchmark") return parseBenchmark(record, id);
   if (kind !== "single-turn" && kind !== "multi-turn") {
-    throw new ScenarioError(`scenario ${id}: kind must be "single-turn" or "multi-turn"`);
+    throw new ScenarioError(`scenario ${id}: kind must be "single-turn", "multi-turn", or "benchmark"`);
   }
 
   const assertionsRaw = record.assertions;
@@ -44,7 +50,7 @@ export function parseScenario(raw: unknown, id: string): Scenario {
     throw new ScenarioError(`scenario ${id}: assertions.checksPass must be a boolean`);
   }
 
-  const scenario: Scenario = {
+  const scenario: ProbeScenario = {
     id,
     kind,
     prompt: requireString(record.prompt, "prompt", id),
@@ -58,6 +64,7 @@ export function parseScenario(raw: unknown, id: string): Scenario {
   if (record.verifierNotice !== undefined) {
     scenario.verifierNotice = requireString(record.verifierNotice, "verifierNotice", id);
   }
+  if (isGuard(record.guard, id)) scenario.guard = true;
 
   if (assertionsRaw !== undefined) {
     const filesChanged = optionalStringArray(assertionsRecord.filesChanged, "assertions.filesChanged", id);
@@ -99,5 +106,50 @@ export function parseScenario(raw: unknown, id: string): Scenario {
     throw new ScenarioError(`scenario ${id}: single-turn scenarios have no fixture to check`);
   }
 
+  return scenario;
+}
+
+const BENCHMARK_FIELDS = new Set(["kind", "prompt", "scoring", "verifyCommand", "fixture", "continuation", "humanReviewTrials", "guard"]);
+function isScoring(value: unknown): value is BenchmarkScoring {
+  return value === "verifier" || value === "facts" || value === "review";
+}
+
+function parseBenchmark(record: Record<string, unknown>, id: string): BenchmarkScenario {
+  // Probe-only fields would be silently ignored, so reject them instead.
+  const unsupported = Object.keys(record).filter((field) => !BENCHMARK_FIELDS.has(field));
+  if (unsupported.length > 0) {
+    throw new ScenarioError(`scenario ${id}: benchmark scenarios do not support ${unsupported.join(", ")}`);
+  }
+  const scoring = record.scoring ?? "verifier";
+  if (!isScoring(scoring)) {
+    throw new ScenarioError(`scenario ${id}: scoring must be "verifier", "facts", or "review"`);
+  }
+  const verifyCommand = optionalCommand(record.verifyCommand, "verifyCommand", id);
+  if (scoring === "verifier" && !verifyCommand) throw new ScenarioError(`scenario ${id}: verifier-scored benchmarks need a verifyCommand`);
+  if (scoring !== "verifier" && verifyCommand) throw new ScenarioError(`scenario ${id}: ${scoring}-scored benchmarks are judged and take no verifyCommand`);
+  const scenario: BenchmarkScenario = {
+    id,
+    kind: "benchmark",
+    prompt: requireString(record.prompt, "prompt", id),
+    scoring,
+  };
+  if (verifyCommand) scenario.verifyCommand = verifyCommand;
+  const reviewTrials = record.humanReviewTrials;
+  if (reviewTrials !== undefined) {
+    if (typeof reviewTrials !== "number" || !Number.isInteger(reviewTrials) || reviewTrials < 1) {
+      throw new ScenarioError(`scenario ${id}: humanReviewTrials must be a positive integer`);
+    }
+    scenario.humanReviewTrials = reviewTrials;
+  }
+  if (record.fixture !== undefined) scenario.fixture = requireString(record.fixture, "fixture", id);
+  if (isGuard(record.guard, id)) scenario.guard = true;
+  if (record.continuation !== undefined) {
+    if (scoring !== "verifier") throw new ScenarioError(`scenario ${id}: continuation tasks must be verifier-scored`);
+    const continuation = record.continuation;
+    if (typeof continuation !== "object" || continuation === null || Object.keys(continuation).some((key) => key !== "prompt")) {
+      throw new ScenarioError(`scenario ${id}: continuation must be an object with only a prompt`);
+    }
+    scenario.continuation = { prompt: requireString((continuation as { prompt?: unknown }).prompt, "continuation.prompt", id) };
+  }
   return scenario;
 }

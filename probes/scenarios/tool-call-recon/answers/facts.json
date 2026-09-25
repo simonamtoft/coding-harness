@@ -1,0 +1,22 @@
+[
+  {
+    "id": "dispatch",
+    "fact": "_handle_call_tool delegates to MCPServer.call_tool and ToolManager.call_tool, which looks up the tool by name then runs it with convert_result=True.",
+    "evidence": "src/mcp/server/mcpserver/server.py:428-435,524-543 and tools/tool_manager.py:75-89"
+  },
+  {
+    "id": "validation",
+    "fact": "Input ValidationError is wrapped as ToolError before tool execution; _handle_call_tool returns it as CallToolResult with is_error=True and logs only rejected field names.",
+    "evidence": "src/mcp/server/mcpserver/tools/base.py:148-155 and server.py:434-447"
+  },
+  {
+    "id": "error-boundary",
+    "fact": "An explicit ToolError returns an is_error result carrying its text; unexpected exceptions become UnexpectedToolError with generic client-safe text while details are logged server-side.",
+    "evidence": "src/mcp/server/mcpserver/tools/base.py:193-216 and server.py:441-449"
+  },
+  {
+    "id": "protocol-error",
+    "fact": "MCPError bypasses the tool-result error conversion and is re-raised as a top-level protocol error.",
+    "evidence": "src/mcp/server/mcpserver/tools/base.py:193-204 and server.py:433-436"
+  }
+]

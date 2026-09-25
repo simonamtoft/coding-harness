@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "petl",
+  "scoring": "facts",
+  "prompt": "Trace petl.fromcsv(...) through CSVView iteration for a local file. Explain when the file is opened, whether a second iteration rereads it, and what happens when an explicit header is supplied versus none. Cite source locations; do not modify the repository."
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "negative-ttl",
+    "location": "src/mcp/server/caching.py CacheHint.__post_init__",
+    "description": "Accepts ttl_ms=-1 even though cache TTL must be nonnegative; construction no longer rejects an invalid freshness hint."
+  },
+  {
+    "id": "scope-override",
+    "location": "src/mcp/server/caching.py apply_cache_hint",
+    "description": "Overwrites a handler's explicitly set private cache scope with the server's public hint, enabling reuse across authorization contexts despite the handler's private choice."
+  }
+]

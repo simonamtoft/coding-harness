@@ -1,0 +1,7 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "petite-vue",
+  "prompt": "Add a self-contained budget demo to examples/budget.html using petite-vue and two local transactions (Food $12.50, Travel $7.25). Put its styles in examples/budget.css and link to the page from index.html. A Food button filters the list and its visible total to $12.50; an All button restores both entries and the $19.75 total. Show each total as its own text value. Do not fetch data, add dependencies, or use external assets. Run a browser check.",
+  "verifyCommand": ["node", "probe-tests/budget.cjs"]
+}

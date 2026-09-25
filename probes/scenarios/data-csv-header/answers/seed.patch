@@ -1,0 +1,12 @@
+diff --git a/petl/io/csv_py3.py b/petl/io/csv_py3.py
+--- a/petl/io/csv_py3.py
++++ b/petl/io/csv_py3.py
+@@ -49,7 +49,7 @@ def appendcsv_impl(table, source, **kwargs):
+ 
+ 
+ def _writecsv(table, source, mode, write_header, encoding, errors, **csvargs):
+-    rows = table if write_header else data(table)
++    rows = table if not write_header else data(table)
+     with source.open(mode) as buf:
+         # wrap buffer for text IO
+         csvfile = io.TextIOWrapper(buf, encoding=encoding, errors=errors,

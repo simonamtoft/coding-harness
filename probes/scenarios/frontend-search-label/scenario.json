@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "petite-vue",
+  "prompt": "In examples/grid.html, give the search textbox an accessible name 'Filter rows' without changing its filtering behavior. Make a focused, minimal edit and check it in the browser.",
+  "verifyCommand": ["node", "probe-tests/label.cjs"]
+}

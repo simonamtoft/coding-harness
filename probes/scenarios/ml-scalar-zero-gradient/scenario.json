@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "micrograd",
+  "prompt": "In micrograd/engine.py, make Value.backward() clear the gradients of all nodes reachable from its output before each backward pass. Repeated calls on the same graph must not accumulate stale intermediate gradients. Keep the public API unchanged and run a focused local check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_backward.py"]
+}

@@ -1,0 +1,7 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "micrograd",
+  "prompt": "A small training loop using micrograd now reports zero gradients for negative-valued inputs, even when the output depends on them through multiplication. Diagnose the fault and repair it without changing the Value API. Run a focused check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_multiply.py"]
+}

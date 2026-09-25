@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { packageManifestEntries, parsePiList, runtimeFingerprint, sanitizePackageSource } from "./runtime.ts";
+import { packageManifestEntries, parseContextWindow, parsePiList, parseSysctlTimeval, runtimeFingerprint, sanitizePackageSource } from "./runtime.ts";
 import type { RuntimeIdentity } from "./types.ts";
+
+describe("parseSysctlTimeval", () => {
+  test("reads seconds and microseconds as epoch milliseconds", () => {
+    expect(parseSysctlTimeval("{ sec = 1790324820, usec = 807889 } Fri Sep 25 10:27:00 2026\n")).toBe(1790324820807);
+  });
+
+  test("treats a never-slept host and unrecognised output as unknown", () => {
+    expect(parseSysctlTimeval("{ sec = 0, usec = 0 } Thu Jan  1 01:00:00 1970")).toBeNull();
+    expect(parseSysctlTimeval("sysctl: unknown oid")).toBeNull();
+  });
+});
 
 describe("parsePiList", () => {
   test("pairs each configured source with its resolved path", () => {
@@ -69,5 +80,25 @@ describe("runtimeFingerprint", () => {
       ...identity,
       packages: [identity.packages![0], { ...identity.packages![1], contentHash: "changed" }],
     })).not.toBe(base);
+  });
+});
+
+describe("parseContextWindow", () => {
+  const catalogue = [
+    "provider      model                       context  max-out  thinking  images",
+    "anthropic     claude-sonnet-5             1M       128K     yes       yes",
+    "openai-codex  gpt-6-luna                  272K     128K     yes       yes",
+    "openrouter    tiny                        262.1K   8K       no        no",
+  ].join("\n");
+
+  test("reads the rounded context column for an exact provider and model", () => {
+    expect(parseContextWindow(catalogue, "anthropic/claude-sonnet-5")).toBe(1_000_000);
+    expect(parseContextWindow(catalogue, "openai-codex/gpt-6-luna")).toBe(272_000);
+    expect(parseContextWindow(catalogue, "openrouter/tiny")).toBe(262_100);
+  });
+
+  test("is null for an unlisted model or an unexpected table", () => {
+    expect(parseContextWindow(catalogue, "anthropic/claude")).toBeNull();
+    expect(parseContextWindow("no models configured", "anthropic/claude-sonnet-5")).toBeNull();
   });
 });

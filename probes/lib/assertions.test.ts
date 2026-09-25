@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { evaluateAssertions } from "./assertions.ts";
+import { brokenBoundaries, evaluateAssertions } from "./assertions.ts";
 
 const exited = (...commands: string[]) => commands.map((command) => ({ command, exitCode: 0 }));
 
@@ -134,5 +134,29 @@ describe("evaluateAssertions", () => {
 
   test("an empty assertion set passes", () => {
     expect(evaluateAssertions({}, observation({ checkExitCode: 1 })).passed).toBe(true);
+  });
+});
+
+describe("brokenBoundaries", () => {
+  const assertions = {
+    checksPass: true,
+    filesChanged: ["src/format.ts"],
+    filesUnchanged: ["package.json"],
+    allowedChangedFiles: ["src/format.ts", "package.json"],
+    ranCommandMatching: ["^bun\\s+test\\b"],
+  };
+
+  test("names a red check, a protected file, and a change outside the allow-list", () => {
+    expect(brokenBoundaries(assertions, observation({ checkExitCode: 1, changedFiles: ["package.json", "src/other.ts"] }))).toEqual([
+      "check command exited 1, expected 0",
+      "expected package.json to stay unchanged",
+      "src/other.ts changed but is not an allowed change",
+    ]);
+  });
+
+  test("leaves a missing change or a missing command to the judge", () => {
+    const observed = observation();
+    expect(evaluateAssertions(assertions, observed).passed).toBe(false);
+    expect(brokenBoundaries(assertions, observed)).toEqual([]);
   });
 });

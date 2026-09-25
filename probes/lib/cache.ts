@@ -1,8 +1,14 @@
 import { sha256Hex } from "./hashing.ts";
-import type { HarnessMode, ResultRecord } from "./types.ts";
+import type { BenchmarkTrialRecord, HarnessMode, ResultRecord, TrialRecord } from "./types.ts";
 
 /** Bump when a change to execution or scoring makes older records incomparable. */
-export const RUNNER_VERSION = "5";
+export const RUNNER_VERSION = "6";
+
+/**
+ * Shape of a stored record. Bump when fields change, so older documents are kept as evidence but
+ * never read as the current shape.
+ */
+export const RECORD_SCHEMA_VERSION = 1;
 
 const HASH_PREFIX_LENGTH = 12;
 
@@ -15,7 +21,8 @@ export type RecordKey = {
   model: string;
   instructionsHash: string;
   scenarioHash: string;
-  judgeModel: string;
+  /** Null for scenario kinds that are not judged, so changing the judge does not invalidate them. */
+  judgeModel: string | null;
 };
 
 const SETUP_PREFIX_LENGTH = 8;
@@ -34,7 +41,7 @@ export function recordFileName(key: RecordKey): string {
     key.runtimeHash ?? "",
     key.scenarioHash,
     key.model,
-    key.judgeModel,
+    key.judgeModel ?? "",
   ].join("\u0000"))
     .slice(0, SETUP_PREFIX_LENGTH);
   return `${key.scenarioId}__${model}__${key.instructionsHash.slice(0, HASH_PREFIX_LENGTH)}__${setup}.json`;
@@ -48,6 +55,7 @@ export type ReuseRequest = RecordKey & { trials: number };
  */
 export function measuresSameSetup(record: ResultRecord, want: RecordKey): boolean {
   return (
+    record.schemaVersion === RECORD_SCHEMA_VERSION &&
     record.runnerVersion === RUNNER_VERSION &&
     record.harnessMode === want.harnessMode &&
     record.harnessHash === want.harnessHash &&
@@ -63,6 +71,22 @@ export function measuresSameSetup(record: ResultRecord, want: RecordKey): boolea
 /** A comparable record with enough trials needs no model calls at all. */
 export function isReusable(record: ResultRecord, want: ReuseRequest): boolean {
   return measuresSameSetup(record, want) && record.trials.length >= want.trials;
+}
+
+function failed(trial: TrialRecord | BenchmarkTrialRecord): boolean {
+  if ("outcome" in trial) return trial.outcome === "failed" || trial.outcome === "budget_exhausted";
+  return trial.assertions?.passed === false || ["fail", "unparsed", "skipped"].includes(trial.judge.verdict);
+}
+
+/**
+ * Trials a cell should hold. A guard cell holds one until a stored trial fails, then the full
+ * `requested` count, so a regression is told apart from a flake. Trials still awaiting a judge
+ * verdict do not count as failures.
+ */
+export function trialTarget(record: ResultRecord | null, requested: number, guard: boolean): number {
+  if (!guard) return requested;
+  const trials: (TrialRecord | BenchmarkTrialRecord)[] = record?.trials ?? [];
+  return trials.some(failed) ? requested : Math.min(1, requested);
 }
 
 /** Comparable records are topped up rather than discarded when more trials are requested. */

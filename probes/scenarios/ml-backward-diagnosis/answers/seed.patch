@@ -1,0 +1,11 @@
+diff --git a/micrograd/engine.py b/micrograd/engine.py
+--- a/micrograd/engine.py
++++ b/micrograd/engine.py
+@@ -23,6 +23,6 @@ class Value:
+         out = Value(self.data * other.data, (self, other), '*')
+ 
+         def _backward():
+-            self.grad += other.data * out.grad
++            self.grad += max(0, other.data) * out.grad
+             other.grad += self.data * out.grad
+         out._backward = _backward

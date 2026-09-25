@@ -3,8 +3,11 @@
 
 # Local probe evidence and runner transient files
 /probes/results/*.json
+/probes/results/*.md
 /probes/results/*.lock
 /probes/results/*.tmp
+/probes/.fixture-cache/
+/probes/results/artifacts/
 
 backlog/
 .agent-report*/

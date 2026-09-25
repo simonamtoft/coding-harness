@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "mcp-python",
+  "scoring": "facts",
+  "prompt": "Trace an MCPServer tool call from the request handler to argument validation and tool execution. Explain what the client receives for invalid arguments, a deliberate ToolError, an unexpected exception, and a raised MCPError, with source locations. Do not edit code."
+}

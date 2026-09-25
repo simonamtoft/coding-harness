@@ -1,6 +1,6 @@
-import type { JudgeVerdict, Scenario } from "./types.ts";
+import type { JudgeVerdict, ProbeScenario } from "./types.ts";
 
-export function judgePrompt(scenario: Scenario, transcript: string, observed: string | null): string {
+export function judgePrompt(scenario: ProbeScenario, transcript: string, observed: string | null): string {
   const evidence = JSON.stringify({
     task: scenario.prompt,
     finalMessage: transcript,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { isReusable, missingTrials, recordFileName, RUNNER_VERSION } from "./cache.ts";
+import { isReusable, missingTrials, RECORD_SCHEMA_VERSION, recordFileName, RUNNER_VERSION, trialTarget } from "./cache.ts";
+import { ZERO_USAGE } from "./transcript.ts";
 import type { ResultRecord, TrialRecord } from "./types.ts";
 
 const trial: TrialRecord = {
@@ -10,9 +11,23 @@ const trial: TrialRecord = {
   judgeEvidence: "bun test test/format.test.ts exited 0",
   bashExecutions: [{ command: "bun test test/format.test.ts", exitCode: 0 }],
   finalMessage: "done",
+  wallTimeMs: 1000,
+  telemetry: {
+    turns: 1,
+    tools: {},
+    assistantMessages: 1,
+    messagesWithoutUsage: 0,
+    usage: ZERO_USAGE,
+    nestedToolUsage: ZERO_USAGE,
+    compactions: [],
+    providerRetries: 0,
+    lastPromptTokens: 0,
+  },
 };
 
 const record: ResultRecord = {
+  schemaVersion: RECORD_SCHEMA_VERSION,
+  scenarioKind: "multi-turn",
   runnerVersion: RUNNER_VERSION,
   harnessMode: "isolated",
   harnessHash: "isolated",
@@ -46,6 +61,12 @@ const want = {
 describe("isReusable", () => {
   test("reuses a matching record", () => {
     expect(isReusable(record, want)).toBe(true);
+  });
+
+  test("never reuses a record stored in another schema version", () => {
+    expect(isReusable({ ...record, schemaVersion: RECORD_SCHEMA_VERSION + 1 }, want)).toBe(false);
+    const { schemaVersion: _, ...unversioned } = record;
+    expect(isReusable(unversioned as ResultRecord, want)).toBe(false);
   });
 
   test("reuses a record with more trials than requested", () => {
@@ -99,6 +120,33 @@ describe("missingTrials", () => {
     expect(missingTrials(null, want)).toBe(3);
     expect(missingTrials(record, { ...want, scenarioHash: "other" })).toBe(3);
     expect(missingTrials({ ...record, runnerVersion: "0" }, want)).toBe(3);
+  });
+});
+
+describe("trialTarget", () => {
+  const withTrials = (...trials: TrialRecord[]): ResultRecord => ({ ...record, trials } as ResultRecord);
+
+  test("a non-guard cell always wants the requested count", () => {
+    expect(trialTarget(null, 3, false)).toBe(3);
+  });
+
+  test("a guard cell wants one trial until a stored trial fails", () => {
+    expect(trialTarget(null, 3, true)).toBe(1);
+    expect(trialTarget(withTrials(trial), 3, true)).toBe(1);
+    expect(trialTarget(withTrials({ ...trial, assertions: { passed: false, failures: ["x"] } }), 3, true)).toBe(3);
+    expect(trialTarget(withTrials({ ...trial, judge: { verdict: "fail", reason: "" } }), 3, true)).toBe(3);
+  });
+
+  test("a trial still awaiting its judge is not a failure", () => {
+    expect(trialTarget(withTrials({ ...trial, judge: { verdict: "unavailable", reason: "" } }), 3, true)).toBe(1);
+  });
+
+  test("a failed or budget-exhausted benchmark trial raises a guard, an unjudged one does not", () => {
+    const benchmark = (outcome: string) => ({ ...record, scenarioKind: "benchmark", trials: [{ trial: 1, outcome }] } as unknown as ResultRecord);
+    expect(trialTarget(benchmark("passed"), 3, true)).toBe(1);
+    expect(trialTarget(benchmark("unjudged"), 3, true)).toBe(1);
+    expect(trialTarget(benchmark("failed"), 3, true)).toBe(3);
+    expect(trialTarget(benchmark("budget_exhausted"), 3, true)).toBe(3);
   });
 });
 

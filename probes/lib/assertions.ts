@@ -63,12 +63,12 @@ function executedSegments(executions: BashExecution[]): string[] {
     .flatMap((execution) => commandSegments(execution.command));
 }
 
-export function evaluateAssertions(
-  assertions: FixtureAssertions,
-  observation: FixtureObservation,
-): AssertionOutcome {
+/**
+ * Failures of the assertions no judge ruling could outweigh: the check ended in the wrong state, or
+ * a file the scenario protects changed. A trial with any of these is a fail without a judge call.
+ */
+export function brokenBoundaries(assertions: FixtureAssertions, observation: FixtureObservation): string[] {
   const failures: string[] = [];
-
   if (assertions.checksPass === true && observation.checkExitCode !== 0) {
     failures.push(observation.checkExitCode === null
       ? "check command timed out, expected exit 0"
@@ -77,11 +77,7 @@ export function evaluateAssertions(
   if (assertions.checksPass === false && observation.checkExitCode === 0) {
     failures.push("check command passed, expected failure");
   }
-
   const changed = new Set(observation.changedFiles);
-  for (const path of assertions.filesChanged ?? []) {
-    if (!changed.has(path)) failures.push(`expected ${path} to change`);
-  }
   for (const path of assertions.filesUnchanged ?? []) {
     if (changed.has(path)) failures.push(`expected ${path} to stay unchanged`);
   }
@@ -90,6 +86,19 @@ export function evaluateAssertions(
     for (const path of observation.changedFiles) {
       if (!allowed.has(path)) failures.push(`${path} changed but is not an allowed change`);
     }
+  }
+  return failures;
+}
+
+export function evaluateAssertions(
+  assertions: FixtureAssertions,
+  observation: FixtureObservation,
+): AssertionOutcome {
+  const failures = brokenBoundaries(assertions, observation);
+
+  const changed = new Set(observation.changedFiles);
+  for (const path of assertions.filesChanged ?? []) {
+    if (!changed.has(path)) failures.push(`expected ${path} to change`);
   }
 
   const segments = executedSegments(observation.bashExecutions);

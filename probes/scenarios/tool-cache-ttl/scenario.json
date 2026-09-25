@@ -1,0 +1,7 @@
+{
+  "kind": "benchmark",
+  "guard": true,
+  "fixture": "mcp-python",
+  "prompt": "Tighten server-side CacheHint TTL validation: ttl_ms must be an actual integer (not bool, float, or string) and nonnegative. Add focused regression tests under tests/server/test_caching.py; keep the default and scope behavior intact. Run the focused test module with PYTHONPATH=src so tests exercise this working copy rather than the cached editable install.",
+  "verifyCommand": ["env", "PYTHONPATH=src", ".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_ttl.py"]
+}

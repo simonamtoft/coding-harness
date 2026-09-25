@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "mcp-python",
+  "scoring": "review",
+  "prompt": "Review the last commit in this pinned MCP SDK checkout for concrete correctness regressions. Delegate an independent review of the change if your harness supports it; report actionable findings with affected lines and a concrete failing case. Do not modify code."
+}

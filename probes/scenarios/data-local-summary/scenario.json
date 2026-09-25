@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "petl",
+  "prompt": "Add a small local-data example in examples/probe_sales.py and a CLI wrapper in examples/probe_sales_cli.py. Read data/probe_sales.csv with petl, ignore blank regions, aggregate revenue per region using Decimal arithmetic, and output regions alphabetically as CSV with header region,revenue and values formatted to two decimal places. The CLI takes input and output file paths as positional arguments, must not fetch anything, and should call the reusable function in probe_sales.py. Run a focused check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_sales.py"]
+}

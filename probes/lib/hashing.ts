@@ -6,7 +6,7 @@ export function sha256Hex(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function sha256Bytes(content: Uint8Array): string {
+export function sha256Bytes(content: Uint8Array): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
@@ -34,10 +34,12 @@ function canonicalize(value: unknown): string {
 
 /**
  * Identity of a scenario as executed: its definition plus every fixture file.
- * Editing either side must invalidate cached records for both variants.
+ * Editing either side must invalidate cached records for both variants. `guard` only decides how
+ * many trials to buy, not what a trial measures, so marking a guard keeps its records.
  */
 export function hashScenario(scenario: Scenario, fixtureFiles: Map<string, string>): string {
-  const definition = canonicalize(scenario);
+  const { guard: _, ...measured } = scenario;
+  const definition = canonicalize(measured);
   const fixture = [...fixtureFiles.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([path, content]) => `${path}\u0000${sha256Hex(content)}`)

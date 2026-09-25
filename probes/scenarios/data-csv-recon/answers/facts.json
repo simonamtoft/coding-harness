@@ -1,0 +1,12 @@
+[
+  {
+    "id": "lazy-read",
+    "fact": "fromcsv creates a CSVView rather than eagerly loading rows; each iteration opens the source in binary read mode and yields rows from csv.reader.",
+    "evidence": "petl/io/csv_py3.py:16-39 (fromcsv_impl and CSVView.__iter__)"
+  },
+  {
+    "id": "header",
+    "fact": "When an explicit header is supplied, CSVView yields it before the source's CSV rows; without one, the first CSV row is yielded first.",
+    "evidence": "petl/io/csv_py3.py:29-38 and petl/io/csv.py:20-76"
+  }
+]

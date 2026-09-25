@@ -1,0 +1,32 @@
+{
+  "fixtures": {
+    "petite-vue": {
+      "repository": "https://github.com/vuejs/petite-vue.git",
+      "commit": "9ff3b98b844033b935143c221176c81244aae32e",
+      "licence": "MIT",
+      "contamination": "Public source and examples; exposure in training data may inflate cross-generation comparisons.",
+      "setup": [["bunx", "pnpm@7.33.7", "install", "--frozen-lockfile"], ["bunx", "pnpm@7.33.7", "add", "--save-dev", "--save-exact", "playwright@1.56.1"], ["node", "node_modules/playwright/cli.js", "install", "chromium"]]
+    },
+    "petl": {
+      "repository": "https://github.com/petl-developers/petl.git",
+      "commit": "ff3c3219f224c431b55818e1a28628419041f0c3",
+      "licence": "MIT",
+      "contamination": "Public source and tests; exposure in training data may inflate cross-generation comparisons.",
+      "setup": [["uv", "venv", ".venv"], ["uv", "pip", "install", "--python", ".venv/bin/python", "-e", ".", "pytest==8.4.2"]]
+    },
+    "micrograd": {
+      "repository": "https://github.com/karpathy/micrograd.git",
+      "commit": "7bc720e951fe422b8f8814aa5aa1b64121d26b4c",
+      "licence": "MIT",
+      "contamination": "Widely published teaching repository; cross-generation comparisons risk significant contamination.",
+      "setup": [["uv", "venv", ".venv"]]
+    },
+    "mcp-python": {
+      "repository": "https://github.com/modelcontextprotocol/python-sdk.git",
+      "commit": "f1b6589088534632fef92238ee9750951e3c0185",
+      "licence": "MIT",
+      "contamination": "Public SDK and protocol documentation; cross-generation comparisons may be inflated.",
+      "setup": [["uv", "sync", "--frozen", "--no-group", "docs"]]
+    }
+  }
+}
