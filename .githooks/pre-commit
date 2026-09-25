@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Runs the model-free Pi harness load check when a commit touches Pi runtime inputs. It checks the
+# installed harness, which link.sh points at this working tree, not only the staged snapshot.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+runtime_inputs=(shared/AGENTS.md shared/skills pi/agent/agents pi/agent/extensions pi/agent/prompts pi/agent/mcp.json pi/agent/packages.txt)
+if git diff --cached --quiet -- "${runtime_inputs[@]}"; then
+  exit 0
+fi
+bun scripts/pi-load-check.ts

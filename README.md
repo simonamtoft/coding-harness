@@ -17,6 +17,25 @@ replacements are moved to `~/.coding-harness-backups/<timestamp>` first.
 Run the script again after cloning or pulling this repository. It is safe to
 run repeatedly; already-correct links are left untouched.
 
+In a Git checkout the script also sets `core.hooksPath=.githooks`, enabling the
+tracked pre-commit hook. It refuses to replace a different hooks path, or to
+bypass active hooks in `.git/hooks`, unless `--force` is given. `--force` does
+not back those hooks up. The pre-commit hook runs `bun scripts/pi-load-check.ts`
+when staged changes touch Pi runtime inputs (`shared/AGENTS.md`,
+`shared/skills`, `pi/agent/{agents,extensions,prompts,mcp.json,packages.txt}`).
+The check starts Pi in RPC mode without any model call. It fails when the
+installed links do not point at this checkout, an extension fails to load, or a
+canonical skill or prompt is not registered from here. It tests the working tree
+the links point at, not only the staged snapshot.
+
+## Verification
+
+`.agent/verify.sh` runs the offline checks listed in `AGENTS.md`, about two
+minutes in total, and is the verifier `verify-turn` and the Claude Stop hook
+discover. It makes no model calls. Paid probes stay manual; see
+[probes/README.md](probes/README.md#when-to-run-which-check) for when to run
+them.
+
 ## Pi packages
 
 `pi/agent/packages.txt` records the Pi packages this setup expects:
@@ -46,9 +65,11 @@ leaves the override in place.
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
 - `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
   whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Paid runs
-  remain manual, but whole-harness probes are required before finalizing changes
-  to effective canonical Pi runtime inputs. See [probes/README.md](probes/README.md).
+  remain manual and run at batch points rather than per change. See [probes/README.md](probes/README.md).
   Not deployed by `link.sh`.
+- `.agent/verify.sh`, `.githooks/`, and `scripts/`: this repository's offline
+  verifier, the pre-commit hook `link.sh` enables, and the model-free Pi
+  harness load check. Not deployed into either harness.
 - `shared/`: the common `AGENTS.md`, skills, and command-safety/read-routing regression contracts consumed by both harnesses.
 - `pi/agent/`: Pi instructions, extensions, agents, prompts, and the
   `packages.txt` manifest. Provider/model configuration is local-only and
@@ -86,6 +107,10 @@ high-risk commands but do not constitute an OS-enforced sandbox; use a container
 or VM when that boundary is required. Quoted bodies passed to inline interpreter
 evaluation are treated as code rather than path arguments, so they are not
 inspected for paths, though secret literals inside them are still denied.
+The `stay-awake` extension holds `caffeinate -i -s` on macOS from `agent_start` to
+`agent_settled`, so the Mac does not idle-sleep while an agent, its verifier, or
+its retries are working. An idle session waiting for input does not keep the
+Mac awake, and nothing prevents sleep when the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the

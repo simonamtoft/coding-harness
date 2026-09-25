@@ -15,6 +15,10 @@ Link the canonical coding-harness resources into ~/.pi and ~/.claude.
 Existing paths are refused unless --force is supplied. Forced replacements
 are moved to ~/.coding-harness-backups/<timestamp> before linking.
 
+In a Git checkout it also sets core.hooksPath to .githooks, refusing a
+different hooks path or active hooks in the hooks directory unless --force.
+Those hooks would stop running; --force does not back them up.
+
 --packages also installs the Pi packages listed in pi/agent/packages.txt,
 which writes to the local ~/.pi/agent/settings.json.
 USAGE
@@ -61,6 +65,25 @@ for entry in "${links[@]}"; do
   fi
 done
 
+hooks_path=.githooks
+configure_hooks=false
+if git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1; then
+  current_hooks_path=$(git -C "$repo_dir" config --local --get core.hooksPath || true)
+  if [[ "$current_hooks_path" != "$hooks_path" ]]; then
+    configure_hooks=true
+    if [[ -n "$current_hooks_path" && "$force" != true ]]; then
+      echo "Refusing to replace core.hooksPath=$current_hooks_path (use --force to set $hooks_path)" >&2
+      exit 1
+    fi
+    active_hooks_dir=$(git -C "$repo_dir" rev-parse --path-format=absolute --git-path hooks)
+    if [[ -z "$current_hooks_path" && "$force" != true ]] \
+      && find "$active_hooks_dir" -maxdepth 1 -type f ! -name '*.sample' 2>/dev/null | grep -q .; then
+      echo "Refusing to bypass existing hooks in $active_hooks_dir (use --force to set core.hooksPath=$hooks_path)" >&2
+      exit 1
+    fi
+  fi
+fi
+
 for entry in "${links[@]}"; do
   source=${entry%%|*}
   target=${entry#*|}
@@ -77,6 +100,11 @@ for entry in "${links[@]}"; do
   ln -s "$source" "$target"
   echo "Linked $target -> $source"
 done
+
+if [[ "$configure_hooks" == true ]]; then
+  git -C "$repo_dir" config --local core.hooksPath "$hooks_path"
+  echo "Configured core.hooksPath=$hooks_path in $repo_dir"
+fi
 
 [[ "$install_packages" == true ]] || exit 0
 

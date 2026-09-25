@@ -16,7 +16,9 @@ pi/agent/
   prompts/                        Pi-only slash-prompt workflows
 claude/                           Claude-only runtime resources
 probes/                           manual instruction-behavior evaluation; see probes/AGENTS.md
-link.sh                           deployment topology and Pi package installation
+link.sh                           deployment topology, Pi package installation, hooks path
+.agent/verify.sh                  offline repository verifier (no model calls)
+.githooks/pre-commit              runs scripts/pi-load-check.ts for Pi runtime changes
 README.md                         human-facing setup and architecture guide
 DECISIONS.md + decisions/         durable decision ledger
 ```
@@ -32,7 +34,7 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - `probes/` owns isolated instruction comparisons and whole-Pi-harness behavior scenarios. Runs make paid model calls, so keep the suite manual and out of automatic verification; keep `probes/results/` local and untracked.
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.
-- `link.sh` defines link topology and Pi package installation. Preserve its refusal and backup behavior for existing targets.
+- `link.sh` defines link topology, Pi package installation, and this checkout's `core.hooksPath`. Preserve its refusal and backup behavior for existing targets.
 - Do not commit credentials, authentication state, machine-local provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`. Canonical built-in model defaults in `pi/agent/agents/` are the exception; local `subagents.json` overrides remain untracked.
 - Update `README.md` with changes to link behavior, layout, installation, or ownership boundaries.
 
@@ -82,7 +84,9 @@ Run checks for the changed component:
 - Claude verify hook: `bash claude/hooks/test/verify-turn-run.sh`
 - Probe runner libraries and lifecycle (offline, fake `pi`): `bun test probes/lib probes/test`
 
-For a change to `shared/AGENTS.md` that is meant to alter agent behavior, `bun probes/run.ts --compare` isolates and compares baseline against candidate. Before finalizing any change to effective canonical Pi runtime inputs, run `bun probes/run.ts --harness-mode whole`. Both commands cost real model calls and minutes, so run them deliberately and read `probes/README.md` first; never put them in an automatic hook.
+`.agent/verify.sh` runs all of these automatically. For a change to Pi runtime inputs, `bun scripts/pi-load-check.ts` checks without model calls that the installed harness loads; the pre-commit hook runs it too.
+
+Paid probes are tiered (PRB-11). For a change to `shared/AGENTS.md` that is meant to alter agent behavior, `bun probes/run.ts --compare` isolates and compares baseline against candidate. Run `bun probes/run.ts --harness-mode whole` at batch points, not per change: before adopting a Pi or package upgrade, and after a set of runtime changes that alters agent-facing behavior, before pushing it. Both commands cost real model calls and minutes, so run them deliberately and read `probes/README.md` first; never put them in an automatic hook.
 
 For link-topology changes, exercise `link.sh` with an isolated temporary `HOME`; never test a forced install against the real home directory.
 
