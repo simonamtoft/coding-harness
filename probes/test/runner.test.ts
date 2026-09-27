@@ -440,6 +440,18 @@ describe("benchmark trials", () => {
   };
   const agentPrompts = () => readFileSync(prompts, "utf8").split("\n---\n").filter(Boolean);
 
+  test("concurrent cells never run their verifiers at the same time", async () => {
+    const spans = join(dirname(sandbox.root), "verifier-spans");
+    // Holds a pretend fixed port for 300 ms, then passes.
+    writeFileSync(
+      join(sandbox.root, "probes/scenarios", BENCHMARK, "fixture/check.ts"),
+      `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(spans)}, "start\\n");\nawait Bun.sleep(300);\nappendFileSync(${JSON.stringify(spans)}, "end\\n");\n`,
+    );
+    const result = await runRunner(["--models", "fake/v1,fake/v2,fake/v3", "--trials", "1", "--concurrency", "3"], {}, BENCHMARK);
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(spans, "utf8").trim().split("\n")).toEqual(["start", "end", "start", "end", "start", "end"]);
+  }, TEST_TIMEOUT_MS);
+
   test("feeds a verifier failure back into the same session and passes after one repair round", async () => {
     const result = await runBenchmark("fake/bench", { FAKE_FIX_AT: "2" });
     expect(result.exitCode).toBe(0);

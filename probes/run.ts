@@ -1072,7 +1072,20 @@ async function regularFiles(root: string): Promise<string[]> {
  * pinned fixture, PLAYWRIGHT_BROWSERS_PATH. Files it leaves in the artifact directory, such as
  * screenshots, move to `artifactDir` and are returned relative to `probes/results`.
  */
-async function verifyInCopy(
+let verifierQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Verifies one copy at a time across concurrent cells. Hidden verifiers may bind fixed ports (the
+ * frontend ones start Vite on 41187), and they live under `answers/`, where changing them would
+ * invalidate stored records. Verification takes seconds, so serializing it costs little.
+ */
+function verifyInCopy(...args: Parameters<typeof verifyInCopyNow>): ReturnType<typeof verifyInCopyNow> {
+  const run = verifierQueue.then(() => verifyInCopyNow(...args));
+  verifierQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function verifyInCopyNow(
   loaded: LoadedScenario,
   verifyCommand: string[],
   workDir: string,
