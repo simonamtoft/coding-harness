@@ -77,7 +77,7 @@ if git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1; then
     fi
     active_hooks_dir=$(git -C "$repo_dir" rev-parse --path-format=absolute --git-path hooks)
     if [[ -z "$current_hooks_path" && "$force" != true ]] \
-      && find "$active_hooks_dir" -maxdepth 1 -type f ! -name '*.sample' 2>/dev/null | grep -q .; then
+      && find "$active_hooks_dir" -maxdepth 1 \( -type f -o -type l \) ! -name '*.sample' 2>/dev/null | grep -q .; then
       echo "Refusing to bypass existing hooks in $active_hooks_dir (use --force to set core.hooksPath=$hooks_path)" >&2
       exit 1
     fi
