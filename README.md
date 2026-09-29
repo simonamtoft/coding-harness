@@ -107,10 +107,11 @@ high-risk commands but do not constitute an OS-enforced sandbox; use a container
 or VM when that boundary is required. Quoted bodies passed to inline interpreter
 evaluation are treated as code rather than path arguments, so they are not
 inspected for paths, though secret literals inside them are still denied.
-The `stay-awake` extension holds `caffeinate -i -s` on macOS from `agent_start` to
-`agent_settled`, so the Mac does not idle-sleep while an agent, its verifier, or
-its retries are working. An idle session waiting for input does not keep the
-Mac awake, and nothing prevents sleep when the lid closes on battery.
+The `stay-awake` extension holds `caffeinate -i -s` on macOS during agent runs
+and automatic verification, including repair turns. It releases the assertion
+when each run or verifier finishes, so an idle session waiting for input does not
+keep the Mac awake. The display may still dim, and nothing prevents sleep when
+the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the

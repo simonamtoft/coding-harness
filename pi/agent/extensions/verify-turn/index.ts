@@ -377,117 +377,121 @@ export default function verifyTurn(pi: ExtensionAPI) {
   pi.on("agent_settled", async (_event, ctx) => {
     if (!shouldVerifySettledRun || verificationRunning || process.env.PI_VERIFY_DISABLE === "1") return;
     shouldVerifySettledRun = false;
-
-    const cwd = ctx.cwd;
-    const controller = new AbortController();
-    verificationRunning = true;
-    verificationController = controller;
-    ctx.ui.setStatus("verify-turn", "discovering project checks…");
-
-    let verifier: Verifier | undefined;
+    pi.events.emit("verify-turn:started");
     try {
-      const verifierTrusted = ctx.isProjectTrusted() && verifierTrustGate.isApproved(cwd);
-      verifier = await resolveVerifier(pi, cwd, controller.signal, verifierTrusted);
-    } catch (error) {
-      if (verificationController === controller) {
-        verificationRunning = false;
-        verificationController = undefined;
-        ctx.ui.setStatus("verify-turn", undefined);
+      const cwd = ctx.cwd;
+      const controller = new AbortController();
+      verificationRunning = true;
+      verificationController = controller;
+      ctx.ui.setStatus("verify-turn", "discovering project checks…");
+
+      let verifier: Verifier | undefined;
+      try {
+        const verifierTrusted = ctx.isProjectTrusted() && verifierTrustGate.isApproved(cwd);
+        verifier = await resolveVerifier(pi, cwd, controller.signal, verifierTrusted);
+      } catch (error) {
+        if (verificationController === controller) {
+          verificationRunning = false;
+          verificationController = undefined;
+          ctx.ui.setStatus("verify-turn", undefined);
+        }
+        if (!controller.signal.aborted) throw error;
+        return;
       }
-      if (!controller.signal.aborted) throw error;
-      return;
-    }
-    if (!sessionActive || controller.signal.aborted) return;
-    if (!verifier) {
-      rounds = 0;
-      verificationRunning = false;
-      verificationController = undefined;
-      ctx.ui.setStatus("verify-turn", undefined);
-      return;
-    }
-
-    const snapshotAfterRun = await captureProjectSnapshot(pi, cwd, controller.signal);
-    if (!sessionActive || controller.signal.aborted) return;
-    const changeScope = classifyProjectChanges(snapshotBeforeRun, snapshotAfterRun);
-    if (rounds === 0 && (changeScope === "unchanged" || changeScope === "markdown-only" || changeScope === "committed")) {
-      verificationRunning = false;
-      verificationController = undefined;
-      ctx.ui.setStatus("verify-turn", undefined);
-      return;
-    }
-
-    ctx.ui.setStatus("verify-turn", "running project checks…");
-
-    const runVerification = async (loader?: VerificationLoader) => {
-      const result = await executeVerifier(verifier, cwd, controller.signal, (chunk) => {
-        loader?.appendOutput(chunk);
-      });
       if (!sessionActive || controller.signal.aborted) return;
-      if (result.code === 0) {
+      if (!verifier) {
         rounds = 0;
-        pi.events.emit("verify-turn:passed");
-        return;
-      }
-
-      rounds += 1;
-      const output = formatFailure([result.stdout, result.stderr].filter(Boolean).join("\n"));
-
-      if (rounds > MAX_ROUNDS) {
-        rounds = 0;
-        const message = `Verification is still failing after ${MAX_ROUNDS} repair attempts (${verifier.label}); leaving it for the user to resolve:\n\n${output}`;
-        pi.sendMessage({ customType: "verify-turn", content: message, display: true });
-        if (ctx.hasUI) ctx.ui.notify("Verification is still failing; see the reported output.", "warning");
-        return;
-      }
-
-      const finalAttempt = rounds === MAX_ROUNDS;
-      const reportingReminder =
-        "In your next response, carry forward the complete original-task summary and prior verification; add this repair rather than reporting only the latest failure or fix.";
-      const instruction = finalAttempt
-        ? `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). Fix the failure if possible. If the next verification still fails, stop and summarize the remaining problem for the user. ${reportingReminder}`
-        : `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. Fix it before finishing. ${reportingReminder}`;
-
-      pi.sendMessage(
-        {
-          customType: "verify-turn",
-          content: `${instruction}\n\n${output}`,
-          display: true,
-        },
-        { deliverAs: "followUp", triggerTurn: true },
-      );
-    };
-
-    try {
-      if (ctx.mode === "tui") {
-        const error = await ctx.ui.custom<unknown | undefined>((tui, theme, _keybindings, done) => {
-          const loader = new VerificationLoader(tui, theme, verifier.label);
-          let finished = false;
-          const finish = (result: unknown | undefined) => {
-            if (finished) return;
-            finished = true;
-            done(result);
-          };
-          loader.onAbort = () => {
-            controller.abort();
-          };
-          void runVerification(loader).then(
-            () => finish(undefined),
-            (error) => finish(error),
-          );
-          return loader;
-        });
-        if (error !== undefined) throw error;
-      } else {
-        await runVerification();
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) throw error;
-    } finally {
-      if (sessionActive && verificationController === controller) {
-        ctx.ui.setStatus("verify-turn", undefined);
-        verificationController = undefined;
         verificationRunning = false;
+        verificationController = undefined;
+        ctx.ui.setStatus("verify-turn", undefined);
+        return;
       }
+
+      const snapshotAfterRun = await captureProjectSnapshot(pi, cwd, controller.signal);
+      if (!sessionActive || controller.signal.aborted) return;
+      const changeScope = classifyProjectChanges(snapshotBeforeRun, snapshotAfterRun);
+      if (rounds === 0 && (changeScope === "unchanged" || changeScope === "markdown-only" || changeScope === "committed")) {
+        verificationRunning = false;
+        verificationController = undefined;
+        ctx.ui.setStatus("verify-turn", undefined);
+        return;
+      }
+
+      ctx.ui.setStatus("verify-turn", "running project checks…");
+
+      const runVerification = async (loader?: VerificationLoader) => {
+        const result = await executeVerifier(verifier, cwd, controller.signal, (chunk) => {
+          loader?.appendOutput(chunk);
+        });
+        if (!sessionActive || controller.signal.aborted) return;
+        if (result.code === 0) {
+          rounds = 0;
+          pi.events.emit("verify-turn:passed");
+          return;
+        }
+
+        rounds += 1;
+        const output = formatFailure([result.stdout, result.stderr].filter(Boolean).join("\n"));
+
+        if (rounds > MAX_ROUNDS) {
+          rounds = 0;
+          const message = `Verification is still failing after ${MAX_ROUNDS} repair attempts (${verifier.label}); leaving it for the user to resolve:\n\n${output}`;
+          pi.sendMessage({ customType: "verify-turn", content: message, display: true });
+          if (ctx.hasUI) ctx.ui.notify("Verification is still failing; see the reported output.", "warning");
+          return;
+        }
+
+        const finalAttempt = rounds === MAX_ROUNDS;
+        const reportingReminder =
+          "In your next response, carry forward the complete original-task summary and prior verification; add this repair rather than reporting only the latest failure or fix.";
+        const instruction = finalAttempt
+          ? `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). Fix the failure if possible. If the next verification still fails, stop and summarize the remaining problem for the user. ${reportingReminder}`
+          : `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. Fix it before finishing. ${reportingReminder}`;
+
+        pi.sendMessage(
+          {
+            customType: "verify-turn",
+            content: `${instruction}\n\n${output}`,
+            display: true,
+          },
+          { deliverAs: "followUp", triggerTurn: true },
+        );
+      };
+
+      try {
+        if (ctx.mode === "tui") {
+          const error = await ctx.ui.custom<unknown | undefined>((tui, theme, _keybindings, done) => {
+            const loader = new VerificationLoader(tui, theme, verifier.label);
+            let finished = false;
+            const finish = (result: unknown | undefined) => {
+              if (finished) return;
+              finished = true;
+              done(result);
+            };
+            loader.onAbort = () => {
+              controller.abort();
+            };
+            void runVerification(loader).then(
+              () => finish(undefined),
+              (error) => finish(error),
+            );
+            return loader;
+          });
+          if (error !== undefined) throw error;
+        } else {
+          await runVerification();
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        if (sessionActive && verificationController === controller) {
+          ctx.ui.setStatus("verify-turn", undefined);
+          verificationController = undefined;
+          verificationRunning = false;
+        }
+      }
+    } finally {
+      pi.events.emit("verify-turn:finished");
     }
   });
 }
