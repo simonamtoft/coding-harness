@@ -129,3 +129,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** The baseline launcher accidentally disabled the guard together with unrelated extensions. The user chose normal Pi protections for continued tuning rather than expanding the experiment into a new isolation environment. Generated programs and operator-run tests still execute with host permissions; disposable fixtures are not a security boundary.
 **Revisit if:** Trials need to execute untrusted repository content under an enforced filesystem/process boundary, or the separate isolation work provides a verified launcher.
 **Evidence:** "Yes let's use existing guards in every trial."
+
+### SBX-21 · Repository-scoped recent session metadata outside harness maintenance
+`accepted` · 2026-10-03 · `01a1039d`
+**Decision:** Permit a literal bounded recent-session listing from any Git repository and direct read-tool access to transcript files whose session headers identify that repository. Keep cross-project content search, other transcript reads, extraction, directory traversal, and general session-store access restricted to the canonical coding-harness root or existing interactive read approval.
+**Why:** Agents need to discover and inspect their own recent work for analysis without gaining the global transcript access that SBX-16 reserved for harness maintenance. Repository-scoped header checks preserve that boundary while making local session analysis practical.
+**Revisit if:** Project-level session analysis needs unattended transcript reads or repository identity can no longer be inferred reliably from recorded working directories.
+**Evidence:** "Current repo only"

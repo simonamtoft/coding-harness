@@ -50,10 +50,13 @@ export function hasSessionHistoryReadAccess(
 }
 
 export function permitsSessionHistoryCommand(command: string, sessionRoot: string, codingHarnessRoot: string): boolean {
-  if (sessionRoot !== codingHarnessRoot) return false;
   const helper = "pi/agent/extensions/sandbox/session-history.ts";
+  const absoluteHelper = join(codingHarnessRoot, helper);
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const script = `(?:${escape(helper)}|${escape(join(codingHarnessRoot, helper))})`;
+  const recentScript = `(?:${escape(absoluteHelper)}|~/\\.pi/agent/extensions/sandbox/session-history\\.ts)`;
+  if (new RegExp(`^bun ${recentScript} --recent --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command)) return true;
+  if (sessionRoot !== codingHarnessRoot) return false;
+  const script = `(?:${escape(helper)}|${escape(absoluteHelper)})`;
   // One literal query argument, no shell expansion, chaining, or redirection.
   const query = `(?:[A-Za-z0-9._-]+|"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+')`;
   if (command.includes("\n") || command.includes("\r")) return false;

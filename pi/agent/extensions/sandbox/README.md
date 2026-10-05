@@ -99,7 +99,31 @@ host-side boundary to model tool calls:
 
 ## Session-history discovery
 
-From the canonical checkout root:
+From any Git repository (including a subdirectory), call the model-facing
+`recent_sessions` Pi tool with optional `limit` (default 25, range 1–100) to
+list the newest top-level Pi sessions started there. The tool returns session
+metadata (`path`, `id`, `timestamp`, `cwd`) ordered by session start time.
+The equivalent manual CLI remains available:
+
+```bash
+bun ~/.pi/agent/extensions/sandbox/session-history.ts --recent --limit 25
+```
+
+The CLI prints JSONL metadata. It reads only session headers and includes sessions started
+in repository subdirectories, but not other repositories or separate worktrees.
+It skips symlinked or protected transcript entries and session directories that
+no longer exist. The limit must be 1–100; repositories rooted at the home directory or above
+are refused to avoid exposing unrelated projects. This command requires the installed
+extension path to resolve to the canonical helper; if Pi is not linked at the
+usual path, use the helper's absolute path in the canonical checkout instead.
+Use the `read` tool on a returned path to inspect a previous session. The
+sandbox permits direct reads of transcript files whose session header records a
+working directory in the current repository, including its subdirectories. It
+does not grant reads of the session-store directory, symlinked or protected
+entries, or other repositories' transcripts; those still need interactive read
+approval outside the coding-harness root. Arbitrary Bash access remains blocked.
+
+From the canonical checkout root, search message contents across projects:
 
 ```bash
 bun pi/agent/extensions/sandbox/session-history.ts --match "playwright" --limit 25
@@ -168,8 +192,9 @@ escaping), not the size of the record parsed in memory. Missing sessions, record
 or fields fail explicitly. Extraction validates the session header and refuses
 ambiguous session IDs; it never writes to the store.
 
-The automatic Bash grant accepts only discovery, audit, or extraction in the exact flag
-order shown (or an absolute canonical helper path). Audit accepts a limit from
+The automatic Bash grant accepts only repository-scoped recent listing, discovery,
+audit, or extraction in the exact flag order shown (or an absolute canonical helper
+path). Only recent listing works outside the canonical checkout root. Audit accepts a limit from
 1 to 200. Discovery accepts a literal
 query containing letters, digits, spaces, periods, underscores or hyphens, and a
 limit from 1 to 100. Extraction accepts a lowercase UUID, an eight-hex-digit

@@ -40,7 +40,12 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 
 ## Inspecting Pi session history
 
-When Pi starts at this canonical checkout root, discover matching transcripts with:
+From any Git repository, use the Pi `recent_sessions` tool (optional `limit`,
+1–100; default 25) to list recent Pi sessions started in that repository.
+The tool returns metadata only. Use the read tool on a returned path to inspect a
+same-repository transcript; other repositories' transcripts still require
+interactive approval. When Pi starts at this canonical checkout root, discover
+matching transcripts across projects with:
 
 ```bash
 bun pi/agent/extensions/sandbox/session-history.ts --match "playwright" --limit 25
@@ -63,8 +68,8 @@ pagination contract. Do not use Bash `ls`, `find`, or
 this helper and transcript reads are permitted. A Bash denial alone does not mean
 logs need exporting or permissions need changing; try this approved workflow first.
 Keep reads scoped to the requested evidence and avoid exposing unrelated sensitive
-transcript content. This automatic access does not apply from other projects or
-checkout subdirectories; protected paths and symlinked session-store roots remain
+transcript content. Cross-project search and extraction do not apply from other projects or checkout
+subdirectories; protected paths and symlinked session-store roots remain
 restricted.
 
 ## Decision ledger

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { hasSessionHistoryReadAccess, permitsSessionHistoryCommand } from "./policy.ts";
-import { auditRecentBulkReads, findSessionHistory, isSafeSessionHistoryTree } from "./session-history.ts";
+import { auditRecentBulkReads, findSessionHistory, isSafeSessionHistoryTree, listRecentSessionHistory } from "./session-history.ts";
 
 const harness = "/Users/example/coding-harness";
 const history = "/Users/example/.pi/agent/sessions";
@@ -26,7 +26,7 @@ test("history reads require the exact harness root and never grant writes or sib
   }
 });
 
-test("the tool-call guard grants reads, denies writes and arbitrary Bash, and keeps other projects gated", () => {
+test("the tool-call guard grants reads, denies writes and arbitrary Bash, and keeps other projects gated", { timeout: 15_000 }, () => {
   const home = mkdtempSync(join(tmpdir(), "pi-history-guard-"));
   try {
     const result = spawnSync(process.execPath, [join(import.meta.dir, "session-history.guard-check.ts")], {
@@ -39,6 +39,18 @@ test("the tool-call guard grants reads, denies writes and arbitrary Bash, and ke
 });
 
 test("only the literal bounded discovery and audit commands are granted", () => {
+  const recent = `bun ${harness}/${helper} --recent --limit 25`;
+  for (const cwd of [harness, `${harness}/shared`, "/Users/example/app"]) {
+    assert.equal(permitsSessionHistoryCommand(recent, cwd, harness), true);
+    assert.equal(permitsSessionHistoryCommand("bun ~/.pi/agent/extensions/sandbox/session-history.ts --recent --limit 25", cwd, harness), true);
+    assert.equal(permitsSessionHistoryCommand(`bun ${helper} --recent --limit 25`, cwd, harness), false);
+  }
+  for (const suffix of ["; ls", " | tee file", " > file", " --output file", " ", "\nls"]) {
+    assert.equal(permitsSessionHistoryCommand(recent + suffix, "/Users/example/app", harness), false);
+  }
+  for (const limit of ["0", "101", "-1", "1.5", "01"]) {
+    assert.equal(permitsSessionHistoryCommand(`bun ${harness}/${helper} --recent --limit ${limit}`, "/Users/example/app", harness), false);
+  }
   for (const script of [helper, `${harness}/${helper}`]) {
     const audit = `bun ${script} --audit-bulk-reads --limit 100`;
     assert.equal(permitsSessionHistoryCommand(audit, harness, harness), true);
@@ -63,6 +75,50 @@ test("only the literal bounded discovery and audit commands are granted", () => 
   }
   for (const command of [`ls ${history}`, `rm ${history}/run.jsonl`, `bun other.ts --match playwright --limit 25`]) {
     assert.equal(permitsSessionHistoryCommand(command, harness, harness), false);
+  }
+});
+
+test("recent listing is scoped to the current repository and reads only session headers", async () => {
+  const home = mkdtempSync(join(tmpdir(), "pi-history-recent-"));
+  const repo = join(home, "repo");
+  const other = join(home, "other");
+  const store = join(home, ".pi/agent/sessions");
+  const project = join(store, "project");
+  mkdirSync(join(repo, "src"), { recursive: true });
+  mkdirSync(other);
+  mkdirSync(project, { recursive: true });
+  const session = (id: string, day: number, cwd: string) =>
+    `${JSON.stringify({ type: "session", id, timestamp: `2026-09-${day}T10:00:00Z`, cwd })}\nnot valid JSON\n`;
+  writeFileSync(join(project, "older.jsonl"), session("older", 10, repo));
+  writeFileSync(join(project, "newer.jsonl"), session("newer", 12, join(repo, "src")));
+  const nested = join(repo, "nested");
+  mkdirSync(nested);
+  assert.equal(spawnSync("git", ["init", "-q", nested]).status, 0);
+  writeFileSync(join(project, "nested.jsonl"), session("nested", 13, nested));
+  writeFileSync(join(project, "foreign.jsonl"), session("foreign", 14, other));
+  writeFileSync(join(project, "sibling.jsonl"), session("sibling", 15, `${repo}-other`));
+  writeFileSync(join(project, "invalid.jsonl"), '{"type":"session","id":"invalid","timestamp":"n/a","cwd":"' + repo + '"}\n');
+  symlinkSync(join(project, "foreign.jsonl"), join(project, "linked.jsonl"));
+  mkdirSync(join(store, ".env"));
+  writeFileSync(join(store, ".env", "secret.jsonl"), session("secret", 16, repo));
+  assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
+  try {
+    assert.deepEqual((await listRecentSessionHistory(store, repo, 1)).map((row) => row.id), ["newer"]);
+    assert.deepEqual((await listRecentSessionHistory(store, repo, 100)).map((row) => row.id), ["newer", "older"]);
+    await assert.rejects(listRecentSessionHistory(store, repo, 0), /1–100/);
+    const result = spawnSync(process.execPath, [join(import.meta.dir, "session-history.ts"), "--recent", "--limit", "2"], {
+      cwd: join(repo, "src"), env: { ...process.env, HOME: home }, encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.stdout.trim().split("\n").map((line) => JSON.parse(line).id), ["newer", "older"]);
+    assert.equal(spawnSync("git", ["init", "-q", home]).status, 0);
+    const broad = spawnSync(process.execPath, [join(import.meta.dir, "session-history.ts"), "--recent", "--limit", "2"], {
+      cwd: home, env: { ...process.env, HOME: home }, encoding: "utf8",
+    });
+    assert.equal(broad.status, 1);
+    assert.match(broad.stderr, /narrower than the home directory/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

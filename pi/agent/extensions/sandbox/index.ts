@@ -24,7 +24,8 @@ import {
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
 import { changesDirectoryToSessionTemp } from "./session-temp.ts";
-import { isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
+import { registerRecentSessionsTool } from "./recent-sessions-tool.ts";
+import { currentRepositoryRoot, isRepositorySessionTranscript, isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const FILE_TOOLS = new Set(["read", "write", "edit", "grep", "find", "ls"]);
@@ -145,10 +146,12 @@ export function createSandboxGuard(
   researchVaultRoot = RESEARCH_VAULT_ROOT,
 ) {
   const root = realpathSync.native(cwd);
+  const repositoryRoot = currentRepositoryRoot(root);
   const resolvedResearchVaultRoot = realpathForCheck(researchVaultRoot);
   const configuredHistoryRoot = sessionHistoryRoot();
   const historyRoot = realpathForCheck(configuredHistoryRoot);
   const historyHelper = join(CODING_HARNESS_ROOT, "pi/agent/extensions/sandbox/session-history.ts");
+  const installedHistoryHelper = join(homedir(), ".pi/agent/extensions/sandbox/session-history.ts");
   const canReadSessionHistory = (toolName: string, path: string) =>
     hasSessionHistoryReadAccess(toolName, root, path, CODING_HARNESS_ROOT, historyRoot)
     && isSessionHistoryDirectory(configuredHistoryRoot)
@@ -180,6 +183,8 @@ export function createSandboxGuard(
             }
             return undefined;
           }
+          if (event.toolName === "read" && repositoryRoot && typeof input.path === "string"
+            && await isRepositorySessionTranscript(configuredHistoryRoot, input.path, repositoryRoot)) return undefined;
           if (hasResearchVaultReadAccess(event.toolName, inspection.resolved, resolvedResearchVaultRoot)) return undefined;
           if (isWithin(resolvedResearchVaultRoot, inspection.resolved) && isWrite) {
             if (await requestResearchVaultConfirmation(ctx, event.toolName, inspection.resolved)) return undefined;
@@ -231,7 +236,8 @@ export function createSandboxGuard(
       if (denyReason) return block(denyReason);
 
       if (permitsSessionHistoryCommand(event.input.command, root, CODING_HARNESS_ROOT)
-        && realpathForCheck(historyHelper) === historyHelper) return undefined;
+        && realpathForCheck(historyHelper) === historyHelper
+        && (!event.input.command.startsWith("bun ~/") || realpathForCheck(installedHistoryHelper) === historyHelper)) return undefined;
 
       if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory, realpathForCheck)) {
         return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
@@ -286,6 +292,7 @@ export function createSandboxGuard(
 }
 
 export default function sandboxExtension(pi: ExtensionAPI) {
+  registerRecentSessionsTool(pi, process.cwd());
   let sessionTempDirectory: string | undefined;
   const guard = createSandboxGuard(process.cwd(), () => sessionTempDirectory);
 

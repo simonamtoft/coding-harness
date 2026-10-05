@@ -1,13 +1,27 @@
-import { createReadStream, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createReadStream, existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { isProtectedSecretPath } from "./policy.ts";
+import { isProtectedSecretPath, isWithin } from "./policy.ts";
 import { parseSessionHistoryExtraction } from "./session-history-command.ts";
 
 export function sessionHistoryRoot(): string {
   return join(homedir(), ".pi", "agent", "sessions");
+}
+
+export function currentRepositoryRoot(cwd: string): string | undefined {
+  try {
+    const env = { ...process.env };
+    for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES", "GIT_COMMON_DIR"]) delete env[key];
+    const root = realpathSync.native(execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env,
+    }).trim());
+    const home = realpathSync.native(homedir());
+    if (!isWithin(root, realpathSync.native(cwd)) || isWithin(root, home) || !existsSync(join(root, ".git"))) return;
+    return root;
+  } catch { return; }
 }
 
 function isSafeEntry(path: string): boolean {
@@ -83,10 +97,8 @@ function reportedWorkerCost(result: Record<string, unknown>): number | undefined
   return usage.cost;
 }
 
-/** Metadata-only audit: never return prompt, tool arguments, or worker output. */
-export async function auditRecentBulkReads(root: string, limit: number) {
+async function sessionHeaders(root: string) {
   if (!isSessionHistoryDirectory(root)) throw new Error("session-history root must be an existing non-symlink, non-protected directory");
-  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("audit limit must be 1–200");
   const candidates: Array<{ path: string; id: string; timestamp: string; cwd: string }> = [];
   for (const project of readdirSync(root, { withFileTypes: true })) {
     const projectPath = join(root, project.name);
@@ -113,7 +125,50 @@ export async function auditRecentBulkReads(root: string, limit: number) {
       }
     }
   }
-  candidates.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.path.localeCompare(b.path));
+  return candidates.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || a.path.localeCompare(b.path));
+}
+
+export async function isRepositorySessionTranscript(root: string, path: string, repositoryRoot: string): Promise<boolean> {
+  if (!isSessionHistoryDirectory(root) || !isWithin(root, path) || dirname(dirname(path)) !== root
+    || !path.endsWith(".jsonl") || !isSessionHistoryDirectory(dirname(path))) return false;
+  try {
+    if (!isSafeEntry(path) || !lstatSync(path).isFile()) return false;
+    const input = createReadStream(path);
+    const lines = createInterface({ input, crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        const header: unknown = JSON.parse(line);
+        if (!isObject(header) || header.type !== "session" || typeof header.cwd !== "string") return false;
+        const cwd = realpathSync.native(header.cwd);
+        return isWithin(realpathSync.native(repositoryRoot), cwd)
+          && currentRepositoryRoot(cwd) === realpathSync.native(repositoryRoot);
+      }
+    } finally {
+      lines.close();
+      input.destroy();
+    }
+  } catch { return false; }
+  return false;
+}
+
+export async function listRecentSessionHistory(root: string, repositoryRoot: string, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("recent limit must be 1–100");
+  const candidates = await sessionHeaders(root);
+  const resolvedRoot = realpathSync.native(repositoryRoot);
+  const matches = [];
+  for (const candidate of candidates) {
+    let cwd: string;
+    try { cwd = realpathSync.native(candidate.cwd); } catch { continue; }
+    if (isWithin(resolvedRoot, cwd) && currentRepositoryRoot(cwd) === resolvedRoot) matches.push(candidate);
+    if (matches.length === limit) break;
+  }
+  return matches;
+}
+
+/** Metadata-only audit: never return prompt, tool arguments, or worker output. */
+export async function auditRecentBulkReads(root: string, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("audit limit must be 1–200");
+  const candidates = await sessionHeaders(root);
   const report = [];
   for (const candidate of candidates.slice(0, limit)) {
     const { path, ...header } = candidate;
@@ -308,9 +363,18 @@ export async function extractSessionHistoryField(root: string, args: string[]) {
 if (import.meta.main) {
   try {
     const harnessRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
-    if (realpathSync(process.cwd()) !== realpathSync(harnessRoot)) throw new Error("run from the canonical coding-harness root");
     const args = process.argv.slice(2);
-    if (parseSessionHistoryExtraction(args)) {
+    if (args[0] !== "--recent" && realpathSync(process.cwd()) !== realpathSync(harnessRoot)) {
+      throw new Error("run from the canonical coding-harness root");
+    }
+    if (args.length === 3 && args[0] === "--recent" && args[1] === "--limit"
+      && /^(?:[1-9]|[1-9][0-9]|100)$/.test(args[2]!)) {
+      const repositoryRoot = currentRepositoryRoot(process.cwd());
+      if (!repositoryRoot) throw new Error("recent listing requires a Git repository narrower than the home directory");
+      for (const session of await listRecentSessionHistory(sessionHistoryRoot(), repositoryRoot, Number(args[2]))) {
+        console.log(JSON.stringify(session));
+      }
+    } else if (parseSessionHistoryExtraction(args)) {
       console.log(JSON.stringify(await extractSessionHistoryField(sessionHistoryRoot(), args)));
     } else if (args.length === 3 && args[0] === "--audit-bulk-reads" && args[1] === "--limit"
       && /^(?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$/.test(args[2]!)) {
@@ -345,7 +409,7 @@ if (import.meta.main) {
       const [matchFlag, pattern, limitFlag, rawLimit, ...extra] = args;
       if (matchFlag !== "--match" || !pattern || limitFlag !== "--limit"
         || !/^[1-9]\d*$/.test(rawLimit ?? "") || Number(rawLimit) > 100 || extra.length) {
-        throw new Error('usage: session-history.ts --audit-bulk-reads --limit 200, --match "topic" --limit 25 (1–100), or --session UUID --record ID --field message.content --offset 0 --limit 2000 (1–2000 characters)');
+        throw new Error('usage: session-history.ts --recent --limit 25 (1–100), --audit-bulk-reads --limit 200, --match "topic" --limit 25 (1–100), or --session UUID --record ID --field message.content --offset 0 --limit 2000 (1–2000 characters)');
       }
       for (const session of await findSessionHistory(sessionHistoryRoot(), pattern, Number(rawLimit))) {
         console.log(JSON.stringify(session));

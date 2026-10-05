@@ -59,6 +59,23 @@ checkout instead (for example `../../projects/pi-worktree-agents`, relative to
 `~/.pi/agent`). The install step recognises a checkout by directory name and
 leaves the override in place.
 
+### Local-only skills: implement-powerpoint and implement-brand-web
+
+`shared/skills/implement-powerpoint/` and `shared/skills/implement-brand-web/`
+are gitignored. This repository is public, and they contain Implement-internal
+slides, colleague photographs and brand guidance. Both still deploy to both
+harnesses through the `shared/skills` link. `implement-brand-web` exists only on
+the machine that created it, so copy it across by hand. Get the
+`implement-powerpoint.skill` file from Implement, then unpack it:
+
+```sh
+unzip implement-powerpoint.skill -d ~/coding-harness/shared/skills/
+```
+
+After unpacking a new release, reapply the `uv run -q --with lxml --with pillow`
+line below "All commands are" in its `SKILL.md`. `implement-brand-web` reads
+this bundle's brand references when it is present.
+
 ## Layout
 
 - `experiments/bonsai/`: local-model playground with tracked setup notes;
@@ -92,11 +109,12 @@ workspaces stay readable, while other retained scratch content prompts and
 writes remain scoped to the current session. Reads elsewhere prompt, apart from
 direct reads in the canonical shared tree (including installed Pi skills that
 resolve there) and read-tool access to installed Volta package content and
-Playwright's managed browser cache. Sessions started at the canonical checkout
-root also get read-tool access to `~/.pi/agent/sessions` and a narrowly permitted
-read-only [session-history helper](pi/agent/extensions/sandbox/README.md#session-history-discovery)
-for discovery and bounded JSON-field extraction from oversized records;
-transcript writes and general Bash access remain blocked.
+Playwright's managed browser cache. Any Git repository can list its own recent Pi
+sessions with the model-callable [`recent_sessions` tool](pi/agent/extensions/sandbox/README.md#session-history-discovery)
+and directly read matching transcripts with the read tool. Sessions started at
+the canonical checkout root also get read-tool access to
+`~/.pi/agent/sessions` and content search and bounded JSON-field extraction from
+oversized records; transcript writes and general Bash access remain blocked.
 Recursive tools do not receive the shared-tree exception. The sandbox follows
 symlinks before checking and hard-denies common secret paths
 everywhere. Agent control files and plugin source are write-protected unless Pi
