@@ -13,6 +13,8 @@
  * - FAKE_USAGE=missing: assistant messages carry no usage
  * - FAKE_FIRST_ERROR: the first assistant message_end fails with this provider error
  * - FAKE_FINAL: the agent's final message (default `done`)
+ * - FAKE_BASH_COMMAND: Bash command reported by the agent (default charge test)
+ * - FAKE_BASH_BLOCKED: report a tool failure instead of a completed Bash call
  * - FAKE_CALLS: counter file numbering agent calls; required by FAKE_FIX_AT and FAKE_EXIT_AT
  * - FAKE_FIX_AT: on this agent call, write FAKE_FIX_CONTENT (default `ok`) to FAKE_FIX_PATH
  *   (default fixed.txt) in the working directory
@@ -130,8 +132,8 @@ emit({
     ? { ...assistantMessage([], "error"), errorMessage: process.env.FAKE_FIRST_ERROR }
     : assistantMessage([], "toolUse"),
 });
-emit({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "bun test test/charge.test.ts" } });
-emit({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: { content: [{ type: "text", text: "2 pass" }] }, isError: false });
+emit({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: process.env.FAKE_BASH_COMMAND ?? "bun test test/charge.test.ts" } });
+emit({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: { content: [{ type: "text", text: "2 pass" }] }, isError: process.env.FAKE_BASH_BLOCKED === "1" });
 
 let mode = String(call) === process.env.FAKE_EXIT_AT ? "exit" : process.env.FAKE_MODE ?? "ok";
 if (mode === "slow-after-first") {

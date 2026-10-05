@@ -80,6 +80,16 @@ describe("command matching", () => {
     const outcome = evaluateAssertions(focused, observation({ bashExecutions: [{ command: "bun test", exitCode: null }] }));
     expect(outcome.passed).toBe(false);
   });
+
+  test("forbids attempted commands even if blocked before execution, without matching quoted text", () => {
+    const rule = { forbiddenCommandMatching: ["^\\./scripts/smoke\\.sh\\b"] };
+    expect(brokenBoundaries(rule, observation({ bashExecutions: [{ command: "./scripts/smoke.sh", exitCode: null }] })))
+      .toEqual(["agent attempted a forbidden command matching /^\\./scripts/smoke\\.sh\\b/"]);
+    expect(evaluateAssertions(rule, observation({ bashExecutions: exited("echo './scripts/smoke.sh'") })).passed).toBe(true);
+    const direct = { forbiddenCommandMatching: ["^(?:\\./)?scripts/smoke\\.sh\\b"] };
+    expect(evaluateAssertions(direct, observation({ bashExecutions: [{ command: "scripts/smoke.sh", exitCode: null }] })).passed)
+      .toBe(false);
+  });
 });
 
 describe("allowedChangedFiles", () => {

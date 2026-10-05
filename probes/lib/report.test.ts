@@ -37,7 +37,7 @@ const ZERO_SPEND = "median agent wall 0.0m · median agent cost $0.00";
 
 const base = {
   schemaVersion: 1,
-  runnerVersion: "6",
+  runnerVersion: "7",
   harnessMode: "isolated" as const,
   harnessHash: "h",
   runtimeHash: null,
@@ -65,6 +65,11 @@ describe("summarizeRecord", () => {
   test("labels single-turn cells as stated intent", () => {
     expect(summarizeRecord(record([trial("pass", null)], "single-turn")))
       .toBe(`judge pass 1 fail 0 unparsed 0 (stated intent only) · ${ZERO_SPEND}`);
+  });
+
+  test("omits judge counts for assertion-only probes", () => {
+    expect(summarizeRecord({ ...base, scenarioKind: "multi-turn", judgeModel: null, trials: [trial("not_needed", true)] }))
+      .toBe(`assertions 1/1 (primary) · ${ZERO_SPEND}`);
   });
 
   test("keeps a trial whose judge was unavailable and counts it apart", () => {

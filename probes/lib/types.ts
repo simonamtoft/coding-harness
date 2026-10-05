@@ -13,14 +13,16 @@ export type FixtureAssertions = {
   ranCommandMatching?: string[];
   /** Alternative regular expressions; at least one must match a simple command run to an exit status. */
   ranAnyCommandMatching?: string[];
+  /** Reject matching Bash calls, including attempts that never reached an exit status. */
+  forbiddenCommandMatching?: string[];
 };
 
 export type ProbeScenario = {
   id: string;
   kind: ProbeScenarioKind;
   prompt: string;
-  /** What the judge must rule on, phrased so PASS means the desired behavior. */
-  judge: string;
+  /** Final-message expectation only; absent when fixture assertions fully decide the probe. */
+  judge?: string;
   /** Multi-turn only: run in the fixture copy before and after the probe. */
   checkCommand?: string[];
   /**
@@ -109,7 +111,7 @@ export type JudgeVerdict = {
    * `unavailable`: the judge child failed, so only the fixture assertions score the trial.
    * `skipped`: a hard boundary broke (see `brokenBoundaries`), so no judge was asked.
    */
-  verdict: "pass" | "fail" | "unparsed" | "unavailable" | "skipped";
+  verdict: "pass" | "fail" | "unparsed" | "unavailable" | "skipped" | "not_needed";
   reason: string;
 };
 

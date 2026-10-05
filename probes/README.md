@@ -89,7 +89,7 @@ marker is excluded from the scenario hash, so marking or unmarking a guard keeps
 
 Records in `probes/results/` stay local and are ignored by Git. They are keyed by harness mode,
 effective canonical Pi harness hash, whole-mode runtime fingerprint, instruction hash, scenario
-definition hash, model, judge model (none for benchmarks), and runner version. Each record also
+definition hash, model, judge model (only for judged probes and judged benchmarks), and runner version. Each record also
 carries a `schemaVersion`; a record in another schema version is kept but never reused. The
 scenario hash includes every fixture
 path and its UTF-8 file content. A run reuses any matching local record with enough trials;
@@ -524,16 +524,18 @@ Every benchmark run prints the same two statements under its results table:
 Each trial of a probe scenario gets up to two independent verdicts:
 
 - **Fixture assertions** (multi-turn only, deterministic and free): `checksPass`, `filesChanged`,
-  `filesUnchanged`, `allowedChangedFiles`, `ranCommandMatching`, and `ranAnyCommandMatching`.
-  These are the primary evidence for a multi-turn scenario.
-- **Judge** (one extra model call): the scenario's `judge` field states what PASS means. The judge
-  sees the task, the agent's final message, post-run check and report output, and the Bash
-  commands with their exit status. It never sees the instruction variant, so it scores behavior
-  rather than compliance with wording. The judge is skipped, with verdict `skipped`, when a hard
-  boundary broke: `checksPass` ended in the wrong state, a `filesUnchanged` file changed, or a file
-  outside `allowedChangedFiles` changed. No ruling could rescue such a trial. A missing
-  `filesChanged` edit or required command is still judged, and so is every passing trial, because
-  the judge catches false verification claims the assertions cannot see.
+  `filesUnchanged`, `allowedChangedFiles`, `ranCommandMatching`, `ranAnyCommandMatching`, and
+  `forbiddenCommandMatching`. Required commands must reach an exit status; forbidden commands
+  fail even when the Bash attempt was blocked. Assertions alone score observable behavior.
+- **Judge** (one extra model call, only when a `judge` field is present): scores final-message
+  expectations the fixture cannot establish, such as whether the agent asked the user to resolve
+  an ambiguity. The judge sees the task, final message, post-run check and report output, and
+  Bash commands with exit status as context, but its rubric must not re-score observable conduct.
+  It never sees the instruction variant. For judged scenarios only, a broken hard boundary
+  (`checksPass`, a protected file, or a forbidden command) skips the call. A missing required edit
+  or command still leaves a final-message expectation to judge. Assertion-only trials store
+  `not_needed` and do not key records on the judge model. Judge accuracy is not calibrated against
+  human labels; do not treat its verdict as a validated measurement of conduct.
 
 A report row reads, for example,
 `assertions 2/3 (primary) · judge pass 2 fail 0 unparsed 1 · median agent wall 2.1m · median agent cost $0.31 · infrastructure failures 1`. An

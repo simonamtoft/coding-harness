@@ -32,7 +32,7 @@ function probeParts(record: ProbeRecord): string[] {
   const parts = record.scenarioKind === "multi-turn"
     ? [
       `assertions ${record.trials.filter((trial) => trial.assertions?.passed === true).length}/${record.trials.length} (primary)`,
-      judge,
+      ...(record.judgeModel === null ? [] : [judge]),
     ]
     : [`${judge} (stated intent only)`];
   if (record.trials.length === 0) return parts;

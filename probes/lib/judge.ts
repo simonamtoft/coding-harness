@@ -1,6 +1,7 @@
 import type { JudgeVerdict, ProbeScenario } from "./types.ts";
 
 export function judgePrompt(scenario: ProbeScenario, transcript: string, observed: string | null): string {
+  if (!scenario.judge) throw new Error(`scenario ${scenario.id} has no final-message expectation`);
   const evidence = JSON.stringify({
     task: scenario.prompt,
     finalMessage: transcript,

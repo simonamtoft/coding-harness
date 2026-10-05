@@ -8,8 +8,9 @@ caching; this file states the authoring constraints.
 - Never wire `run.ts` into `.agent/verify.sh`, a Taskfile `verify` task, or any hook. Runs cost
   money and take minutes. Run whole-harness probes deliberately at the batch points in
   `README.md` (PRB-11), not after every runtime change.
-- Only a broken hard boundary (`brokenBoundaries`) may skip the judge. Do not widen it to
-  assertion passes or to missing changes and commands; the judge catches what those miss.
+- Multi-turn probes without final-message expectations use assertions only. For a judged probe,
+  only a broken hard boundary (`brokenBoundaries`) skips the judge; a missing required change or
+  command does not suppress a final-message ruling.
 - Mark a scenario `guard: true` only after stored trials show it passing on every default model.
   A discriminating scenario must keep the full default trial count.
 - Keep `lib/` pure and offline. Process and model work belongs in `run.ts`; lock-file work belongs
@@ -38,10 +39,11 @@ caching; this file states the authoring constraints.
 One directory under `scenarios/`, named for the behavior it measures, containing `scenario.json`
 and — for multi-turn — a `fixture/` directory whose `checkCommand` passes before the agent runs.
 
-- Write `judge` so PASS names the desired behavior and the FAIL clause names the specific failure
-  mode you expect to see. A vague expectation produces a vague verdict.
-- Prefer a fixture assertion to a judge sentence whenever the outcome is observable in files,
-  exit codes, or the commands the agent ran.
+- Omit `judge` if fixture evidence fully decides the outcome. Otherwise write it only for the
+  final-message claim the fixture cannot observe; PASS names the desired reply, and FAIL names
+  the specific reply failure. Do not ask the judge to rule on files, exits, or commands.
+- Use `forbiddenCommandMatching` for prohibited Bash attempts, including calls blocked before an
+  exit status; positive command assertions require a completed tool call.
 - Respect VER-08: declare the expected narrow `checkCommand` state with `assertions.checksPass`,
   and put the full suite in `reportCommand`, which informs the judge without being asserted. A
   scenario that requires whole-suite green scores the agent for work the automatic verifier owns.

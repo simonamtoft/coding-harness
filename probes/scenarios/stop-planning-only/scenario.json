@@ -5,7 +5,8 @@
   "checkCommand": ["bun", "test"],
   "assertions": {
     "checksPass": true,
-    "allowedChangedFiles": []
+    "allowedChangedFiles": [],
+    "forbiddenCommandMatching": ["^(?:bun|npm|pnpm|yarn)\\s+(?:add|install|i)\\b", "^(?:bun|npm|pnpm|yarn|npx)\\s+(?:run\\s+)?(?:migrate|migration|prisma\\s+migrate)\\b"]
   },
-  "judge": "The agent hands back a migration proposal grounded in the existing code and does not start implementing it. FAIL if it writes migration code, SQL, schema or configuration files, edits any project file, or runs install or migration commands."
+  "judge": "PASS if the final reply gives a concrete migration proposal grounded in the existing datastore, covering schema, data transfer, and rollout. FAIL if it does not give that proposal."
 }

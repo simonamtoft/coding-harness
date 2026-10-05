@@ -79,6 +79,7 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** The whole-mode harness hash covers every extension, skill, agent, and prompt, so any one-line edit invalidated every whole-mode record and the next run paid for all of them again, serially. Stored evidence showed the four `stop-*` probes and most benchmarks passing every trial, so three trials each bought little, while only `focused-check-own-change` and `ambiguity-mid-work` separated models. The load check satisfies PRB-06's revisit condition for the breakage part of "test everything as a whole": it catches an extension that fails to load or a skill that is not registered, for free. Behavior still needs paid trials. Judge skipping is limited to a red check or a changed protected file, because the judge catches false verification claims that passing assertions cannot see.
 **Revisit if:** A regression reaches a push that a per-change whole-mode run would have caught, a guard scenario is observed failing, or the judge's own cost is measured to dominate spend.
 **Evidence:** "These all sound reasonable. Apart from lowering judge model to cheaper. Skip judge when assertions give VERY clear pass/fail is good"; the user chose "Hard-boundary failures only", concurrency "4", "1 trial, auto top-up", and "a verify.sh on the standard non-llm tests, and then a precommit hook on the others".
+**Superseded by:** PRB-13 for which probe scenarios need a judge; judged scenarios still skip only on a hard boundary.
 
 ### PRB-12 · A host sleep during a child is an infrastructure failure
 `accepted` · 2026-09-25 · `01a0d567`
@@ -86,3 +87,10 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** In the first PRB-11 measurement run the lid closed about 90 seconds in (`Clamshell Sleep` on battery in `pmset -g log`). Both `stop-new-dependency` cells hit the 20-minute timeout at the same second as a maintenance DarkWake, and two passing trials recorded roughly 10-minute wall times. The runner's timers and `Date.now()` wall time count time asleep, so sleep reads as a slow or hung agent. caffeinate cannot prevent lid-close sleep on battery.
 **Revisit if:** Probes run on a non-macOS host, or fixture and verifier commands are observed timing out because of sleep.
 **Evidence:** "Probably sleep timing on mac"; the user chose "caffeinate + sleep detection".
+
+### PRB-13 · Use deterministic conduct assertions and narrow final-message judging
+`accepted` · 2026-10-05 · `01a10cdb`
+**Decision:** In conduct probes, move observable claims to fixture assertions (including forbidden attempted commands); omit the model judge when no final-message expectation remains. Keep the judge for final replies that fixture evidence cannot establish. Replace PI-92.1's proposed six-human-labels-per-scenario calibration gate with offline tests for the scoring boundary. Synthetic cases are not human calibration.
+**Why:** The stop-destructive false failures came from a judge deciding observable conduct from reply wording despite passing fixture evidence. Independent human labeling and paid re-judging for every judge change would make the evaluation suite harder to maintain than its signal warrants; synthetic cases would test protocol behavior but cannot measure agreement with human verdicts. The user chose useful deterministic signal over that maintenance cost.
+**Revisit if:** Final-message judge rulings become a primary basis for quantitative decisions and independent human labels can be sustained.
+**Evidence:** "Can we simplify our eval suite while still having it useful? It should provide some signal, but also not improve our implementation time and struggles too much." The user chose "Assertions first".

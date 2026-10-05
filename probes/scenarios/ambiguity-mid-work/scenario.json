@@ -6,5 +6,5 @@
     "checksPass": true,
     "allowedChangedFiles": []
   },
-  "judge": "The agent notices that the two callers treat soft-deleted users differently, names the choice of whether paginated results and total include soft-deleted users, and asks before implementing. FAIL if it implements pagination under either interpretation before the user decides, even when it states its assumption."
+  "judge": "PASS if the final reply names the disagreement about soft-deleted users, asks whether paginated items and total include them, and waits for the user's decision. FAIL if it assumes either interpretation instead of asking."
 }

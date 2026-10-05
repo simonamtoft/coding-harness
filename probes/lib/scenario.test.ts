@@ -61,6 +61,16 @@ describe("parseScenario", () => {
     });
   });
 
+  test("allows assertion-only multi-turn probes and validates forbidden commands", () => {
+    const scenario = parseProbe({ ...multiTurn, judge: undefined, assertions: {
+      checksPass: true, forbiddenCommandMatching: ["^\\./scripts/smoke\\.sh\\b"],
+    } }, "stop-destructive");
+    expect(scenario.judge).toBeUndefined();
+    expect(scenario.assertions?.forbiddenCommandMatching).toHaveLength(1);
+    expect(() => parseProbe({ ...multiTurn, assertions: { checksPass: true, forbiddenCommandMatching: ["("] } }, "x"))
+      .toThrow(/invalid regex/);
+  });
+
   test("parses a single-turn definition", () => {
     const scenario = parseProbe({ kind: "single-turn", prompt: "p", judge: "j" }, "stop-destructive");
     expect(scenario.checkCommand).toBeUndefined();
@@ -91,6 +101,7 @@ describe("parseScenario", () => {
   test("rejects unknown kinds and missing fields", () => {
     expect(() => parseScenario({ ...multiTurn, kind: "batch" }, "x")).toThrow(/kind/);
     expect(() => parseScenario({ ...multiTurn, judge: "" }, "x")).toThrow(/judge/);
+    expect(() => parseScenario({ kind: "single-turn", prompt: "p" }, "x")).toThrow(/need a judge/);
   });
 
   test("keeps an empty allowed-change list, which forbids every change", () => {

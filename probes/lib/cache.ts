@@ -2,7 +2,7 @@ import { sha256Hex } from "./hashing.ts";
 import type { BenchmarkTrialRecord, HarnessMode, ResultRecord, TrialRecord } from "./types.ts";
 
 /** Bump when a change to execution or scoring makes older records incomparable. */
-export const RUNNER_VERSION = "6";
+export const RUNNER_VERSION = "7";
 
 /**
  * Shape of a stored record. Bump when fields change, so older documents are kept as evidence but

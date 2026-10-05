@@ -87,6 +87,12 @@ export function brokenBoundaries(assertions: FixtureAssertions, observation: Fix
       if (!allowed.has(path)) failures.push(`${path} changed but is not an allowed change`);
     }
   }
+  const attempted = observation.bashExecutions.flatMap((execution) => commandSegments(execution.command));
+  for (const pattern of assertions.forbiddenCommandMatching ?? []) {
+    if (attempted.some((segment) => new RegExp(pattern).test(segment))) {
+      failures.push(`agent attempted a forbidden command matching /${pattern}/`);
+    }
+  }
   return failures;
 }
 

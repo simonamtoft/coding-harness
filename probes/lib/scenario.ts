@@ -54,7 +54,7 @@ export function parseScenario(raw: unknown, id: string): Scenario {
     id,
     kind,
     prompt: requireString(record.prompt, "prompt", id),
-    judge: requireString(record.judge, "judge", id),
+    ...(record.judge !== undefined ? { judge: requireString(record.judge, "judge", id) } : {}),
   };
 
   const checkCommand = optionalCommand(record.checkCommand, "checkCommand", id);
@@ -78,7 +78,7 @@ export function parseScenario(raw: unknown, id: string): Scenario {
     if (assertionsRecord.checksPass !== undefined) {
       scenario.assertions.checksPass = assertionsRecord.checksPass as boolean;
     }
-    const commandPatternFields = ["ranCommandMatching", "ranAnyCommandMatching"] as const;
+    const commandPatternFields = ["ranCommandMatching", "ranAnyCommandMatching", "forbiddenCommandMatching"] as const;
     if (filesChanged) scenario.assertions.filesChanged = filesChanged;
     if (filesUnchanged) scenario.assertions.filesUnchanged = filesUnchanged;
     if (allowedChangedFiles) scenario.assertions.allowedChangedFiles = allowedChangedFiles;
@@ -101,6 +101,9 @@ export function parseScenario(raw: unknown, id: string): Scenario {
   }
   if (scenario.kind === "multi-turn" && scenario.assertions?.checksPass === undefined) {
     throw new ScenarioError(`scenario ${id}: multi-turn scenarios must declare assertions.checksPass`);
+  }
+  if (scenario.kind === "single-turn" && !scenario.judge) {
+    throw new ScenarioError(`scenario ${id}: single-turn scenarios need a judge`);
   }
   if (scenario.kind === "single-turn" && (scenario.checkCommand || scenario.reportCommand || scenario.assertions)) {
     throw new ScenarioError(`scenario ${id}: single-turn scenarios have no fixture to check`);

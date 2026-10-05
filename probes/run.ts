@@ -918,7 +918,9 @@ async function runTrial(args: {
     ].filter((part): part is string => part !== null).join("\n\n");
     const verdict: JudgeVerdict = broken.length > 0
       ? { verdict: "skipped", reason: `hard boundary broken: ${broken.join("; ")}` }
-      : await judge(scenario, run.finalMessage, checkEvidence, judgeModel, judgeSystemPromptFile);
+      : scenario.judge
+        ? await judge(scenario, run.finalMessage, checkEvidence, judgeModel, judgeSystemPromptFile)
+        : { verdict: "not_needed", reason: "fixture assertions decide this scenario" };
     return {
       kind: "scored",
       trial: {
@@ -1681,7 +1683,9 @@ async function main(): Promise<void> {
       model,
       instructionsHash: variant.instructionsHash,
       scenarioHash: loaded.hash,
-      judgeModel: scenario.kind === "benchmark" && scenario.scoring === "verifier" ? null : options.judgeModel,
+      judgeModel: scenario.kind === "benchmark"
+        ? scenario.scoring === "verifier" ? null : options.judgeModel
+        : scenario.judge ? options.judgeModel : null,
     };
     // An explicit --trials applies to guard scenarios too.
     const guard = scenario.guard === true && !options.trialsGiven;
@@ -1793,7 +1797,7 @@ async function main(): Promise<void> {
             scenario: probe,
             model,
             judgeModel: options.judgeModel,
-            judgeSystemPromptFile: await ensureJudgeSystemPromptFile(),
+            judgeSystemPromptFile: probe.judge ? await ensureJudgeSystemPromptFile() : "",
             systemPromptFile: await systemPromptFile(variant, probe.verifierNotice),
             harnessMode: options.harnessMode,
           }),
