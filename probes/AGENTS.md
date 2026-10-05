@@ -70,5 +70,11 @@ and — for multi-turn — a `fixture/` directory whose `checkCommand` passes be
 - Continuation tasks: give phase 1 a scope that ends before the task is done, so the handoff
   carries real state. Keep constraints that must survive the handoff in the phase-1 prompt only;
   repeating them in `continuation.prompt` hides whether the handoff preserved them.
-- A scenario must be able to fail. Before trusting a new one, confirm at least one variant scores
-  FAIL on it; a scenario every variant passes measures nothing.
+- Admit a new conduct probe only when its tracking task or change description cites a Pi session
+  or task documenting an observed failure. Do not add probes from rules alone. A guard probe for
+  a destructive-boundary rule may be admitted without a cited failure; `guard: true` still requires
+  the stored all-pass evidence above.
+- Before admitting a new non-guard conduct probe, run a 10-trial whole-mode pilot on each default
+  model. At least one model must pass between 20% and 80% of trials (2–8 of 10). A probe outside
+  that band is not a discriminating probe; do not relabel it as a guard unless it protects a
+  destructive-boundary rule and meets the guard evidence requirement.
