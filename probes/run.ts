@@ -9,8 +9,8 @@
  * Every run makes paid model calls. Never wire this into automatic verification.
  */
 import type { Subprocess } from "bun";
-import { copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir, hostname, tmpdir, userInfo } from "node:os";
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,7 @@ import {
   RECORD_SCHEMA_VERSION,
   recordFileName,
   RUNNER_VERSION,
+  storedWholeBaseline,
   trialTarget,
   type RecordKey,
 } from "./lib/cache.ts";
@@ -50,8 +51,7 @@ import {
 import { judgePrompt, parseJudgeVerdict } from "./lib/judge.ts";
 import type { LockOwner } from "./lib/lock.ts";
 import { descendants, parseProcessTable, stillRunning, type ProcessEntry } from "./lib/processes.ts";
-import { redact, redactJson, scanForSecrets, secretEnvValues, type RedactionContext, type SecretFinding } from "./lib/redaction.ts";
-import { BOUNDARY_STATEMENT, CONTAMINATION_STATEMENT, summarizeRecord, terminalSafe } from "./lib/report.ts";
+import { BOUNDARY_STATEMENT, compareRecords, CONTAMINATION_STATEMENT, SIGNIFICANCE_THRESHOLD, summarizeRecord, terminalSafe } from "./lib/report.ts";
 import { packageManifestEntries, parseContextWindow, parsePiList, parseSysctlTimeval, runtimeFingerprint, sanitizePackageSource } from "./lib/runtime.ts";
 import { parseScenario } from "./lib/scenario.ts";
 import { eventUsage, parseProbeRun, type ProbeRun } from "./lib/transcript.ts";
@@ -104,7 +104,7 @@ const PACKAGE_MANIFEST_PATH = "pi/agent/packages.txt";
 
 const DEFAULT_MODELS = ["anthropic/claude-sonnet-5", "openai-codex/gpt-6-luna"];
 const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-5";
-const DEFAULT_TRIALS = 3;
+const DEFAULT_TRIALS = 10;
 const DEFAULT_CONCURRENCY = 4;
 const SANDBOX_EXTENSION_PATH = "pi/agent/extensions/sandbox/index.ts";
 
@@ -177,7 +177,6 @@ type Options = {
   includeBenchmarks: boolean;
   provisionFixtures: boolean;
   recordReview: boolean;
-  exportDir: string | null;
 };
 
 function parseArgs(argv: string[]): Options {
@@ -195,7 +194,6 @@ function parseArgs(argv: string[]): Options {
     includeBenchmarks: false,
     provisionFixtures: false,
     recordReview: false,
-    exportDir: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -224,11 +222,11 @@ function parseArgs(argv: string[]): Options {
       case "--include-benchmarks": options.includeBenchmarks = true; break;
       case "--provision-fixtures": options.provisionFixtures = true; break;
       case "--record-review": options.recordReview = true; break;
-      case "--export": options.exportDir = next(); break;
       case "--help": printUsage(); process.exit(0);
       default: throw new Error(`unknown argument: ${arg}`);
     }
   }
+  if (options.compare && !argv.includes("--harness-mode")) options.harnessMode = "whole";
   if (!Number.isInteger(options.trials) || options.trials < 1) throw new Error("--trials must be a positive integer");
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1) throw new Error("--concurrency must be a positive integer");
   return options;
@@ -237,7 +235,7 @@ function parseArgs(argv: string[]): Options {
 function printUsage(): void {
   console.log(`Usage: bun probes/run.ts [options]
 
-  --compare              Add the git HEAD version of ${INSTRUCTIONS_PATH} as a "baseline" variant
+  --compare              Add git HEAD as a "baseline" variant; defaults to whole mode
   --variant <path>       Additional instruction file to run (repeatable)
   --scenario <id>        Limit to a scenario (repeatable, default: all)
   --models <a,b>         Models under test (default: ${DEFAULT_MODELS.join(",")})
@@ -245,14 +243,12 @@ function printUsage(): void {
                          start at 1 and top up to ${DEFAULT_TRIALS} after a failing trial)
   --concurrency <n>      Scenario/model/variant cells run at once (default: ${DEFAULT_CONCURRENCY})
   --judge-model <id>     Judge model (default: ${DEFAULT_JUDGE_MODEL})
-  --harness-mode <mode>  isolated (default) or whole
+  --harness-mode <mode>  isolated or whole (default for --compare; otherwise isolated)
   --dry-run              Report what would run and what is cached, without calling any model
   --include-benchmarks   Also run benchmark scenarios when no --scenario is given (named ones always run)
   --provision-fixtures   Clone pinned benchmark fixtures and run their setup (network), then exit;
                          limited to the fixtures of --scenario tasks when given
   --record-review        Record human verdicts for sampled benchmark trials (reads stdin), then exit
-  --export <dir>         Write a redacted, secret-scanned release of benchmark records and artifacts
-                         (limited to --scenario tasks when given), then exit
 
 The working tree ${INSTRUCTIONS_PATH} always runs as the "candidate" variant.`);
 }
@@ -1050,7 +1046,7 @@ function fixtureBrowsersPath(spec: FixtureSpec): string {
 /**
  * Regular files below `root` as paths relative to it. Symlinks and other special entries are
  * skipped and never followed: artifacts are written by verifier code the agent can influence, and a
- * link could otherwise carry a host file into the results or a release.
+ * link could otherwise carry a host file into the results.
  */
 async function regularFiles(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -1503,98 +1499,6 @@ async function recordReviews(manifest: Map<string, FixtureSpec>): Promise<void> 
   console.log(`\nrecorded ${recorded} human verdict(s)`);
 }
 
-// Artifacts with these extensions are redacted and scanned as text; any other artifact, such as a
-// screenshot, is copied unchanged and listed for a human check before release.
-const TEXT_ARTIFACT = /\.(?:txt|log|json|md|html?|csv|xml|svg|ya?ml)$/i;
-
-/**
- * Writes a release of the current-schema benchmark records and their artifacts to an empty
- * directory: every string redacted, text artifacts redacted, other artifacts copied and listed for
- * a human check. The whole export is then scanned; any finding makes it not releasable and the run
- * exit non-zero. Local records are left untouched.
- */
-async function exportRelease(target: string, scenarioIds: string[]): Promise<void> {
-  const dir = resolve(target);
-  // Compare real paths: on macOS the temp and results paths can differ only by a /private prefix.
-  const results = await realpath(RESULTS_DIR);
-  let existing = dir;
-  while (!(await pathExists(existing)) && dirname(existing) !== existing) existing = dirname(existing);
-  const real = join(await realpath(existing), relative(existing, dir));
-  if (real === results || real.startsWith(`${results}/`)) throw new Error("--export must not write inside probes/results");
-  if (await pathExists(dir) && (await readdir(dir)).length > 0) throw new Error(`--export target ${target} must be empty or absent`);
-  await mkdir(dir, { recursive: true });
-  const context: RedactionContext = { secrets: secretEnvValues(process.env), home: homedir(), user: userInfo().username, host: hostname() };
-
-  const exported: string[] = [];
-  const humanCheck: string[] = [];
-  const textFiles: string[] = [];
-  const findings: (SecretFinding & { file: string })[] = [];
-  const fixtures = new Map<string, NonNullable<BenchmarkRecord["fixture"]>>();
-  const artifactsRoot = await realpath(ARTIFACTS_DIR).catch(() => null);
-  /** A stored artifact is exported only as a regular file inside results/artifacts, never through a link. */
-  const safeArtifact = async (source: string): Promise<boolean> => {
-    const info = await lstat(source).catch(() => null);
-    if (!info?.isFile() || artifactsRoot === null) return false;
-    return (await realpath(source)).startsWith(`${artifactsRoot}/`);
-  };
-  for (const file of (await readdir(RESULTS_DIR)).filter((name) => name.endsWith(".json")).sort()) {
-    const record = await readRecord(join(RESULTS_DIR, file));
-    if (record?.schemaVersion !== RECORD_SCHEMA_VERSION || record.scenarioKind !== "benchmark") continue;
-    if (scenarioIds.length > 0 && !scenarioIds.includes(record.scenarioId)) continue;
-    const name = redact(file, context);
-    await writeFile(join(dir, name), `${JSON.stringify(redactJson(record, context), null, 2)}\n`);
-    exported.push(name);
-    textFiles.push(name);
-    if (record.fixture) fixtures.set(record.fixture.name, record.fixture);
-    for (const path of record.trials.flatMap((trial) => trial.rounds.flatMap((round) => round.artifacts))) {
-      const released = redact(path, context);
-      const source = join(RESULTS_DIR, path);
-      const destination = resolve(dir, released);
-      if (!destination.startsWith(`${dir}/`) || !(await safeArtifact(source))) {
-        findings.push({ file: released, kind: "unsafe-artifact", line: 0 });
-        continue;
-      }
-      await mkdir(dirname(destination), { recursive: true });
-      if (TEXT_ARTIFACT.test(path)) {
-        await writeFile(destination, redact(await readFile(source, "utf8"), context));
-        textFiles.push(released);
-      } else {
-        await copyFile(source, destination);
-        humanCheck.push(released);
-      }
-    }
-  }
-
-  for (const file of textFiles) {
-    for (const finding of scanForSecrets(await readFile(join(dir, file), "utf8"), context)) findings.push({ file, ...finding });
-  }
-  // Release metadata is redacted and scanned too: a fixture repository can be a local or credentialed URL.
-  const metadata = redactJson({
-    exportedAt: new Date().toISOString(),
-    runnerVersion: RUNNER_VERSION,
-    schemaVersion: RECORD_SCHEMA_VERSION,
-    boundary: BOUNDARY_STATEMENT,
-    contamination: CONTAMINATION_STATEMENT,
-    fixtures: [...fixtures.values()],
-    records: exported,
-    humanCheckBeforeRelease: humanCheck,
-  }, context);
-  for (const finding of scanForSecrets(JSON.stringify(metadata, null, 2), context)) findings.push({ file: "release.json", ...finding });
-  const release = { ...metadata, scanFindings: findings, releasable: findings.length === 0 };
-  await writeFile(join(dir, "release.json"), `${JSON.stringify(release, null, 2)}\n`);
-
-  console.log(`exported ${exported.length} benchmark record(s) to ${dir}`);
-  console.log(`boundary: ${BOUNDARY_STATEMENT}`);
-  console.log(`contamination: ${CONTAMINATION_STATEMENT}`);
-  // Artifact names come from verifier code the agent can influence.
-  if (humanCheck.length > 0) console.log(terminalSafe(`\n${humanCheck.length} non-text artifact(s) need a human check before release:\n${humanCheck.map((path) => `  ${path}`).join("\n")}`));
-  if (findings.length > 0) {
-    console.log(`\nNOT RELEASABLE: ${findings.length} secret-like or unsafe finding(s):`);
-    for (const finding of findings) console.log(terminalSafe(`  ${finding.file}${finding.line > 0 ? `:${finding.line}` : ""}: ${finding.kind}`));
-    process.exitCode = 1;
-  }
-}
-
 /** Provisions every manifest fixture, or only those of the named `--scenario` tasks. */
 async function provisionFixtures(options: Options, manifest: Map<string, FixtureSpec>): Promise<void> {
   const specs = options.scenarioIds.length === 0
@@ -1620,10 +1524,6 @@ async function main(): Promise<void> {
   }
   if (options.recordReview) {
     await recordReviews(manifest);
-    return;
-  }
-  if (options.exportDir !== null) {
-    await exportRelease(options.exportDir, options.scenarioIds);
     return;
   }
   const scenarios = await loadScenarios(options.scenarioIds, options.includeBenchmarks, manifest);
@@ -1660,6 +1560,10 @@ async function main(): Promise<void> {
     systemPromptFiles.set(key, written);
     return written;
   };
+  const previousRecords = options.harnessMode === "whole"
+    ? (await Promise.all((await readdir(RESULTS_DIR)).filter((file) => file.endsWith(".json"))
+      .map((file) => readRecord(join(RESULTS_DIR, file))))).filter((record): record is ResultRecord => record !== null)
+    : [];
   let judgeSystemPromptFile: Promise<string> | null = null;
   const ensureJudgeSystemPromptFile = (): Promise<string> => (judgeSystemPromptFile ??= (async () => {
     const file = join(await ensurePromptDir(), "judge-system.md");
@@ -1882,6 +1786,44 @@ async function main(): Promise<void> {
   }
   console.log(`scenario | model | variant | source | result`);
   for (const row of rows) if (row !== null) console.log(row);
+
+  const reported = await Promise.all(cells.map(async ({ loaded, model, variant }, index) => {
+    if (rows[index] === null || rows[index]?.includes("| skipped:") || rows[index]?.includes("| would run")) return null;
+    const key: RecordKey = {
+      harnessMode: options.harnessMode, harnessHash, runtimeHash,
+      scenarioId: loaded.scenario.id, scenarioHash: loaded.hash, model,
+      instructionsHash: variant.instructionsHash,
+      judgeModel: loaded.scenario.kind === "benchmark"
+        ? loaded.scenario.scoring === "verifier" ? null : options.judgeModel
+        : loaded.scenario.judge ? options.judgeModel : null,
+    };
+    const record = await readRecord(join(RESULTS_DIR, recordFileName(key)));
+    return record && measuresSameSetup(record, key) ? { record, key } : null;
+  }));
+  console.log(`\ncomparisons (two-sided Fisher exact; flag if p < ${SIGNIFICANCE_THRESHOLD}):`);
+  let comparisonCount = 0;
+  for (const [index, cell] of cells.entries()) {
+    const current = reported[index];
+    if (!current) continue;
+    if (options.harnessMode === "whole") {
+      const baseline = storedWholeBaseline(previousRecords, current.key);
+      if (baseline) {
+        console.log(`${cell.loaded.scenario.id} | ${cell.model} | ${cell.variant.label} | stored whole ` +
+          `harness ${baseline.harnessHash} runtime ${baseline.runtimeHash} → harness ${harnessHash} runtime ${runtimeHash} | ` +
+          compareRecords(baseline, current.record));
+        comparisonCount++;
+      }
+    }
+    for (let earlier = 0; earlier < index; earlier++) {
+      const other = cells[earlier];
+      const prior = reported[earlier];
+      if (!prior || other.loaded.scenario.id !== cell.loaded.scenario.id || other.model !== cell.model) continue;
+      console.log(`${cell.loaded.scenario.id} | ${cell.model} | ${other.variant.label} → ${cell.variant.label} | ` +
+        compareRecords(prior.record, current.record));
+      comparisonCount++;
+    }
+  }
+  if (comparisonCount === 0) console.log("no compatible pairs");
   if (totalInfrastructureFailures > 0) {
     console.log(`\n${totalInfrastructureFailures} trial(s) failed for infrastructure reasons and were not scored; rerun to top up.`);
     process.exitCode = 1;

@@ -2,7 +2,7 @@ import { sha256Hex } from "./hashing.ts";
 import type { BenchmarkTrialRecord, HarnessMode, ResultRecord, TrialRecord } from "./types.ts";
 
 /** Bump when a change to execution or scoring makes older records incomparable. */
-export const RUNNER_VERSION = "7";
+export const RUNNER_VERSION = "8";
 
 /**
  * Shape of a stored record. Bump when fields change, so older documents are kept as evidence but
@@ -36,6 +36,7 @@ export function recordFileName(key: RecordKey): string {
   const model = key.model.replace(/[^a-zA-Z0-9.-]+/g, "-");
   const setup = sha256Hex([
     RUNNER_VERSION,
+    RECORD_SCHEMA_VERSION,
     key.harnessMode,
     key.harnessHash,
     key.runtimeHash ?? "",
@@ -66,6 +67,23 @@ export function measuresSameSetup(record: ResultRecord, want: RecordKey): boolea
     record.model === want.model &&
     record.judgeModel === want.judgeModel
   );
+}
+
+/** Newest compatible whole-mode observation under another effective harness or runtime. */
+export function storedWholeBaseline(records: ResultRecord[], current: RecordKey): ResultRecord | null {
+  if (current.harnessMode !== "whole") return null;
+  return records.filter((record) =>
+    record.schemaVersion === RECORD_SCHEMA_VERSION &&
+    record.runnerVersion === RUNNER_VERSION &&
+    record.trials.length > 0 &&
+    record.harnessMode === "whole" &&
+    record.scenarioId === current.scenarioId &&
+    record.scenarioHash === current.scenarioHash &&
+    record.model === current.model &&
+    record.instructionsHash === current.instructionsHash &&
+    record.judgeModel === current.judgeModel &&
+    (record.harnessHash !== current.harnessHash || record.runtimeHash !== current.runtimeHash)
+  ).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
 }
 
 /** A comparable record with enough trials needs no model calls at all. */

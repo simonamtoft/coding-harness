@@ -18,8 +18,6 @@ caching; this file states the authoring constraints.
   calls. `probes/test` runs the real runner against `test/fake-pi.ts` in a temporary repository
   copy; extend it when changing runner lifecycle, locking, or cleanup, and never point it at the
   local `results/`.
-- Publish benchmark evidence only through `--export`. Publish an export only when `release.json`
-  says `releasable: true` and a person has checked every `humanCheckBeforeRelease` artifact.
 - Keep `results/` local and untracked. They are the "before" side of the next comparison on this
   machine; deleting one means paying for it again.
 - Bump `RUNNER_VERSION` in `lib/cache.ts` when execution or scoring changes in a way that makes

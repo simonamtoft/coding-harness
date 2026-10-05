@@ -314,9 +314,9 @@ describe("probe runner lifecycle", () => {
 
     rmSync(sandbox.log, { force: true });
     const failing = await runRunner(["--models", "fake/flaky"], { FAKE_JUDGE_REPLY: "FAIL - skipped the check" });
-    expect(failing.stderr).toContain("failed a trial; topping up to 3");
-    expect(recordFor("fake/flaky").trials).toHaveLength(3);
-    expect(agentCalls()).toBe(3);
+    expect(failing.stderr).toContain("failed a trial; topping up to 10");
+    expect(recordFor("fake/flaky").trials).toHaveLength(10);
+    expect(agentCalls()).toBe(10);
 
     rmSync(sandbox.log, { force: true });
     await runRunner(["--models", "fake/explicit", "--trials", "2"]);
@@ -414,6 +414,50 @@ describe("probe runner lifecycle", () => {
     expect(probeTempDirs()).toEqual([]);
   }, TEST_TIMEOUT_MS);
 
+  test("defaults to ten non-guard trials and compares a stored whole-mode observation without reusing it", async () => {
+    const args = ["--harness-mode", "whole", "--models", "fake/history"];
+    const dry = await runRunner([...args, "--dry-run"], {}, "focused-check-own-change");
+    expect(dry.stdout).toContain("would run 10 trials");
+    const first = await runRunner([...args, "--trials", "1"]);
+    expect(first.exitCode).toBe(0);
+    const prior = recordFor("fake/history");
+    appendFileSync(join(sandbox.env.FAKE_PACKAGE, "index.ts"), "export const changed = true;\n");
+    const next = await runRunner([...args, "--trials", "1"]);
+    expect(next.exitCode).toBe(0);
+    const current = resultFiles().filter((file) => file.includes("__fake-history__") && file.endsWith(".json"));
+    expect(current).toHaveLength(2);
+    expect(next.stdout).toContain("| fresh 1 |");
+    expect(next.stdout).toContain(`stored whole harness ${prior.harnessHash} runtime ${prior.runtimeHash} → harness ${prior.harnessHash} runtime`);
+    expect(next.stdout).toContain("Fisher two-sided p=1.0000");
+    expect(next.stdout).not.toContain("FLAG");
+
+    const oldName = current.find((file) => JSON.parse(readFileSync(join(sandbox.root, "probes/results", file), "utf8")).runtimeHash === prior.runtimeHash)!;
+    const oldPath = join(sandbox.root, "probes/results", oldName);
+    writeFileSync(oldPath, JSON.stringify({ ...prior, runnerVersion: "7" }));
+    const noBaseline = await runRunner([...args, "--trials", "1", "--dry-run"]);
+    expect(noBaseline.stdout).toContain("no compatible pairs");
+  }, TEST_TIMEOUT_MS);
+
+  test("--compare chooses whole mode unless isolated is explicit", async () => {
+    for (const args of [["init"], ["add", "shared/AGENTS.md"], ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "baseline"]]) {
+      const result = Bun.spawnSync(["git", ...args], { cwd: sandbox.root, stdout: "pipe", stderr: "pipe" });
+      expect(result.exitCode).toBe(0);
+    }
+    const whole = await runRunner(["--compare", "--models", "fake/compare", "--trials", "1", "--dry-run"]);
+    expect(whole.exitCode).toBe(0);
+    expect(whole.stdout).toContain("harness mode: whole");
+    const isolated = await runRunner(["--compare", "--harness-mode", "isolated", "--models", "fake/compare", "--trials", "1", "--dry-run"]);
+    expect(isolated.stdout).toContain("harness mode: isolated");
+  }, TEST_TIMEOUT_MS);
+
+  test("compares instruction variants in isolated mode", async () => {
+    const variant = join(sandbox.temp, "other.md");
+    writeFileSync(variant, "Different complete instructions\n");
+    const result = await runRunner(["--harness-mode", "isolated", "--variant", variant, "--models", "fake/variants", "--trials", "1"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("other → candidate | 0/1 vs 0/1 · delta +0pp · Fisher two-sided p=1.0000");
+  }, TEST_TIMEOUT_MS);
+
   test("whole mode keys on a sanitized runtime identity", async () => {
     const result = await runRunner(["--harness-mode", "whole", "--models", "fake/whole", "--trials", "1"]);
     expect(result.exitCode).toBe(0);
@@ -486,7 +530,7 @@ describe("benchmark trials", () => {
     expect(result.stdout).toContain("verifier passed 1/1 (primary) · failed 0 budget exhausted 0 · repair rounds 1");
 
     const record = benchmarkRecord("fake/bench");
-    expect(record).toMatchObject({ schemaVersion: 1, runnerVersion: "7", judgeModel: null, contextWindow: 200_000, fixture: null });
+    expect(record).toMatchObject({ schemaVersion: 1, runnerVersion: "8", judgeModel: null, contextWindow: 200_000, fixture: null });
     const [trial] = record.trials;
     expect(trial).toMatchObject({ outcome: "passed", exhaustedLimit: null, repairRounds: 1 });
     expect(trial.rounds.map((round) => round.verifier.exitCode)).toEqual([1, 0]);
@@ -990,6 +1034,19 @@ describe("judged, visual, and human-reviewed benchmark trials", () => {
       for (const path of artifacts) expect(readFileSync(join(sandbox.root, "probes/results", path), "utf8")).toBe("png");
     }, TEST_TIMEOUT_MS);
 
+    test("never collects a symlinked artifact from the verifier", async () => {
+      const hostFile = join(dirname(sandbox.root), "host-credentials");
+      writeFileSync(hostFile, "aws_secret=host-only\n");
+      writeFileSync(join(sandbox.root, "probes/scenarios/bench-visual/answers/verifier/shoot.ts"), [
+        'import { symlinkSync, writeFileSync } from "node:fs";',
+        'writeFileSync(`${process.env.PROBE_ARTIFACT_DIR}/desktop.png`, "png");',
+        `symlinkSync(${JSON.stringify(hostFile)}, \`\${process.env.PROBE_ARTIFACT_DIR}/notes.txt\`);`,
+      ].join("\n"));
+      expect((await runRunner(["--models", "fake/link", "--trials", "1"], {}, "bench-visual")).exitCode).toBe(0);
+      const record = benchmarkRecord("fake/link");
+      expect(record.trials[0].rounds[0].artifacts.map((path) => path.split("/").pop())).toEqual(["desktop.png"]);
+    }, TEST_TIMEOUT_MS);
+
     test("--record-review records verdicts for the sampled trials only, under the record lock", async () => {
       expect((await runRunner(["--models", "fake/human", "--trials", "2"], {}, "bench-visual")).exitCode).toBe(0);
       const review = await runRunner(["--record-review"], {}, null, "x\nf\nheading overlaps the menu on mobile\np\nwould be recorded if trial 2 were offered\n");
@@ -1007,113 +1064,4 @@ describe("judged, visual, and human-reviewed benchmark trials", () => {
       expect((await runRunner(["--models", "fake/human", "--trials", "2"], {}, "bench-visual")).stdout).toContain("human pass 0 fail 1");
     }, TEST_TIMEOUT_MS);
   });
-});
-
-describe("release export", () => {
-  const TASK = "bench-release";
-  const SECRET = "probe-secret-value-123456";
-  const GITHUB_TOKEN = `ghp_${"x".repeat(36)}`;
-  let fakeHome: string;
-  let exportDir: string;
-
-  beforeEach(() => {
-    const base = dirname(sandbox.root);
-    fakeHome = join(base, "home-of-tester");
-    exportDir = join(base, "release");
-    const dir = join(sandbox.root, "probes/scenarios", TASK);
-    mkdirSync(join(dir, "fixture"), { recursive: true });
-    mkdirSync(join(dir, "answers/verifier"), { recursive: true });
-    writeFileSync(join(dir, "scenario.json"), JSON.stringify({ kind: "benchmark", prompt: "Build it.", verifyCommand: ["bun", "shoot.ts"] }));
-    writeFileSync(join(dir, "fixture/index.html"), "<h1>demo</h1>\n");
-    writeFileSync(join(dir, "answers/verifier/shoot.ts"), [
-      "import { writeFileSync } from \"node:fs\";",
-      "writeFileSync(`${process.env.PROBE_ARTIFACT_DIR}/desktop.png`, \"png\");",
-      "writeFileSync(`${process.env.PROBE_ARTIFACT_DIR}/console.log`, `token ${process.env.DEMO_API_KEY} at ${process.env.HOME}/app`);",
-    ].join("\n"));
-    Object.assign(sandbox.env, { DEMO_API_KEY: SECRET, HOME: fakeHome });
-  });
-
-  const exported = (name: string) => readFileSync(join(exportDir, name), "utf8");
-
-  test("redacts records and text artifacts, lists screenshots for a human check, and states the boundary", async () => {
-    const run = await runRunner(["--models", "fake/release", "--trials", "1"], {
-      FAKE_FINAL: `Used ${SECRET} and ${GITHUB_TOKEN} in ${fakeHome}/project`,
-    }, TASK);
-    expect(run.exitCode).toBe(0);
-    expect(run.stdout).toContain("boundary: Uncontained host run");
-    expect(run.stdout).toContain("contamination: The fixtures and this corpus are public");
-
-    const result = await runRunner(["--export", exportDir], {}, null);
-    expect(result.exitCode).toBe(0);
-    const release = JSON.parse(exported("release.json")) as Record<string, unknown>;
-    expect(release).toMatchObject({ releasable: true, scanFindings: [], boundary: expect.stringContaining("inherited credentials") });
-    const [recordName] = release.records as string[];
-    const record = exported(recordName);
-    expect(record).toContain("Used [REDACTED:env] and [REDACTED:github-token] in ~/project");
-    expect(record).not.toContain(SECRET);
-    expect(record).not.toContain(fakeHome);
-
-    const artifacts = (release.humanCheckBeforeRelease as string[]);
-    expect(artifacts.map((path) => path.split("/").pop())).toEqual(["desktop.png"]);
-    expect(exported(artifacts[0])).toBe("png");
-    const logPath = artifacts[0].replace("desktop.png", "console.log");
-    expect(exported(logPath)).toBe("token [REDACTED:env] at ~/app");
-
-    // Local evidence stays unredacted.
-    expect(JSON.stringify(recordFor("fake/release"))).toContain(SECRET);
-  }, TEST_TIMEOUT_MS);
-
-  test("marks an export with a surviving secret-like value as not releasable without printing the value", async () => {
-    expect((await runRunner(["--models", "fake/leak", "--trials", "1"], { FAKE_FINAL: "set password = hunter2hunter2 for staging" }, TASK)).exitCode).toBe(0);
-    const result = await runRunner(["--export", exportDir], {}, null);
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("NOT RELEASABLE: 1 secret-like or unsafe finding(s)");
-    expect(result.stdout).not.toContain("hunter2");
-    expect(JSON.parse(exported("release.json"))).toMatchObject({ releasable: false, scanFindings: [{ kind: "suspicious-assignment" }] });
-  }, TEST_TIMEOUT_MS);
-
-  test("never collects a symlinked artifact, so a host file cannot reach the results", async () => {
-    const hostFile = join(dirname(sandbox.root), "host-credentials");
-    writeFileSync(hostFile, "aws_secret=host-only\n");
-    writeFileSync(join(sandbox.root, "probes/scenarios", TASK, "answers/verifier/shoot.ts"), [
-      "import { symlinkSync, writeFileSync } from \"node:fs\";",
-      "writeFileSync(`${process.env.PROBE_ARTIFACT_DIR}/desktop.png`, \"png\");",
-      `symlinkSync(${JSON.stringify(hostFile)}, \`\${process.env.PROBE_ARTIFACT_DIR}/notes.txt\`);`,
-    ].join("\n"));
-    expect((await runRunner(["--models", "fake/link", "--trials", "1"], {}, TASK)).exitCode).toBe(0);
-    const record = recordFor("fake/link");
-    if (record.scenarioKind !== "benchmark") throw new Error("expected a benchmark record");
-    expect(record.trials[0].rounds[0].artifacts.map((path) => path.split("/").pop())).toEqual(["desktop.png"]);
-  }, TEST_TIMEOUT_MS);
-
-  test("refuses an artifact path that leaves results/artifacts and redacts release metadata", async () => {
-    expect((await runRunner(["--models", "fake/tamper", "--trials", "1"], {}, TASK)).exitCode).toBe(0);
-    const name = resultFiles().find((file) => file.includes("fake-tamper") && file.endsWith(".json"))!;
-    const path = join(sandbox.root, "probes/results", name);
-    const record = JSON.parse(readFileSync(path, "utf8")) as BenchmarkRecord;
-    record.trials[0].rounds[0].artifacts.push("artifacts/../../../../host-file.png");
-    record.fixture = { name: "demo", repository: `${fakeHome}/src/demo`, commit: "0".repeat(40), licence: "MIT", contamination: "n/a" };
-    writeFileSync(path, JSON.stringify(record));
-    writeFileSync(join(dirname(sandbox.root), "host-file.png"), "host");
-
-    const result = await runRunner(["--export", exportDir], {}, null);
-    expect(result.exitCode).toBe(1);
-    const release = JSON.parse(exported("release.json")) as { releasable: boolean; scanFindings: { kind: string }[]; fixtures: { repository: string }[] };
-    expect(release.releasable).toBe(false);
-    expect(release.scanFindings.map((finding) => finding.kind)).toEqual(["unsafe-artifact"]);
-    expect(release.fixtures[0].repository).toBe("~/src/demo");
-    expect(existsSync(join(exportDir, "host-file.png"))).toBe(false);
-  }, TEST_TIMEOUT_MS);
-
-  test("refuses a non-empty target or one inside probes/results", async () => {
-    mkdirSync(exportDir, { recursive: true });
-    writeFileSync(join(exportDir, "keep.txt"), "x");
-    const nonEmpty = await runRunner(["--export", exportDir], {}, null);
-    expect(nonEmpty.exitCode).not.toBe(0);
-    expect(nonEmpty.stderr).toContain("must be empty or absent");
-    for (const target of ["probes/results/out", "probes/results/a/b"]) {
-      const inside = await runRunner(["--export", join(sandbox.root, target)], {}, null);
-      expect(inside.stderr).toContain("must not write inside probes/results");
-    }
-  }, TEST_TIMEOUT_MS);
 });

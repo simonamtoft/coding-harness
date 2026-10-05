@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { isReusable, missingTrials, RECORD_SCHEMA_VERSION, recordFileName, RUNNER_VERSION, trialTarget } from "./cache.ts";
+import { isReusable, missingTrials, RECORD_SCHEMA_VERSION, recordFileName, RUNNER_VERSION, storedWholeBaseline, trialTarget } from "./cache.ts";
+import { sha256Hex } from "./hashing.ts";
 import { ZERO_USAGE } from "./transcript.ts";
 import type { ResultRecord, TrialRecord } from "./types.ts";
 
@@ -150,6 +151,26 @@ describe("trialTarget", () => {
   });
 });
 
+describe("storedWholeBaseline", () => {
+  const current = { ...want, harnessMode: "whole" as const, harnessHash: "new", runtimeHash: "runtime-new" };
+  const old = { ...record, harnessMode: "whole" as const, harnessHash: "old", runtimeHash: "runtime-old" };
+
+  test("selects the most recently created changed whole setup, ignoring later human-review updates", () => {
+    const earlier = { ...old, createdAt: "2026-09-21T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z" };
+    const latest = { ...old, harnessHash: "new", createdAt: "2026-09-22T00:00:00Z" };
+    expect(storedWholeBaseline([
+      earlier, latest, { ...old, createdAt: "2026-09-23T00:00:00Z", runnerVersion: "7" },
+      { ...old, createdAt: "2026-09-28T00:00:00Z", trials: [] },
+      { ...old, createdAt: "2026-09-24T00:00:00Z", scenarioHash: "changed" },
+      { ...old, createdAt: "2026-09-25T00:00:00Z", instructionsHash: "changed" },
+      { ...old, createdAt: "2026-09-26T00:00:00Z", judgeModel: "changed" },
+      { ...old, createdAt: "2026-09-27T00:00:00Z", harnessHash: "new", runtimeHash: "runtime-new" },
+    ], current)).toEqual(latest);
+    expect(storedWholeBaseline([{ ...old, runnerVersion: "7" }], current)).toBeNull();
+    expect(storedWholeBaseline([old], { ...current, harnessMode: "isolated" })).toBeNull();
+  });
+});
+
 describe("recordFileName", () => {
   const key = {
     harnessMode: "isolated" as const,
@@ -166,6 +187,12 @@ describe("recordFileName", () => {
     expect(recordFileName(key)).toMatch(
       /^focused-check-own-change__openai-codex-gpt-5\.6-luna__0123456789ab__[0-9a-f]{8}\.json$/,
     );
+  });
+
+  test("includes the schema version in the cache identity", () => {
+    const setup = [RUNNER_VERSION, RECORD_SCHEMA_VERSION, key.harnessMode, key.harnessHash, key.runtimeHash ?? "", key.scenarioHash, key.model, key.judgeModel ?? ""].join("\u0000");
+    const prefix = sha256Hex(setup).slice(0, 8);
+    expect(recordFileName(key)).toEndWith(`__${prefix}.json`);
   });
 
   test("separates records for different instruction variants", () => {

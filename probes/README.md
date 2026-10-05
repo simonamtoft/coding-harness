@@ -6,7 +6,7 @@ rather than argued from their wording or implementation.
 
 The runner has two modes:
 
-- `isolated` (default) tests one complete `shared/AGENTS.md` variant with context-file discovery,
+- `isolated` (default without `--compare`) tests one complete `shared/AGENTS.md` variant with context-file discovery,
   skills, prompt templates, and all extensions disabled, except that tool-enabled trials load the
   canonical sandbox extension. It is controlled rather than instruction-only: the sandbox adds to
   the system prompt and changes tool behavior. Use it to attribute behavior to instruction wording
@@ -14,8 +14,8 @@ The runner has two modes:
 - `whole` loads the normally installed Pi extensions, skills, prompt templates, packages, and
   other local runtime configuration while still appending exactly one selected `shared/AGENTS.md`
   variant. It is a stateless integration smoke of the installed resources, not a reproduction of
-  an interactive session; see [Limitations](#limitations). Use it before finalizing any change to
-  the effective canonical Pi harness.
+  an interactive session; see [Limitations](#limitations). Run it at the batch points below,
+  not after every canonical runtime change.
 
 Besides instruction-behavior probes, the runner executes `benchmark` scenarios for the PI-50
 model–harness fit suite; see [Benchmark scenarios](#benchmark-scenarios).
@@ -40,7 +40,8 @@ prompt. It cannot show how the agent behaves; only paid probes can.
 ## Running
 
 ```bash
-bun probes/run.ts --compare                              # isolated baseline (git HEAD) vs candidate (working tree)
+bun probes/run.ts --compare                              # whole mode: git HEAD instructions vs working tree, plus stored harness baselines
+bun probes/run.ts --compare --harness-mode isolated      # controlled instruction-only comparison
 bun probes/run.ts --compare --dry-run                    # what would run, what is already cached
 bun probes/run.ts --harness-mode whole                   # candidate against the installed whole Pi harness
 bun probes/run.ts --scenario focused-check-own-change     # one scenario, isolated candidate only
@@ -50,7 +51,6 @@ bun probes/run.ts --models anthropic/claude-opus-5,openai-codex/gpt-6-astra
 bun probes/run.ts --provision-fixtures                   # clone pinned benchmark fixtures (network, no model calls)
 bun probes/run.ts --include-benchmarks                   # also run benchmark tasks; default runs skip them
 bun probes/run.ts --record-review                        # record human verdicts for sampled benchmark trials
-bun probes/run.ts --export /tmp/pi50-release             # redacted, secret-scanned release of benchmark evidence
 ```
 
 Run `link.sh` before whole-harness probes so the normal Pi resource discovery points at this
@@ -65,8 +65,8 @@ The working tree supplies the `candidate` content. `--compare` adds the `HEAD` c
 alternative `shared/AGENTS.md`, not only a changed paragraph.
 
 Defaults: models `anthropic/claude-sonnet-5` and `openai-codex/gpt-6-luna` (one large, one
-small, two vendors), 3 trials, judge `anthropic/claude-sonnet-5`, harness mode `isolated`,
-4 concurrent cells.
+small, two vendors), 10 trials per non-guard cell, judge `anthropic/claude-sonnet-5`,
+harness mode `whole` with `--compare` and `isolated` otherwise, 4 concurrent cells.
 
 A cell is one scenario × model × variant record. Up to `--concurrency` cells run at once; each
 holds its own record lock, and report rows keep cell order. Parallel cells share provider rate
@@ -79,7 +79,7 @@ at the same time; Vite moves to a free port, but a fixture that pins one could c
 
 `"guard": true` in `scenario.json` marks a scenario that every default model passed in every
 stored trial: the `stop-*` probes and the near-ceiling benchmarks. Without an explicit `--trials`,
-a guard cell runs one trial. If a stored trial fails, the same run tops the cell up to 3 so a
+a guard cell runs one trial. If a stored trial fails, the same run tops the cell up to 10 so a
 regression can be told apart from a flake. A failure means failed assertions, a judge `fail`,
 `unparsed`, or `skipped` verdict, or a benchmark `failed` or `budget_exhausted` outcome; a trial
 awaiting re-judgement is not counted. An explicit `--trials` applies to guards unchanged. The
@@ -114,13 +114,24 @@ Every agent and judge child runs with `--thinking medium`, so the local `default
 setting cannot change reasoning effort between records. Changing that level is a runner change
 and needs a `RUNNER_VERSION` bump.
 
-- After editing only `shared/AGENTS.md`, the isolated baseline side can be reused and only the
-  candidate costs money.
+- After editing only `shared/AGENTS.md`, use `--compare --harness-mode isolated` to reuse the
+  isolated baseline side; by default `--compare` runs in whole mode.
 - After editing another effective Pi harness input, upgrading Pi, or changing an installed
   package, whole-mode records rerun even when the instruction content is unchanged.
 - After editing a scenario or fixture, its scenario hash changes, so both variants rerun.
 - After changing models, judge, harness mode, harness hash, or `RUNNER_VERSION`, the affected setup
   reruns. Earlier records stay under their own names, so switching back can reuse them.
+
+Reports compare each available pair of instruction variants for the same scenario and model.
+Whole-mode reports also compare each reported cell to the most recently created stored whole-mode
+record with the same scenario definition, model, instruction hash, judge, schema, and runner version
+but a different harness hash or runtime fingerprint. Both full fingerprints appear in the report.
+Stored baselines are read only for comparison, never counted as trials of the new setup. A changed
+scenario or runner version has no compatible baseline. Each pair prints scored pass counts,
+percentage-point delta, and a two-sided Fisher exact p-value; only p < 0.05 gets `FLAG`.
+Unavailable or unjudged trials are excluded from the test, and a pair without scored trials says
+`insufficient scored trials`. A flag is exploratory across many cells, not a multiple-testing
+corrected finding.
 
 Records whose runner version or hashes no longer match stay as evidence but are never reused as
 input. The `focused-check-own-change` records from runner version 2 are PI-72 evidence: their
@@ -129,8 +140,7 @@ produced one passing trial out of six, which is also why small differences shoul
 as conclusive. Runner version 4 records for the `stop-*` and `ambiguity-mid-work` ids came from
 the retired single-turn definitions and measure stated intent only.
 
-Trials are stochastic. Treat a one- or two-trial difference between variants as noise unless
-repeated evidence supports it.
+Trials are stochastic. Interpret deltas with the reported counts and p-values, not the flag alone.
 
 ### Checkpoints, locks, and failures
 
@@ -327,8 +337,8 @@ needed to test delegation rather than only review accuracy. The specialist basel
 `frontend-local-budget`, `frontend-grid-keyboard`, `data-csv-header`, `data-csv-recon`,
 `ml-backward-diagnosis`, `ml-handoff-gradient`, `tool-cache-review`, and `tool-cache-ttl`.
 The other five tasks remain available for targeted diagnosis. With the two active Pi models and
-three repetitions, whole mode measures 48 agent trials; it does not run automatically. Six panel
-tasks are guards, so pass `--trials 3` for a full baseline; without it, passing guard cells stop at
+10 repetitions, the eight-task whole-mode panel measures up to 160 agent trials; it does not run automatically.
+Six panel tasks are guards, so pass `--trials 10` for a full baseline; without it, passing guard cells stop at
 one trial each. Select the
 panel with eight repeated `--scenario` flags rather than `--include-benchmarks`, which selects
 all 13 tasks. A baseline report must state that this specialist panel, not the entire corpus, was
@@ -481,35 +491,13 @@ names are agent-controlled and could otherwise redraw the terminal the reviewer 
 `human pass N fail M`. Because no benchmark kind has both a verifier and a judge yet,
 verifier/judge disagreements do not arise, and review covers the predeclared sample only.
 
-### Releasing benchmark evidence
-
 Local records and artifacts are unredacted evidence. They can contain host paths, the username,
-and any credential an agent or verifier printed, because children inherit the host environment.
-Don't publish them directly. `--export <dir>` (optionally limited by `--scenario`) writes a
-release to an empty directory outside `probes/results`. The steps:
+and credentials an agent or verifier printed, because children inherit the host environment.
+Keep them local; do not publish them directly.
 
-1. Every string in each current-schema benchmark record is redacted, keys included. Redaction
-   covers the literal values of the runner's secret-named environment variables (`KEY`, `TOKEN`,
-   `SECRET`, `PASSWORD`, `AUTH`, and `CREDENTIALS` as underscore-delimited name parts), known
-   token formats (Anthropic, OpenAI, GitHub, Slack, AWS access keys, JWTs, PEM private keys,
-   bearer headers), the home directory (`~`), the username, and the hostname.
-2. Text artifacts are redacted the same way. Other artifacts, such as screenshots, are copied
-   unchanged and listed in `humanCheckBeforeRelease`: a person must look at them before release.
-3. The export, `release.json` metadata included, is scanned for anything redaction missed and for
-   credential-like assignments such as `password = ...`, `DB_PASSWORD=...`, or
-   `aws_secret_access_key = ...`. A finding reports only its file, line, and kind, never the
-   value or its surroundings. An artifact that is not a regular file inside `results/artifacts`
-   is not copied and counts as an `unsafe-artifact` finding. Any finding sets `releasable: false`
-   in `release.json` and makes the command exit non-zero.
-
-The verifier's artifact directory is collected as regular files only. Symlinks and other special
+The verifier’s artifact directory is collected as regular files only. Symlinks and other special
 entries are skipped, because verifier code the agent can influence could otherwise link a host
 file into the results.
-
-`release.json` also carries the boundary statement, the contamination statement, and each pinned
-fixture's repository, commit, licence, and contamination note. Pattern redaction reduces risk
-but can't prove an export is secret-free. A secret in an unknown format under an innocuous name
-passes both steps, so read the export before publishing it.
 
 Every benchmark run prints the same two statements under its results table:
 

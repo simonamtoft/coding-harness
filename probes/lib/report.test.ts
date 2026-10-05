@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { summarizeRecord, terminalSafe } from "./report.ts";
+import { RUNNER_VERSION } from "./cache.ts";
+import { compareRecords, fisherExact, SIGNIFICANCE_THRESHOLD, summarizeRecord, terminalSafe } from "./report.ts";
 
 describe("terminalSafe", () => {
   test("escapes escape sequences and other control characters but keeps newlines and tabs", () => {
@@ -37,7 +38,7 @@ const ZERO_SPEND = "median agent wall 0.0m · median agent cost $0.00";
 
 const base = {
   schemaVersion: 1,
-  runnerVersion: "7",
+  runnerVersion: RUNNER_VERSION,
   harnessMode: "isolated" as const,
   harnessHash: "h",
   runtimeHash: null,
@@ -55,6 +56,26 @@ const base = {
 
 const record = (trials: TrialRecord[], scenarioKind: ProbeScenarioKind = "multi-turn"): ProbeRecord =>
   ({ ...base, scenarioKind, trials });
+
+describe("comparison", () => {
+  test("two-sided Fisher uses exact table probabilities and a strict 0.05 flag", () => {
+    expect(SIGNIFICANCE_THRESHOLD).toBe(0.05);
+    expect(fisherExact(3, 3, 0, 3)).toBeCloseTo(0.1);
+    expect(fisherExact(4, 4, 0, 4)).toBeCloseTo(2 / 70);
+    expect(fisherExact(10, 10, 10, 10)).toBeCloseTo(1);
+    expect(compareRecords(record(Array.from({ length: 3 }, () => trial("pass", true))),
+      record(Array.from({ length: 3 }, () => trial("fail", false))))).not.toContain("FLAG");
+    expect(compareRecords(record(Array.from({ length: 10 }, () => trial("fail", false))),
+      record(Array.from({ length: 10 }, () => trial("pass", true))))).toContain("Fisher two-sided p=0.0000 · FLAG");
+  });
+
+  test("counts combined assertions and judge; excludes unavailable verdicts rather than inventing scores", () => {
+    const before = record([trial("pass", true), trial("pass", false), trial("unavailable", true)]);
+    const after = record([trial("not_needed", true), trial("not_needed", true)]);
+    expect(compareRecords(before, after)).toContain("1/2 vs 2/2 · delta +50pp");
+    expect(compareRecords(record([trial("unavailable", true)]), after)).toContain("insufficient scored trials");
+  });
+});
 
 describe("summarizeRecord", () => {
   test("leads multi-turn cells with assertions and separates unparsed verdicts", () => {

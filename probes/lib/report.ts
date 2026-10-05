@@ -1,12 +1,59 @@
 import type { BenchmarkRecord, ProbeRecord, ResultRecord } from "./types.ts";
 
-/** Stated by every benchmark run and release until PI-90 containment is adopted. */
+export const SIGNIFICANCE_THRESHOLD = 0.05;
+
+function passCounts(record: ResultRecord): { passed: number; total: number } {
+  if (record.scenarioKind === "benchmark") {
+    const scored = record.trials.filter((trial) => trial.outcome !== "unjudged");
+    return { passed: scored.filter((trial) => trial.outcome === "passed").length, total: scored.length };
+  }
+  const scored = record.trials.filter((trial) => trial.judge.verdict !== "unavailable");
+  return {
+    passed: scored.filter((trial) =>
+      (trial.assertions === null || trial.assertions.passed) &&
+      (trial.judge.verdict === "pass" || trial.judge.verdict === "not_needed")
+    ).length,
+    total: scored.length,
+  };
+}
+
+/** Two-sided Fisher exact test, summing tables as or less likely than the observed table. */
+export function fisherExact(aPassed: number, aTotal: number, bPassed: number, bTotal: number): number {
+  const n = aTotal + bTotal;
+  const logFactorials = [0];
+  for (let i = 1; i <= n; i++) logFactorials.push(logFactorials[i - 1] + Math.log(i));
+  const choose = (size: number, count: number) =>
+    logFactorials[size] - logFactorials[count] - logFactorials[size - count];
+  const successes = aPassed + bPassed;
+  const probability = (left: number) => Math.exp(
+    choose(aTotal, left) + choose(bTotal, successes - left) - choose(n, successes),
+  );
+  const observed = probability(aPassed);
+  let p = 0;
+  for (let left = Math.max(0, successes - bTotal); left <= Math.min(aTotal, successes); left++) {
+    const candidate = probability(left);
+    if (candidate <= observed + 1e-12) p += candidate;
+  }
+  return Math.min(1, p);
+}
+
+export function compareRecords(before: ResultRecord, after: ResultRecord): string {
+  const a = passCounts(before);
+  const b = passCounts(after);
+  if (a.total === 0 || b.total === 0) return `insufficient scored trials (${a.passed}/${a.total} vs ${b.passed}/${b.total})`;
+  const p = fisherExact(a.passed, a.total, b.passed, b.total);
+  const delta = b.passed / b.total - a.passed / a.total;
+  return `${a.passed}/${a.total} vs ${b.passed}/${b.total} · delta ${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(0)}pp · Fisher two-sided p=${p.toFixed(4)}` +
+    (p < SIGNIFICANCE_THRESHOLD ? " · FLAG" : "");
+}
+
+/** Stated by every benchmark run until PI-90 containment is adopted. */
 export const BOUNDARY_STATEMENT =
   "Uncontained host run: agent children run on the host with inherited credentials and unblocked network egress; " +
   "only package installs are guarded (PACKAGE_INSTALL_GUARD_ENV), and fixtures are trusted, pinned, and pre-provisioned. " +
   "PI-90 containment is designed but not implemented.";
 
-/** The accepted limitation of a public corpus, stated by every benchmark run and release. */
+/** The accepted limitation of a public corpus, stated by every benchmark run. */
 export const CONTAMINATION_STATEMENT =
   "The fixtures and this corpus are public and may be in model training data: same-model harness-variant " +
   "comparisons stay valid, but cross-generation model comparisons can be inflated.";

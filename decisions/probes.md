@@ -79,7 +79,7 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** The whole-mode harness hash covers every extension, skill, agent, and prompt, so any one-line edit invalidated every whole-mode record and the next run paid for all of them again, serially. Stored evidence showed the four `stop-*` probes and most benchmarks passing every trial, so three trials each bought little, while only `focused-check-own-change` and `ambiguity-mid-work` separated models. The load check satisfies PRB-06's revisit condition for the breakage part of "test everything as a whole": it catches an extension that fails to load or a skill that is not registered, for free. Behavior still needs paid trials. Judge skipping is limited to a red check or a changed protected file, because the judge catches false verification claims that passing assertions cannot see.
 **Revisit if:** A regression reaches a push that a per-change whole-mode run would have caught, a guard scenario is observed failing, or the judge's own cost is measured to dominate spend.
 **Evidence:** "These all sound reasonable. Apart from lowering judge model to cheaper. Skip judge when assertions give VERY clear pass/fail is good"; the user chose "Hard-boundary failures only", concurrency "4", "1 trial, auto top-up", and "a verify.sh on the standard non-llm tests, and then a precommit hook on the others".
-**Superseded by:** PRB-13 for which probe scenarios need a judge; judged scenarios still skip only on a hard boundary.
+**Superseded by:** PRB-13 for which probe scenarios need a judge; judged scenarios still skip only on a hard boundary. PRB-14 replaces the three-trial default and isolated `--compare` default.
 
 ### PRB-12 · A host sleep during a child is an infrastructure failure
 `accepted` · 2026-09-25 · `01a0d567`
@@ -94,3 +94,16 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** The stop-destructive false failures came from a judge deciding observable conduct from reply wording despite passing fixture evidence. Independent human labeling and paid re-judging for every judge change would make the evaluation suite harder to maintain than its signal warrants; synthetic cases would test protocol behavior but cannot measure agreement with human verdicts. The user chose useful deterministic signal over that maintenance cost.
 **Revisit if:** Final-message judge rulings become a primary basis for quantitative decisions and independent human labels can be sustained.
 **Evidence:** "Can we simplify our eval suite while still having it useful? It should provide some signal, but also not improve our implementation time and struggles too much." The user chose "Assertions first".
+
+### PRB-14 · Power comparisons and use stored whole-mode baselines
+`accepted` · 2026-10-05 · `01a10d13`
+**Decision:** Default non-guard cells to 10 trials, and top failing guards up to 10; use two-sided Fisher exact p < 0.05 as the exploratory delta flag. Default `--compare` to whole mode while keeping explicit isolated comparison. Compare a whole-mode cell against the newest compatible stored result from another harness hash or runtime fingerprint, without treating its trials as reusable; refuse a different runner version or scenario definition.
+**Why:** With three trials per arm even 3/3 vs 0/3 cannot cross 0.05. Isolated-only baseline comparisons do not capture harness changes, and observed whole/isolated verdicts disagree. Ten trials are affordable, while preserving one-trial guards avoids needless spend on historically passing scenarios. Fisher's exact test handles small arms, but a flag across many cells is exploratory rather than corrected proof.
+**Revisit if:** Cell costs or multiplicity make ten-trial comparisons impractical, or a stricter error-rate policy becomes necessary.
+**Evidence:** PI-92.2 describes the measured limitation; user selected p < 0.05 for the report threshold.
+
+### PRB-15 · Keep benchmark evidence local instead of exporting a release
+`reverted` · 2026-10-05 · `01a10d52`
+**Decision:** Remove the `--export` release pipeline, including redaction, secret scanning, `release.json`, and the releasable rule. Keep `--record-review` for human judgement of sampled visual trials and keep local records and reports.
+**Why:** The only current reader needs a local report; a redacted export serves no current decision and cannot prove it is free of secrets. Human review still supplies the visual-quality judgement required by PI-50.
+**Revisit if:** Benchmark evidence needs to be shared outside the local machine with an explicit trust and publication policy.
