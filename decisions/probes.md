@@ -121,3 +121,10 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** In the batch-2 pilot a GPT agent started `nohup vite --port 41191`, the port printed in verifier feedback; it outlived the trial, so repair rounds verified the agent's own server and a later Sonnet trial's verifier could not bind. Twenty orphaned Vite servers remained after the run. Descendant tracking cannot see reparented processes; the environment tag survives reparenting.
 **Revisit if:** PI-90 containment bounds child processes directly, a frozen fixed-port verifier shows a port collision, or a task is re-piloted (migrate its verifier then).
 **Evidence:** User chose "Fix in PI-92.4" and "New + demo only".
+
+### PRB-18 · Accept measurement coverage gaps instead of authoring until every mode discriminates
+`accepted` · 2026-10-06 · `01a110c3`
+**Decision:** PI-50's measurement panel is only the pilot-admitted tasks (`tool-cache-review`, `tool-call-recon`, `frontend-for-iterables`). Exact edit, multi-file verified change, and failure diagnosis, and the interactive-demo, data, and ML domains are recorded as accepted gaps rather than blockers; the corpus, with guards, still covers them for regression. Rejected continuing to author candidates, including a proposed final two-task long-form batch, and rejected counting ceiling tasks as measurement. PI-50's acceptance criteria are unchanged; PI-92.4 AC#3 was amended to require recorded gaps instead of full coverage.
+**Why:** Across three pilot batches ($17.54 recorded agent spend), seven of eight harder candidates reached 10/10 on both default models with subtler seeds and wider code surfaces; only long or broad work (review, reconnaissance, two-phase continuation) separated GPT-6 Luna. Further authoring had low expected yield per paid trial.
+**Revisit if:** A default model changes, a guard starts failing, or a new candidate discriminates in a pilot.
+**Evidence:** The user chose "Accept gaps now" over "Long-form batch", then "Apply and finalize".

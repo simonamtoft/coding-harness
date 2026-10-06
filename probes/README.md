@@ -473,9 +473,16 @@ with GPT-6 Luna: review, reconnaissance, and two-phase continuation.
 `demo-playlist-order` runs its demo flow in both viewport profiles and ends each on a screenshot,
 and `humanReviewTrials: 1` samples its first trial per model for review (PI-50 AC#6). The revised
 `data-local-summary` is deliberately left out of this batch; piloting it later adds 20 trials.
-Do not run the former eight-task baseline as a substitute for this admission step. Revise PI-50's
-panel to the actually admitted tasks only after pilot results are recorded; any uncovered mode
-remains an explicit blocker, not a reason to count a ceiling task as a measurement task.
+Do not run the former eight-task baseline as a substitute for this admission step.
+
+**Measurement panel (PI-50 step 13, 2026-10-06):** `tool-cache-review`, `tool-call-recon`, and
+`frontend-for-iterables`. Their 10-trial pilot cells under runner v8, harness `b12636ba41b1`, and
+runtime `b7621759a09f` are the baseline while that setup is unchanged. Every other task is a guard
+or diagnostic and is never counted as measurement. The user accepted the remaining coverage
+as gaps rather than blockers (PRB-18). Uncovered modes: exact edit, multi-file verified change,
+failure diagnosis. Uncovered domains: interactive demo, data, ML. The corpus itself, guards
+included, still covers every PI-50 mode and domain. Admit a new task only through the pilot rule
+above; revisit the gaps when a default model changes.
 
 Each pinned checkout is public; prior exposure in training data may
 inflate cross-generation model comparisons. `demo-playlist-order` seeds the removal of the
