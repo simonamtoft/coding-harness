@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "petl",
+  "prompt": "A nightly job sorts a large local CSV in descending order with petl.sort(..., reverse=True); the table is bigger than petl's sort buffer. It counts the rows with petl.nrows and then writes the sorted table with petl.tocsv, and the written file is not in descending order. Writing the same sorted table without counting it first is correct. Make a minimal fix inside petl/transform/sorts.py; keep the sort cache in use so later iterations do not re-read the source. You may add tests under petl/test/, but change no other tracked files. Run a focused check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_sort_cache.py"]
+}

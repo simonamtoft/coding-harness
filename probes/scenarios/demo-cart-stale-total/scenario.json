@@ -1,0 +1,7 @@
+{
+  "kind": "benchmark",
+  "fixture": "petite-vue",
+  "prompt": "In the cart demo (examples/cart.html), changing a quantity updates that row's total, but the Subtotal, Shipping, and Total lines often show the values from before the change and only catch up after a later edit. Diagnose the cause and fix it at the root, so any v-effect or binding that depends on state written by another effect is current once `await nextTick()` (exported by petite-vue) resolves, not only in this demo. Keep the demo's v-effect-based totals. Check the demo in a browser.",
+  "verifyCommand": ["node", "probe-tests/cart.cjs"],
+  "humanReviewTrials": 1
+}

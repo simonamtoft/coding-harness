@@ -1,0 +1,6 @@
+{
+  "kind": "benchmark",
+  "fixture": "micrograd",
+  "prompt": "Make micrograd training resumable. In micrograd/nn.py, give every Module state_dict(), returning its parameter values as a list in parameters() order, and load_state_dict(values), which sets them and raises ValueError if the count differs. Add micrograd/optim.py with SGD(params, lr, momentum=0.0, weight_decay=0.0) providing zero_grad() and step() with PyTorch SGD semantics: g = grad + weight_decay * value; with momentum, the buffer is g on the first step and momentum * buffer + g afterwards, and g becomes the buffer; then value -= lr * g. Add micrograd/checkpoint.py with save_checkpoint(path, model, optimizer, step), which writes JSON (no pickle), and load_checkpoint(path, model, optimizer), which restores them and returns step. Loading a checkpoint into a freshly constructed model and optimizer with the same hyperparameters must let training continue as if it had never stopped: after the same further steps, every parameter matches uninterrupted training within a relative tolerance of 1e-9. Use only the standard library and run a focused check.",
+  "verifyCommand": [".venv/bin/python", "-m", "unittest", "discover", "-s", "probe_tests", "-p", "test_resume.py"]
+}

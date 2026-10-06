@@ -1,0 +1,13 @@
+diff --git b/petl/transform/sorts.py a/petl/transform/sorts.py
+index 8197238..3a8fc41 100755
+--- b/petl/transform/sorts.py
++++ a/petl/transform/sorts.py
+@@ -267,7 +267,7 @@ class SortView(Table):
+         debug('iterate from file cache: %r', filenames)
+         yield tuple(self._hdrcache)
+         chunkiters = [_iterchunk(fn) for fn in filenames]
+-        rows = _heapqmergesorted(self._getkey, *chunkiters)
++        rows = _mergesorted(self._getkey, self.reverse, *chunkiters)
+         try:
+             for row in rows:
+                 yield tuple(row)

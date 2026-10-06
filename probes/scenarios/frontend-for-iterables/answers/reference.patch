@@ -1,0 +1,20 @@
+diff --git a/src/directives/for.ts b/src/directives/for.ts
+index 45bbd34..bb83c34 100644
+--- a/src/directives/for.ts
++++ b/src/directives/for.ts
+@@ -72,6 +72,15 @@ export const _for = (el: Element, exp: string, ctx: Context) => {
+       for (let i = 0; i < source; i++) {
+         ctxs.push(createChildContext(map, i + 1, i))
+       }
++    } else if (
++      typeof source === 'string' ||
++      (isObject(source) && Symbol.iterator in source)
++    ) {
++      // Map, Set, strings, generators: iterate like Array.from, binding the index
++      let i = 0
++      for (const value of source as Iterable<unknown>) {
++        ctxs.push(createChildContext(map, value, i++))
++      }
+     } else if (isObject(source)) {
+       let i = 0
+       for (const key in source) {

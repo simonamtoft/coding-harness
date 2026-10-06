@@ -1,0 +1,43 @@
+diff --git a/examples/probe_sales.py b/examples/probe_sales.py
+new file mode 100644
+index 0000000..e4b2978
+--- /dev/null
++++ b/examples/probe_sales.py
+@@ -0,0 +1,15 @@
++"""Aggregate local sales revenue per region with petl."""
++from decimal import Decimal
++
++import petl as etl
++
++
++def summarize(input_path, output_path):
++    """Write region,revenue totals for ``input_path`` to ``output_path``, regions sorted."""
++    table = etl.fromcsv(str(input_path), encoding='utf-8')
++    table = etl.select(table, lambda row: row['region'].strip() != '')
++    table = etl.convert(table, 'revenue', Decimal)
++    totals = etl.aggregate(table, 'region', sum, 'revenue')
++    totals = etl.convert(totals, 'value', lambda value: str(value.quantize(Decimal('0.01'))))
++    totals = etl.rename(totals, 'value', 'revenue')
++    etl.tocsv(etl.sort(totals, 'region'), str(output_path), encoding='utf-8')
+diff --git a/examples/probe_sales_cli.py b/examples/probe_sales_cli.py
+new file mode 100644
+index 0000000..380c009
+--- /dev/null
++++ b/examples/probe_sales_cli.py
+@@ -0,0 +1,16 @@
++"""Command-line wrapper: probe_sales_cli.py INPUT OUTPUT."""
++import argparse
++
++from probe_sales import summarize
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('input')
++    parser.add_argument('output')
++    args = parser.parse_args()
++    summarize(args.input, args.output)
++
++
++if __name__ == '__main__':
++    main()

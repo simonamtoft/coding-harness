@@ -1,0 +1,26 @@
+diff --git a/src/directives/for.ts b/src/directives/for.ts
+index 45bbd34..419b904 100644
+--- a/src/directives/for.ts
++++ b/src/directives/for.ts
+@@ -133,7 +133,6 @@ export const _for = (el: Element, exp: string, ctx: Context) => {
+       const nextBlocks: Block[] = []
+       let i = childCtxs.length
+       let nextBlock: Block | undefined
+-      let prevMovedBlock: Block | undefined
+       while (i--) {
+         const childCtx = childCtxs[i]
+         const oldIndex = prevKeyToIndexMap.get(childCtx.key)
+@@ -150,12 +149,7 @@ export const _for = (el: Element, exp: string, ctx: Context) => {
+           Object.assign(block.ctx.scope, childCtx.scope)
+           if (oldIndex !== i) {
+             // moved
+-            if (
+-              blocks[oldIndex + 1] !== nextBlock || 
+-              // If the next has moved, it must move too
+-              prevMovedBlock === nextBlock
+-            ) {
+-              prevMovedBlock = block
++            if (blocks[oldIndex + 1] !== nextBlock) {
+               block.insert(parent, nextBlock ? nextBlock.el : anchor)
+             }
+           }

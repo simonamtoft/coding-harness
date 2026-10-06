@@ -1,0 +1,10 @@
+{
+  "kind": "benchmark",
+  "fixture": "petite-vue",
+  "prompt": "In the playlist demo (examples/playlist.html), sorting by length or title, or restoring the original order afterwards, sometimes shows the rows in an order that does not match the playlist, although the track count and total length stay correct. Diagnose the cause and fix it at the root, so any keyed v-for list renders in data order after its items are reordered, added, or removed, not only this demo. Rows must stay keyed by track id: each existing row element, including its Keep checkbox state, must follow its track rather than being re-created. Check the demo in a browser.",
+  "verifyCommand": [
+    "node",
+    "probe-tests/playlist.cjs"
+  ],
+  "humanReviewTrials": 1
+}

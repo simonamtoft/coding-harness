@@ -1,0 +1,15 @@
+<script type="module">
+  import { createApp, nextTick, reactive } from '../src'
+
+  const state = reactive({ a: 1, b: 0, c: 0, d: 0 })
+  window.probe = { state, nextTick }
+  createApp({ state }).mount('#chain')
+</script>
+
+<div id="chain" v-effect="state.b = state.a * 2">
+  <span v-effect="state.c = state.b + 1"></span>
+  <span v-effect="state.d = state.c * 10"></span>
+  <output id="a">{{ state.a }}</output>
+  <output id="c">{{ state.c }}</output>
+  <output id="d">{{ state.d }}</output>
+</div>

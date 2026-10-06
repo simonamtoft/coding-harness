@@ -1,0 +1,82 @@
+diff --git a/micrograd/checkpoint.py b/micrograd/checkpoint.py
+new file mode 100644
+index 0000000..47c8222
+--- /dev/null
++++ b/micrograd/checkpoint.py
+@@ -0,0 +1,17 @@
++import json
++
++
++def save_checkpoint(path, model, optimizer, step):
++    """Write model parameters, optimizer state, and the step count to `path` as JSON."""
++    state = {'step': step, 'model': model.state_dict(), 'optimizer': optimizer.state_dict()}
++    with open(path, 'w', encoding='utf-8') as handle:
++        json.dump(state, handle)
++
++
++def load_checkpoint(path, model, optimizer):
++    """Restore a checkpoint written by save_checkpoint and return its step count."""
++    with open(path, encoding='utf-8') as handle:
++        state = json.load(handle)
++    model.load_state_dict(state['model'])
++    optimizer.load_state_dict(state['optimizer'])
++    return state['step']
+diff --git a/micrograd/nn.py b/micrograd/nn.py
+index 30d5d77..b864c94 100644
+--- a/micrograd/nn.py
++++ b/micrograd/nn.py
+@@ -10,6 +10,16 @@ class Module:
+     def parameters(self):
+         return []
+ 
++    def state_dict(self):
++        return [p.data for p in self.parameters()]
++
++    def load_state_dict(self, values):
++        params = self.parameters()
++        if len(values) != len(params):
++            raise ValueError(f"expected {len(params)} values, got {len(values)}")
++        for p, value in zip(params, values):
++            p.data = value
++
+ class Neuron(Module):
+ 
+     def __init__(self, nin, nonlin=True):
+diff --git a/micrograd/optim.py b/micrograd/optim.py
+new file mode 100644
+index 0000000..9c0cac3
+--- /dev/null
++++ b/micrograd/optim.py
+@@ -0,0 +1,32 @@
++class SGD:
++    """Stochastic gradient descent with PyTorch's momentum and weight-decay semantics."""
++
++    def __init__(self, params, lr, momentum=0.0, weight_decay=0.0):
++        self.params = list(params)
++        self.lr = lr
++        self.momentum = momentum
++        self.weight_decay = weight_decay
++        self.buffers = [None] * len(self.params)
++
++    def zero_grad(self):
++        for p in self.params:
++            p.grad = 0
++
++    def step(self):
++        for i, p in enumerate(self.params):
++            g = p.grad + self.weight_decay * p.data
++            if self.momentum:
++                buf = self.buffers[i]
++                buf = g if buf is None else self.momentum * buf + g
++                self.buffers[i] = buf
++                g = buf
++            p.data -= self.lr * g
++
++    def state_dict(self):
++        return {'buffers': list(self.buffers)}
++
++    def load_state_dict(self, state):
++        buffers = state['buffers']
++        if len(buffers) != len(self.params):
++            raise ValueError(f"expected {len(self.params)} buffers, got {len(buffers)}")
++        self.buffers = list(buffers)

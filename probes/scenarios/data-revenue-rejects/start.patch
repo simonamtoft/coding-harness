@@ -1,0 +1,13 @@
+diff --git a/data/revenue_export.csv b/data/revenue_export.csv
+new file mode 100644
+index 0000000..5bdcf34
+--- /dev/null
++++ b/data/revenue_export.csv
+@@ -0,0 +1,7 @@
++﻿date,region,amount,channel
++2026-09-01,North,"1,204.50",web
++2026-09-01, north ,(4.50),store
++2026-09-02,South,$310.00,web
++2026-09-02,,19.99,web
++2026-09-03,SOUTH,n/a,store
++2026-09-03,East,($12.25),web

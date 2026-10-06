@@ -1,0 +1,17 @@
+diff --git a/src/scheduler.ts b/src/scheduler.ts
+index 9f732f5..20b43d7 100644
+--- a/src/scheduler.ts
++++ b/src/scheduler.ts
+@@ -13,9 +13,10 @@ export const queueJob = (job: Function) => {
+ }
+ 
+ const flushJobs = () => {
+-  for (const job of queue) {
++  const jobs = queue.slice()
++  queue.length = 0
++  for (const job of jobs) {
+     job()
+   }
+-  queue.length = 0
+   queued = false
+ }

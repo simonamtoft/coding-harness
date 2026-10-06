@@ -1,0 +1,27 @@
+diff --git a/micrograd/engine.py b/micrograd/engine.py
+index afd82cc..ac2fc62 100644
+--- a/micrograd/engine.py
++++ b/micrograd/engine.py
+@@ -56,13 +56,16 @@ class Value:
+         # topological order all of the children in the graph
+         topo = []
+         visited = set()
+-        def build_topo(v):
+-            if v not in visited:
+-                visited.add(v)
+-                for child in v._prev:
+-                    build_topo(child)
++        # iterative post-order DFS, so deep graphs do not exhaust the recursion limit
++        stack = [(self, False)]
++        while stack:
++            v, children_done = stack.pop()
++            if children_done:
+                 topo.append(v)
+-        build_topo(self)
++            elif v not in visited:
++                visited.add(v)
++                stack.append((v, True))
++                stack.extend((child, False) for child in v._prev)
+ 
+         # go one variable at a time and apply the chain rule to get its gradient
+         self.grad = 1

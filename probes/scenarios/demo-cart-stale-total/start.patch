@@ -1,0 +1,108 @@
+diff --git a/examples/cart.html b/examples/cart.html
+new file mode 100644
+index 0000000..d082aec
+--- /dev/null
++++ b/examples/cart.html
+@@ -0,0 +1,90 @@
++<meta name="viewport" content="width=device-width, initial-scale=1" />
++
++<script type="module">
++  import { createApp } from '../src'
++
++  createApp({
++    items: [
++      { id: 'beans', name: 'Coffee beans', price: 12.5, qty: 1 },
++      { id: 'filters', name: 'Paper filters', price: 4.25, qty: 2 },
++      { id: 'mug', name: 'Travel mug', price: 18, qty: 0 }
++    ],
++    subtotal: 0,
++
++    get shipping() {
++      return this.subtotal === 0 || this.subtotal >= 50 ? 0 : 5.95
++    },
++
++    money(value) {
++      return `$${value.toFixed(2)}`
++    }
++  }).mount()
++</script>
++
++<main
++  v-scope
++  v-effect="subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)"
++>
++  <h1>Cart</h1>
++  <table class="cart">
++    <thead>
++      <tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th></tr>
++    </thead>
++    <tbody>
++      <tr v-for="item in items" :key="item.id" :data-id="item.id">
++        <td>{{ item.name }}</td>
++        <td>{{ money(item.price) }}</td>
++        <td>
++          <input
++            type="number"
++            min="0"
++            :aria-label="`Quantity of ${item.name}`"
++            v-model.number="item.qty"
++          />
++        </td>
++        <td class="line">{{ money(item.price * item.qty) }}</td>
++      </tr>
++    </tbody>
++  </table>
++  <dl class="summary">
++    <dt>Subtotal</dt>
++    <dd class="subtotal">{{ money(subtotal) }}</dd>
++    <dt>Shipping</dt>
++    <dd class="shipping">{{ shipping === 0 ? 'Free' : money(shipping) }}</dd>
++    <dt>Total</dt>
++    <dd class="total">{{ money(subtotal + shipping) }}</dd>
++  </dl>
++</main>
++
++<style>
++  body {
++    font-family: Helvetica Neue, Arial, sans-serif;
++    color: #333;
++  }
++
++  .cart {
++    border-collapse: collapse;
++    width: 100%;
++    max-width: 640px;
++  }
++
++  .cart th,
++  .cart td {
++    padding: 6px 4px;
++    text-align: left;
++  }
++
++  .cart input {
++    width: 3.5em;
++  }
++
++  .summary {
++    display: grid;
++    grid-template-columns: max-content max-content;
++    gap: 4px 16px;
++  }
++
++  .summary dd {
++    margin: 0;
++  }
++</style>
+diff --git a/index.html b/index.html
+index 2a1fac5..d539354 100644
+--- a/index.html
++++ b/index.html
+@@ -6,6 +6,7 @@
+   <li><a href="/examples/markdown.html">Markdown</a></li>
+   <li><a href="/examples/svg.html">SVG</a></li>
+   <li><a href="/examples/tree.html">Tree</a></li>
++  <li><a href="/examples/cart.html">Cart</a></li>
+ </ul>
+ 
+ <h2>Tests</h2>

@@ -1,0 +1,11 @@
+<script type="module">
+  import { createApp, reactive } from '../src'
+
+  const state = reactive({ items: [] })
+  window.probeState = state
+  createApp({ state }).mount('#keyed')
+</script>
+
+<ul id="keyed">
+  <li v-for="item in state.items" :key="item" :data-id="item">{{ item }}</li>
+</ul>

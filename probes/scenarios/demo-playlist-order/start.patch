@@ -1,0 +1,94 @@
+diff --git a/examples/playlist.html b/examples/playlist.html
+new file mode 100644
+index 0000000..f8a4f5f
+--- /dev/null
++++ b/examples/playlist.html
+@@ -0,0 +1,76 @@
++<meta name="viewport" content="width=device-width, initial-scale=1" />
++
++<script type="module">
++  import { createApp } from '../src'
++
++  const tracks = [
++    { id: 1, title: 'Paper Kites', seconds: 302 },
++    { id: 2, title: 'Quiet Engines', seconds: 375 },
++    { id: 3, title: 'Harbour', seconds: 460 },
++    { id: 4, title: 'Morning Light', seconds: 178 },
++    { id: 5, title: 'Northbound', seconds: 211 }
++  ]
++
++  createApp({
++    tracks: tracks.slice(),
++
++    get total() {
++      return this.tracks.reduce((sum, track) => sum + track.seconds, 0)
++    },
++
++    format(seconds) {
++      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
++    },
++
++    moveToTop(index) {
++      const [track] = this.tracks.splice(index, 1)
++      this.tracks.unshift(track)
++    },
++
++    sortBy(field) {
++      this.tracks = this.tracks
++        .slice()
++        .sort((a, b) => (a[field] < b[field] ? -1 : a[field] > b[field] ? 1 : 0))
++    },
++
++    reset() {
++      this.tracks = tracks.slice()
++    }
++  }).mount()
++</script>
++
++<main v-scope>
++  <h1>Playlist</h1>
++  <p>
++    <button @click="sortBy('title')">Sort by title</button>
++    <button @click="sortBy('seconds')">Sort by length</button>
++    <button @click="reset">Original order</button>
++  </p>
++  <ol class="playlist">
++    <li v-for="(track, index) in tracks" :key="track.id" :data-id="track.id">
++      <label><input type="checkbox" /> Keep</label>
++      <span class="title">{{ track.title }}</span>
++      <span class="length">{{ format(track.seconds) }}</span>
++      <button @click="moveToTop(index)" :disabled="index === 0">Move to top</button>
++    </li>
++  </ol>
++  <p class="summary">{{ tracks.length }} tracks, {{ format(total) }} total</p>
++</main>
++
++<style>
++  body {
++    font-family: Helvetica Neue, Arial, sans-serif;
++    color: #333;
++  }
++
++  .playlist li {
++    display: flex;
++    gap: 1em;
++    align-items: center;
++    padding: 4px 0;
++  }
++
++  .title {
++    flex: 1;
++  }
++</style>
+diff --git a/index.html b/index.html
+index 2a1fac5..308f2ed 100644
+--- a/index.html
++++ b/index.html
+@@ -6,6 +6,7 @@
+   <li><a href="/examples/markdown.html">Markdown</a></li>
+   <li><a href="/examples/svg.html">SVG</a></li>
+   <li><a href="/examples/tree.html">Tree</a></li>
++  <li><a href="/examples/playlist.html">Playlist</a></li>
+ </ul>
+ 
+ <h2>Tests</h2>

@@ -1,0 +1,26 @@
+<script type="module">
+  import { createApp, reactive } from '../src'
+
+  const state = reactive({
+    prices: new Map([['tea', 3], ['coffee', 4]]),
+    tags: new Set(['red', 'green']),
+    word: 'abc',
+    plain: { x: 1, y: 2 },
+    list: ['p', 'q']
+  })
+  function* countdown(from) {
+    while (from > 0) yield from--
+  }
+  window.probeState = state
+  createApp({ state, countdown }).mount('#lists')
+</script>
+
+<div id="lists">
+  <ul id="map"><li v-for="([name, price], index) in state.prices" :key="name" :data-id="name">{{ index }}:{{ name }}={{ price }}</li></ul>
+  <ul id="set"><li v-for="(tag, index) in state.tags" :key="tag" :data-id="tag">{{ index }}:{{ tag }}</li></ul>
+  <ul id="string"><li v-for="(char, index) in state.word">{{ index }}:{{ char }}</li></ul>
+  <ul id="generator"><li v-for="(n, index) in countdown(3)">{{ index }}:{{ n }}</li></ul>
+  <ul id="object"><li v-for="(value, key, index) in state.plain">{{ index }}:{{ key }}={{ value }}</li></ul>
+  <ul id="array"><li v-for="(item, index) in state.list">{{ index }}:{{ item }}</li></ul>
+  <ul id="range"><li v-for="n in 3">{{ n }}</li></ul>
+</div>

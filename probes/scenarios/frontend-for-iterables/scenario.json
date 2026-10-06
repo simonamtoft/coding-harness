@@ -1,0 +1,9 @@
+{
+  "kind": "benchmark",
+  "fixture": "petite-vue",
+  "prompt": "Phase 1 only: inspect how petite-vue's v-for evaluates its source expression and maps items to blocks, including keyed updates. Do not edit code yet. Prepare a precise implementation plan so v-for accepts any iterable, matching Vue 3: a Map, a Set, a string (one item per character), or any other object with Symbol.iterator, such as a generator, iterates in iteration order like Array.from, with the iterated item as the value and the second alias as its index. A Map item is its [key, value] entry, so `([key, value], index) in map` works. Plain objects, arrays, and number ranges keep their current behavior. Adding, updating, or deleting entries of a reactive Map or Set must update the rendered list, and with :key the existing elements must be reused rather than re-created. Add no dependencies. The next session will implement from your handoff.",
+  "continuation": {
+    "prompt": "Implement the requested change from the prior session's handoff and check it in a browser. Do not ask for another analysis-only round."
+  },
+  "verifyCommand": ["node", "probe-tests/iterables.cjs"]
+}
