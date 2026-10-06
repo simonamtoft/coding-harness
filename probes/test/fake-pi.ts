@@ -24,6 +24,8 @@
  * - FAKE_PROMPTS: append each agent prompt
  * - FAKE_HANDOFF: content written to the requested handoff file when a prompt asks for one
  * - FAKE_SESSIONS: append each agent call's --session-dir
+ * - FAKE_LEAK_PIDFILE: start a detached idle Bun process that outlives this call, as `nohup … &` from
+ *   Pi's Bash tool would, and append its pid
  * - FAKE_SPANS, FAKE_DELAY_MS: append `start <model>` and `end <model>` around a sleep of
  *   FAKE_DELAY_MS on each agent call, so a test can see whether calls overlapped
  */
@@ -119,6 +121,12 @@ if (process.env.FAKE_SNAPSHOT) {
     status: git("status", "--porcelain"),
     read: readPath && existsSync(readPath) ? readFileSync(readPath, "utf8") : null,
   })}\n`);
+}
+if (process.env.FAKE_LEAK_PIDFILE) {
+  // Not /bin/sleep: macOS hides a platform binary's environment, which the runner's reaping reads.
+  const leaked = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 60_000)"], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+  leaked.unref();
+  appendFileSync(process.env.FAKE_LEAK_PIDFILE, `${leaked.pid}\n`);
 }
 if (String(call) === process.env.FAKE_FIX_AT) {
   const fixPath = process.env.FAKE_FIX_PATH ?? "fixed.txt";

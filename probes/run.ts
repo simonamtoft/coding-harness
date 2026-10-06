@@ -9,8 +9,9 @@
  * Every run makes paid model calls. Never wire this into automatic verification.
  */
 import type { Subprocess } from "bun";
+import { randomUUID } from "node:crypto";
 import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { hostname, tmpdir } from "node:os";
+import { homedir, hostname, tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,7 +51,7 @@ import {
 } from "./lib/scoring.ts";
 import { judgePrompt, parseJudgeVerdict } from "./lib/judge.ts";
 import type { LockOwner } from "./lib/lock.ts";
-import { descendants, parseProcessTable, stillRunning, type ProcessEntry } from "./lib/processes.ts";
+import { descendants, parseProcessTable, stillRunning, taggedPids, type ProcessEntry } from "./lib/processes.ts";
 import { BOUNDARY_STATEMENT, compareRecords, CONTAMINATION_STATEMENT, SIGNIFICANCE_THRESHOLD, summarizeRecord, terminalSafe } from "./lib/report.ts";
 import { packageManifestEntries, parseContextWindow, parsePiList, parseSysctlTimeval, runtimeFingerprint, sanitizePackageSource } from "./lib/runtime.ts";
 import { parseScenario } from "./lib/scenario.ts";
@@ -98,12 +99,13 @@ const DEFECTS_FILE = join("answers", "defects.json");
 const ARTIFACTS_DIR = join(RESULTS_DIR, "artifacts");
 const ANSWERS_DIR = "answers";
 const SEED_PATCH = join(ANSWERS_DIR, "seed.patch");
+const REFERENCE_PATCH = join(ANSWERS_DIR, "reference.patch");
 const VERIFIER_OVERLAY = join(ANSWERS_DIR, "verifier");
 const INSTRUCTIONS_PATH = "shared/AGENTS.md";
 const PACKAGE_MANIFEST_PATH = "pi/agent/packages.txt";
 
-const DEFAULT_MODELS = ["anthropic/claude-sonnet-5", "openai-codex/gpt-6-luna"];
-const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-5";
+const DEFAULT_MODELS = ["anthropic/claude-sonnet-5-5", "openai-codex/gpt-6-luna"];
+const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-5-5";
 const DEFAULT_TRIALS = 10;
 const DEFAULT_CONCURRENCY = 4;
 const SANDBOX_EXTENSION_PATH = "pi/agent/extensions/sandbox/index.ts";
@@ -177,6 +179,7 @@ type Options = {
   includeBenchmarks: boolean;
   provisionFixtures: boolean;
   recordReview: boolean;
+  checkReference: boolean;
 };
 
 function parseArgs(argv: string[]): Options {
@@ -194,6 +197,7 @@ function parseArgs(argv: string[]): Options {
     includeBenchmarks: false,
     provisionFixtures: false,
     recordReview: false,
+    checkReference: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -222,6 +226,7 @@ function parseArgs(argv: string[]): Options {
       case "--include-benchmarks": options.includeBenchmarks = true; break;
       case "--provision-fixtures": options.provisionFixtures = true; break;
       case "--record-review": options.recordReview = true; break;
+      case "--check-reference": options.checkReference = true; break;
       case "--help": printUsage(); process.exit(0);
       default: throw new Error(`unknown argument: ${arg}`);
     }
@@ -249,6 +254,8 @@ function printUsage(): void {
   --provision-fixtures   Clone pinned benchmark fixtures and run their setup (network), then exit;
                          limited to the fixtures of --scenario tasks when given
   --record-review        Record human verdicts for sampled benchmark trials (reads stdin), then exit
+  --check-reference      Without model calls, check that each named verifier task's prepared start
+                         fails its verifier and answers/reference.patch passes it, then exit
 
 The working tree ${INSTRUCTIONS_PATH} always runs as the "candidate" variant.`);
 }
@@ -309,6 +316,39 @@ async function terminate(proc: Subprocess): Promise<void> {
   for (const { pid } of stillRunning([...tree.values()], processTable())) {
     signalQuietly(-pid, "SIGKILL");
     signalQuietly(pid, "SIGKILL");
+  }
+}
+
+const TRIAL_TAG_VARIABLE = "PI_PROBE_TRIAL_TAG";
+
+/** `base` plus a tag that every process the child starts inherits, so `reapTagged` can find leftovers. */
+function taggedEnv(tag: string, base: Record<string, string | undefined> = process.env): Record<string, string | undefined> {
+  return { ...base, [TRIAL_TAG_VARIABLE]: tag };
+}
+
+/**
+ * Kills every process still carrying `tag`. Agents start dev servers with `nohup` or `&`; once the
+ * child exits they are reparented, so `terminate`'s descendant tracking cannot reach them, and they
+ * would otherwise outlive the trial and occupy ports that later agents and verifiers use.
+ *
+ * shortcut: relies on macOS `ps -E` printing each process's environment. It does not for platform
+ * binaries such as /bin/sleep, or on hosts whose ps lacks -E, so those leftovers survive. Node, Bun,
+ * and uv Python dev servers are visible. Replace with PI-90 containment, which bounds the child's
+ * processes directly.
+ */
+async function reapTagged(tag: string): Promise<void> {
+  for (let pass = 0; pass < 2; pass++) {
+    const ps = Bun.spawnSync(["ps", "-E", "-ww", "-A", "-o", "pid=,command="], { stdout: "pipe", stderr: "ignore" });
+    if (ps.exitCode !== 0) return;
+    const pids = new Set(taggedPids(ps.stdout.toString(), TRIAL_TAG_VARIABLE, tag));
+    if (pids.size === 0) return;
+    const tagged = processTable().filter((entry) => pids.has(entry.pid));
+    for (const { pid } of stillRunning(tagged, processTable())) {
+      signalQuietly(-pid, "SIGKILL");
+      signalQuietly(pid, "SIGKILL");
+    }
+    // A second pass catches a process that a reaped one started while it was being signalled.
+    await Bun.sleep(100);
   }
 }
 
@@ -877,6 +917,7 @@ async function runTrial(args: {
   }
 
   const workDir = await makeTemporaryDirectory(`pi-probe-${scenario.id}-`);
+  const tag = randomUUID();
   try {
     await cp(join(loaded.dir, "fixture"), workDir, { recursive: true });
 
@@ -893,8 +934,9 @@ async function runTrial(args: {
       withTools: true,
       harnessMode,
       timeoutMs: AGENT_TIMEOUT_MS,
-      env: { ...process.env, ...PACKAGE_INSTALL_GUARD_ENV },
+      env: taggedEnv(tag, { ...process.env, ...PACKAGE_INSTALL_GUARD_ENV }),
     });
+    await reapTagged(tag);
     if (agent.kind === "failed") return infrastructure(agent.reason);
     const { run } = agent;
 
@@ -930,6 +972,7 @@ async function runTrial(args: {
       },
     };
   } finally {
+    await reapTagged(tag);
     await removeTemporaryDirectory(workDir);
   }
 }
@@ -1090,6 +1133,7 @@ async function verifyInCopyNow(
   artifactDir: string,
 ): Promise<{ exitCode: number | null; output: string; artifacts: string[] }> {
   const verifyRoot = await makeTemporaryDirectory("pi-probe-verify-");
+  const tag = randomUUID();
   try {
     const copy = join(verifyRoot, "work");
     const scratchArtifacts = join(verifyRoot, "artifacts");
@@ -1098,7 +1142,7 @@ async function verifyInCopyNow(
     const overlay = join(loaded.dir, VERIFIER_OVERLAY);
     if (await pathExists(overlay)) await cp(overlay, copy, { recursive: true, force: true });
     const env = {
-      ...process.env,
+      ...taggedEnv(tag),
       PROBE_VIEWPORTS: JSON.stringify(VIEWPORT_PROFILES),
       PROBE_ARTIFACT_DIR: scratchArtifacts,
       ...(loaded.fixtureSpec ? { PLAYWRIGHT_BROWSERS_PATH: fixtureBrowsersPath(loaded.fixtureSpec) } : {}),
@@ -1113,6 +1157,7 @@ async function verifyInCopyNow(
     }
     return { exitCode: result.exitCode, output, artifacts: produced.map((file) => relative(RESULTS_DIR, join(artifactDir, file))) };
   } finally {
+    await reapTagged(tag);
     await removeTemporaryDirectory(verifyRoot);
   }
 }
@@ -1145,8 +1190,15 @@ async function runBenchmarkTrial(args: {
   const workDir = join(trialRoot, "work");
   // One directory per session, so `--continue` can only ever resume the intended one.
   const sessionRoot = await makeTemporaryDirectory("pi-probe-session-");
+  const tag = randomUUID();
   try {
-    await prepareBenchmarkCopy(loaded, workDir);
+    try {
+      await prepareBenchmarkCopy(loaded, workDir);
+    } catch (error) {
+      // An unprovisioned fixture is a setup mistake that every trial would repeat, so it stops the run.
+      if (shuttingDown || (loaded.fixtureSpec && !(await fixtureReady(loaded.fixtureSpec)))) throw error;
+      return infrastructure(`preparing the trial copy: ${(error as Error).message}`);
+    }
     const rounds: BenchmarkRound[] = [];
     let spent = NO_SPEND;
     let continuation: BenchmarkTrialRecord["continuation"] = null;
@@ -1171,11 +1223,13 @@ async function runBenchmarkTrial(args: {
         cwd: workDir,
         withTools: true,
         harnessMode,
-        env: { ...process.env, ...PACKAGE_INSTALL_GUARD_ENV },
+        env: taggedEnv(tag, { ...process.env, ...PACKAGE_INSTALL_GUARD_ENV }),
         session,
         caps: BENCHMARK_CAPS,
         spent,
       });
+      // Each round, and its verification, starts without servers the previous round left running.
+      await reapTagged(tag);
       if (agent.kind === "failed") return { failed: agent.reason };
       spent = agent.spent;
       exhaustedLimit = agent.exhausted;
@@ -1194,7 +1248,15 @@ async function runBenchmarkTrial(args: {
     /** Verifies the agent's work and attaches the result and artifacts to the latest round. */
     const verifyLatestRound = async (command: string[]): Promise<{ exitCode: number | null; output: string }> => {
       const index = rounds.length - 1;
-      const verification = await verifyInCopy(loaded, command, workDir, join(args.artifactRoot, `round-${index}`));
+      const started = Date.now();
+      const verification = await verifyInCopy(loaded, command, workDir, join(args.artifactRoot, `round-${index}`))
+        .catch((error: Error) => {
+          if (shuttingDown) throw error;
+          throw new TrialInfrastructureError(`verifying round ${index}: ${error.message}`);
+        });
+      // A verifier timeout stays a failed verification (the agent's code can cause it), unless the host slept.
+      const slept = await hostSleptSince(started);
+      if (slept) throw new TrialInfrastructureError(`verifying round ${index}: ${slept}`);
       const verifier: VerifierRun = { exitCode: verification.exitCode, output: verification.output.slice(-STORED_VERIFIER_OUTPUT_CHARS) };
       rounds[index] = { ...rounds[index], verifier, artifacts: verification.artifacts };
       return verification;
@@ -1261,10 +1323,17 @@ async function runBenchmarkTrial(args: {
       kind = "repair";
       session = { ...session, continue: true };
     }
+  } catch (error) {
+    if (error instanceof TrialInfrastructureError) return infrastructure(error.message);
+    throw error;
   } finally {
+    await reapTagged(tag);
     await Promise.all([removeTemporaryDirectory(trialRoot), removeTemporaryDirectory(sessionRoot)]);
   }
 }
+
+/** A runner-side failure inside a paid trial: recorded as an infrastructure failure, not a verdict. */
+class TrialInfrastructureError extends Error {}
 
 /**
  * Scores a facts or review task's final message against its answer key. A failed judge child yields
@@ -1515,11 +1584,52 @@ async function provisionFixtures(options: Options, manifest: Map<string, Fixture
   }
 }
 
+/**
+ * Validates verifier-scored task authoring offline: the prepared start must fail the hidden verifier
+ * and the prepared start plus `answers/reference.patch` must pass it. Uses the trial preparation and
+ * verification path, so a passing check means a trial can actually be scored both ways.
+ */
+async function checkReferences(options: Options, manifest: Map<string, FixtureSpec>): Promise<void> {
+  if (options.scenarioIds.length === 0) throw new Error("--check-reference needs at least one --scenario");
+  for (const loaded of await loadScenarios(options.scenarioIds, true, manifest)) {
+    const { scenario } = loaded;
+    if (scenario.kind !== "benchmark" || !scenario.verifyCommand) {
+      throw new Error(`scenario ${scenario.id}: --check-reference applies only to verifier-scored benchmarks`);
+    }
+    const referencePatch = join(loaded.dir, REFERENCE_PATCH);
+    if (!(await pathExists(referencePatch))) throw new Error(`scenario ${scenario.id}: missing ${REFERENCE_PATCH}`);
+    const root = await makeTemporaryDirectory("pi-probe-reference-");
+    try {
+      const workDir = join(root, "work");
+      const artifactDir = join(root, "artifacts");
+      await prepareBenchmarkCopy(loaded, workDir);
+      const start = await verifyInCopy(loaded, scenario.verifyCommand, workDir, artifactDir);
+      await runChecked(["git", "apply", "--whitespace=nowarn", referencePatch], workDir, FIXTURE_COMMAND_TIMEOUT_MS);
+      const reference = await verifyInCopy(loaded, scenario.verifyCommand, workDir, artifactDir);
+      // A timed-out start (null exit) is inconclusive, not a demonstrated failing verdict.
+      const startFailed = start.exitCode !== null && start.exitCode !== 0;
+      const referencePassed = reference.exitCode === 0;
+      const startLabel = startFailed ? "fails" : start.exitCode === null ? "TIMED OUT" : "PASSES";
+      console.log(`${scenario.id} | start ${startLabel} (exit ${start.exitCode}) | ` +
+        `reference ${referencePassed ? "passes" : "FAILS"} (exit ${reference.exitCode})`);
+      if (!startFailed) console.log(`start verifier output:\n${start.output.slice(-STORED_VERIFIER_OUTPUT_CHARS)}`);
+      if (!referencePassed) console.log(`reference verifier output:\n${reference.output.slice(-STORED_VERIFIER_OUTPUT_CHARS)}`);
+      if (!startFailed || !referencePassed) process.exitCode = 1;
+    } finally {
+      await removeTemporaryDirectory(root);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const manifest = await readFixtureManifest();
   if (options.provisionFixtures) {
     await provisionFixtures(options, manifest);
+    return;
+  }
+  if (options.checkReference) {
+    await checkReferences(options, manifest);
     return;
   }
   if (options.recordReview) {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { descendants, parseProcessTable, stillRunning } from "./processes.ts";
+import { descendants, parseProcessTable, stillRunning, taggedPids } from "./processes.ts";
 
 const at = (pid: number, ppid: number, started = "Wed Sep 23 13:25:20 2026") => ({ pid, ppid, started });
 
@@ -32,4 +32,15 @@ test("stillRunning drops exited processes and reused pids", () => {
   const recorded = [at(101, 100), at(102, 101), at(103, 100)];
   const current = [at(101, 1), at(103, 55, "Wed Sep 23 13:25:29 2026")];
   expect(stillRunning(recorded, current)).toEqual([at(101, 100)]);
+});
+
+test("taggedPids matches the exact environment entry, not prefixes or other values", () => {
+  const stdout = [
+    "  101 node vite.js --port 5173 HOME=/Users/u PI_PROBE_TRIAL_TAG=abc PATH=/bin",
+    "  102 sleep 60 PI_PROBE_TRIAL_TAG=abcd",
+    "  103 sleep 60 PI_PROBE_TRIAL_TAG=other",
+    "  104 grep PI_PROBE_TRIAL_TAG=abc",
+    "  105 sleep 60",
+  ].join("\n");
+  expect(taggedPids(stdout, "PI_PROBE_TRIAL_TAG", "abc")).toEqual([101, 104]);
 });

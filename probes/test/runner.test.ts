@@ -749,6 +749,73 @@ describe("benchmark trials on a pinned fixture", () => {
     expect(probeTempDirs()).toEqual([]);
   }, TEST_TIMEOUT_MS);
 
+  test("kills processes that agents and verifiers leave running after a round", async () => {
+    expect((await runRunner(["--provision-fixtures"], {}, null)).exitCode).toBe(0);
+    const agentLeaks = join(dirname(sandbox.root), "agent-leaks");
+    const verifierLeaks = join(dirname(sandbox.root), "verifier-leaks");
+    writeFileSync(
+      join(taskDir, "answers/verifier/hidden-check.ts"),
+      [
+        "import { appendFileSync } from \"node:fs\";",
+        "import { sum } from \"./src/sum.ts\";",
+        "const leaked = Bun.spawn([process.execPath, \"-e\", \"setTimeout(() => {}, 60_000)\"], { detached: true, stdio: [\"ignore\", \"ignore\", \"ignore\"] });",
+        "leaked.unref();",
+        "appendFileSync(process.env.VERIFIER_LEAK_PIDFILE!, `${leaked.pid}\\n`);",
+        "if (sum(2, 3) !== 5) process.exit(1);",
+        "",
+      ].join("\n"),
+    );
+    const result = await run(["--models", "fake/leaky", "--trials", "1"], {
+      FAKE_FIX_AT: "2",
+      FAKE_FIX_PATH: "src/sum.ts",
+      FAKE_FIX_CONTENT: CORRECT_SUM,
+      FAKE_LEAK_PIDFILE: agentLeaks,
+      VERIFIER_LEAK_PIDFILE: verifierLeaks,
+    });
+    expect(result.exitCode).toBe(0);
+    const pids = (path: string) => readFileSync(path, "utf8").trim().split("\n").map(Number);
+    expect(pids(agentLeaks)).toHaveLength(2);
+    expect(pids(verifierLeaks)).toHaveLength(2);
+    for (const pid of [...pids(agentLeaks), ...pids(verifierLeaks)]) expect(isAlive(pid)).toBe(false);
+  }, TEST_TIMEOUT_MS);
+
+  test("a trial copy that cannot be prepared is an infrastructure failure, not a crash", async () => {
+    expect((await runRunner(["--provision-fixtures"], {}, null)).exitCode).toBe(0);
+    writeFileSync(join(taskDir, "start.patch"), "--- a/missing.txt\n+++ b/missing.txt\n@@ -1 +1 @@\n-a\n+b\n");
+    const result = await run(["--models", "fake/unprepared", "--trials", "1"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("failed for infrastructure reasons");
+    const record = recordFor("fake/unprepared");
+    expect(record.trials).toEqual([]);
+    expect(record.infrastructureFailures[0].reason).toContain("preparing the trial copy");
+    expect(calls()).toEqual([]);
+  }, TEST_TIMEOUT_MS);
+
+  test("checks that the prepared start fails and the reference patch passes, without model calls", async () => {
+    expect((await runRunner(["--provision-fixtures"], {}, null)).exitCode).toBe(0);
+    const check = () => run(["--check-reference"]);
+
+    const missing = await check();
+    expect(missing.exitCode).not.toBe(0);
+    expect(missing.stderr).toContain("missing answers/reference.patch");
+
+    // The reference applies on top of the seeded start, so it is diffed from the seeded content.
+    const seeded = "export const sum = (a: number, b: number) => a - b;\n";
+    const referenceFrom = (content: string) => `--- a/src/sum.ts\n+++ b/src/sum.ts\n@@ -1 +1 @@\n-${seeded}+${content}`;
+    writeFileSync(join(taskDir, "answers/reference.patch"), referenceFrom(CORRECT_SUM));
+    const passing = await check();
+    expect(passing.exitCode).toBe(0);
+    expect(passing.stdout).toContain(`${TASK} | start fails (exit 1) | reference passes (exit 0)`);
+
+    writeFileSync(join(taskDir, "answers/reference.patch"), referenceFrom("export const sum = (a: number, b: number) => a * b;\n"));
+    const failing = await check();
+    expect(failing.exitCode).toBe(1);
+    expect(failing.stdout).toContain("reference FAILS (exit 1)");
+    expect(failing.stdout).toContain("sum(2,3) should be 5");
+    expect(calls()).toEqual([]);
+    expect(probeTempDirs()).toEqual([]);
+  }, TEST_TIMEOUT_MS);
+
   test("editing an answer file invalidates the record", async () => {
     const dryRun = ["--models", "fake/pinned", "--trials", "1", "--dry-run"];
     expect((await runRunner(["--provision-fixtures"], {}, null)).exitCode).toBe(0);
@@ -942,7 +1009,7 @@ describe("judged, visual, and human-reviewed benchmark trials", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("judge passed 0/1 (primary) · failed 1 budget exhausted 0 · median recall 0.50 · median tokens");
       const record = benchmarkRecord("fake/recon");
-      expect(record.judgeModel).toBe("anthropic/claude-sonnet-5");
+      expect(record.judgeModel).toBe("anthropic/claude-sonnet-5-5");
       expect(record.trials[0]).toMatchObject({
         outcome: "failed",
         judgement: { scoring: "facts", verdict: "judged", found: ["entry"], missed: ["store"], recall: 0.5 },

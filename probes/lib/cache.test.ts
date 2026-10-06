@@ -38,8 +38,8 @@ const record: ResultRecord = {
   scenarioHash: "scenario-hash",
   instructionsHash: "instructions-hash",
   variantLabel: "baseline",
-  model: "anthropic/claude-sonnet-5",
-  judgeModel: "anthropic/claude-sonnet-5",
+  model: "anthropic/claude-sonnet-5-5",
+  judgeModel: "anthropic/claude-sonnet-5-5",
   createdAt: "2026-09-21T00:00:00.000Z",
   updatedAt: "2026-09-21T00:00:00.000Z",
   trials: [trial, { ...trial, trial: 2 }, { ...trial, trial: 3 }],
@@ -180,7 +180,7 @@ describe("recordFileName", () => {
     model: "openai-codex/gpt-5.6-luna",
     instructionsHash: "0123456789abcdef0123",
     scenarioHash: "scenario-hash",
-    judgeModel: "anthropic/claude-sonnet-5",
+    judgeModel: "anthropic/claude-sonnet-5-5",
   };
 
   test("is filesystem-safe and starts with scenario, model and instruction hash", () => {

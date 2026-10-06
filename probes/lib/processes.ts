@@ -36,6 +36,21 @@ export function descendants(table: ProcessEntry[], root: number): ProcessEntry[]
 }
 
 /**
+ * Pids in `ps -E -ww -A -o pid=,command=` output whose environment holds `name=value`. macOS prints
+ * a process's environment after its arguments, so a tag set on a child is visible on every process
+ * that inherited it, including ones reparented away from the child by `nohup` or `&`.
+ */
+export function taggedPids(stdout: string, name: string, value: string): number[] {
+  const marker = `${name}=${value}`;
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (match && match[2].split(/\s+/).includes(marker)) pids.push(Number(match[1]));
+  }
+  return pids;
+}
+
+/**
  * The recorded processes that are still the same processes now: a pid whose start time changed
  * was reused by an unrelated process and must not be signalled.
  */

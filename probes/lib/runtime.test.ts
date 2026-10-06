@@ -86,19 +86,19 @@ describe("runtimeFingerprint", () => {
 describe("parseContextWindow", () => {
   const catalogue = [
     "provider      model                       context  max-out  thinking  images",
-    "anthropic     claude-sonnet-5             1M       128K     yes       yes",
+    "anthropic     claude-sonnet-5-5           1M       128K     yes       yes",
     "openai-codex  gpt-6-luna                  272K     128K     yes       yes",
     "openrouter    tiny                        262.1K   8K       no        no",
   ].join("\n");
 
   test("reads the rounded context column for an exact provider and model", () => {
-    expect(parseContextWindow(catalogue, "anthropic/claude-sonnet-5")).toBe(1_000_000);
+    expect(parseContextWindow(catalogue, "anthropic/claude-sonnet-5-5")).toBe(1_000_000);
     expect(parseContextWindow(catalogue, "openai-codex/gpt-6-luna")).toBe(272_000);
     expect(parseContextWindow(catalogue, "openrouter/tiny")).toBe(262_100);
   });
 
   test("is null for an unlisted model or an unexpected table", () => {
     expect(parseContextWindow(catalogue, "anthropic/claude")).toBeNull();
-    expect(parseContextWindow("no models configured", "anthropic/claude-sonnet-5")).toBeNull();
+    expect(parseContextWindow("no models configured", "anthropic/claude-sonnet-5-5")).toBeNull();
   });
 });
