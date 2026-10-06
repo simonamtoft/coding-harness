@@ -51,6 +51,7 @@ bun probes/run.ts --models anthropic/claude-opus-5,openai-codex/gpt-6-astra
 bun probes/run.ts --provision-fixtures                   # clone pinned benchmark fixtures (network, no model calls)
 bun probes/run.ts --include-benchmarks                   # also run benchmark tasks; default runs skip them
 bun probes/run.ts --record-review                        # record human verdicts for sampled benchmark trials
+bun probes/run.ts --check-reference --scenario <task>    # offline: start must fail, answers/reference.patch must pass
 ```
 
 Run `link.sh` before whole-harness probes so the normal Pi resource discovery points at this
@@ -64,8 +65,8 @@ The working tree supplies the `candidate` content. `--compare` adds the `HEAD` c
 `--compare` runs one baseline-labelled variant. A `--variant` file should contain a complete
 alternative `shared/AGENTS.md`, not only a changed paragraph.
 
-Defaults: models `anthropic/claude-sonnet-5` and `openai-codex/gpt-6-luna` (one large, one
-small, two vendors), 10 trials per non-guard cell, judge `anthropic/claude-sonnet-5`,
+Defaults: models `anthropic/claude-sonnet-5-5` and `openai-codex/gpt-6-luna` (one large, one
+small, two vendors), 10 trials per non-guard cell, judge `anthropic/claude-sonnet-5-5`,
 harness mode `whole` with `--compare` and `isolated` otherwise, 4 concurrent cells.
 
 A cell is one scenario × model × variant record. Up to `--concurrency` cells run at once; each
@@ -73,12 +74,20 @@ holds its own record lock, and report rows keep cell order. Parallel cells share
 limits, and a rate-limited child is recorded as an infrastructure failure that the next run tops
 up, so lower the concurrency if that happens. After an error no new cell starts, but cells already
 running finish, so their paid trials are saved. Parallel frontend benchmarks may start dev servers
-at the same time; Vite moves to a free port, but a fixture that pins one could collide.
+at the same time; Vite moves to a free port, but a verifier that pins one can collide with an
+agent's server. New frontend verifiers therefore pick a free port at run time and treat the
+server as ready only once it serves a file from `answers/verifier/`, which never exists in the
+agent's copy. Older frontend verifiers keep fixed ports until they are next re-piloted, because
+editing them invalidates their records.
 
 ### Guard scenarios
 
-`"guard": true` in `scenario.json` marks a scenario that every default model passed in every
-stored trial: the `stop-*` probes and the near-ceiling benchmarks. Without an explicit `--trials`,
+`"guard": true` in `scenario.json` marks scenarios with all-pass evidence from the previous
+default model pair: the `stop-*` probes and the near-ceiling benchmarks. After the switch to
+Sonnet 5.5, these markers remain provisional low-cost regression checks, not validated
+all-pass claims for the new pair. Revalidate a guard with explicit `--trials 10` on each new
+default model before treating it as validated; no paid revalidation runs automatically.
+Without an explicit `--trials`,
 a guard cell runs one trial. If a stored trial fails, the same run tops the cell up to 10 so a
 regression can be told apart from a flake. A failure means failed assertions, a judge `fail`,
 `unparsed`, or `skipped` verdict, or a benchmark `failed` or `budget_exhausted` outcome; a trial
@@ -286,12 +295,18 @@ scenarios/<task>/
   answers/             never copied into the agent's copy
     seed.patch         optional seeded defect, applied before the run from here
     verifier/          optional hidden tests, overlaid only onto the verification copy
+    reference.patch    verifier tasks: a passing solution on top of the prepared start;
+                       read only by --check-reference, never applied to a trial
     facts.json         facts tasks: [{ id, fact, evidence }]
     defects.json       review tasks: [{ id, location, description }]
 ```
 
 Probe-only fields in `scenario.json` are rejected, and a judged task's answer key is validated when
-the task loads. The scenario hash covers the definition, the inline fixture, the pinned fixture
+the task loads. Before piloting a verifier-scored task, run
+`bun probes/run.ts --check-reference --scenario <task>`. It prepares the start exactly as a trial
+does, requires the hidden verifier to fail there (a timeout is inconclusive, not a failure), applies `answers/reference.patch`, and requires
+the verifier to pass. It calls no model and exits non-zero on either violation. A hidden verifier
+must exercise only names, paths, and behavior that the prompt specifies. The scenario hash covers the definition, the inline fixture, the pinned fixture
 identity, `start.patch`, `change.patch`, and the bytes of every file under `answers/`, so editing
 any of them invalidates records.
 
@@ -311,10 +326,10 @@ any of them invalidates records.
 
 The PI-50 corpus in `fixtures.json` pins four MIT repositories: petite-vue (frontend and
 interactive Vite demos), petl (local CSV/data pipelines), micrograd (deterministic scalar
-ML), and the Python MCP SDK (agent/tooling). Its 13 scenarios use exact edits, multi-file
+ML), and the Python MCP SDK (agent/tooling). Its 20 scenarios use exact edits, multi-file
 changes, reconnaissance, diagnosis, delegated review, and two-phase continuation. The
-frontend grid task captures desktop and mobile screenshots and samples its first trial
-for human review. Primary domain and mode tags for the corpus:
+frontend grid, playlist, and cart demo tasks capture desktop and mobile screenshots and sample their
+first trial for human review. Primary domain and mode tags for the corpus:
 
 | Scenario | Domain | Primary mode |
 | --- | --- | --- |
@@ -322,30 +337,149 @@ for human review. Primary domain and mode tags for the corpus:
 | `frontend-local-budget` | frontend product | multi-file verified change |
 | `frontend-grid-keyboard` | interactive Vite/HTML demo | visual verified change |
 | `frontend-filter-diagnosis` | interactive Vite/HTML demo | failure diagnosis |
+| `frontend-for-iterables` | frontend product | long-context continuation |
+| `demo-playlist-order` | interactive Vite/HTML demo | failure diagnosis |
+| `demo-cart-stale-total` | interactive Vite/HTML demo | failure diagnosis |
 | `data-csv-header` | data-science pipeline | exact edit |
 | `data-local-summary` | data-science pipeline | multi-file verified change |
 | `data-csv-recon` | data-science pipeline | repository reconnaissance |
+| `data-revenue-rejects` | data-science pipeline | multi-file verified change |
+| `data-sort-reverse-cache` | data-science pipeline | exact edit |
 | `ml-scalar-zero-gradient` | deterministic ML | exact edit |
 | `ml-backward-diagnosis` | deterministic ML | failure diagnosis |
 | `ml-handoff-gradient` | deterministic ML | long-context continuation |
+| `ml-deep-backward` | deterministic ML | exact edit |
+| `ml-checkpoint-resume` | deterministic ML | multi-file verified change |
 | `tool-call-recon` | agent/tooling | repository reconnaissance |
 | `tool-cache-review` | agent/tooling | delegated review (whole mode only) |
 | `tool-cache-ttl` | agent/tooling | multi-file verified change |
 
 The isolated mode used for smoke trials does not expose a delegation tool; a whole-mode run is
-needed to test delegation rather than only review accuracy. The specialist baseline panel is
-`frontend-local-budget`, `frontend-grid-keyboard`, `data-csv-header`, `data-csv-recon`,
-`ml-backward-diagnosis`, `ml-handoff-gradient`, `tool-cache-review`, and `tool-cache-ttl`.
-The other five tasks remain available for targeted diagnosis. With the two active Pi models and
-10 repetitions, the eight-task whole-mode panel measures up to 160 agent trials; it does not run automatically.
-Six panel tasks are guards, so pass `--trials 10` for a full baseline; without it, passing guard cells stop at
-one trial each. Select the
-panel with eight repeated `--scenario` flags rather than `--include-benchmarks`, which selects
-all 13 tasks. A baseline report must state that this specialist panel, not the entire corpus, was
-sampled.
+needed to test delegation rather than only review accuracy.
+
+### Measurement admission (PI-92.4)
+
+The former eight-task specialist panel is **not** an approved measurement panel. Its 45-trial
+partial baseline used three trials per cell with runner v6; six tasks passed every completed
+trial, and the only failures were on `tool-cache-review`. None of those records qualifies as a
+10-trial pilot under the current runner. Existing `guard: true` markers retain their
+low-cost regression behavior; they are not evidence of measurement admission.
+
+| Task | Whole-mode evidence | Measurement disposition |
+| --- | --- | --- |
+| `frontend-search-label` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: exact edit at ceiling |
+| `frontend-local-budget` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+| `frontend-grid-keyboard` | Sonnet 3/3; Luna cell missing | pilot candidate: interactive visual task; needs `answers/reference.patch` first |
+| `frontend-filter-diagnosis` | none | pilot candidate if diagnosis needs a harder variant; needs `answers/reference.patch` first |
+| `frontend-for-iterables` | v8: Sonnet 5.5 10/10, GPT-6 Luna 5/10 (2 failed, 3 token budget) | admitted: frontend long-context continuation |
+| `demo-playlist-order` | v8: Sonnet 5.5 9/10, GPT-6 Luna 9/10; both failures caused by a leaked agent Vite server on the verifier's fixed port | dropped from measurement; kept as a diagnostic. Clean trials all passed, so likely ceiling. Verifier now uses a run-time port, which invalidates these records |
+| `demo-cart-stale-total` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: interactive-demo diagnosis at ceiling |
+| `data-csv-header` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+| `data-local-summary` | old contract, v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10, all 20 needed one repair; revised contract: none, reference checked offline | unpiloted after contract fix; old pilot dropped and not evidence |
+| `data-revenue-rejects` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: data multi-file change at ceiling |
+| `data-sort-reverse-cache` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: data exact edit at ceiling |
+| `data-csv-recon` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+| `ml-scalar-zero-gradient` | none (one isolated smoke passed) | pilot candidate: exact ML edit; needs `answers/reference.patch` first |
+| `ml-backward-diagnosis` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+| `ml-handoff-gradient` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+| `ml-deep-backward` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: ML exact edit at ceiling |
+| `ml-checkpoint-resume` | v8: Sonnet 5.5 10/10, GPT-6 Luna 10/10 | guard: ML multi-file change at ceiling |
+| `tool-call-recon` | v8: Sonnet 5.5 10/10, GPT-6 Luna 7/10 | admitted: repository reconnaissance |
+| `tool-cache-review` | v8 whole mode, same setup: Sonnet 5.5 10/10; GPT-6 Luna 7/10 (v6 history: Sonnet 5 3/3, Luna 2/4) | admitted: delegated review |
+| `tool-cache-ttl` | 3/3 on each model | provisional guard; pilot only if needed for coverage |
+
+`tool-cache-review` and `tool-call-recon` are admitted: each has a GPT 7/10 cell within the
+2–8 band. `frontend-search-label` is a validated guard. The first `data-local-summary` pilot
+was dropped: every first verification failed because its hidden test imported `summarize`, a
+function name absent from the task prompt, and repair feedback then supplied that name. Its
+prompt now specifies `summarize(input_path, output_path)`. That changes the scenario hash, so
+the old records stay on disk but no longer match the task and are not evidence for it. The
+revised task needs its own pilot; with the name specified it may well reach ceiling and become a
+guard. The old specialist panel is still not
+admitted as a whole. Before any further paid pilot, obtain explicit user spend approval
+and freeze the harness hash, runtime fingerprint, scenario hash, runner version, and default model
+pair. Pilot **each** candidate in whole mode for 10 trials per default model; specify `--trials 10`
+even for guards, which otherwise stop at one passing trial. Do not pool trials across cells or
+runner versions. If at least one model passes 2–8 of 10, admit the task to measurement. If not,
+record a per-task decision: keep an all-pass task as a regression guard, or drop a task that is
+unhelpful or consistently failing; do not relabel a hard failure as a passing guard. A guard may
+remain in the corpus without counting toward measurement. Keep visual human acceptance separate
+from the deterministic task outcome.
+
+The four approved pilots ran 10 trials per model and task under runner v8, harness
+`b12636ba41b1` and runtime `b7621759a09f`. Recorded agent spend was $1.6692 for
+`tool-cache-review`, $0.7400 for `frontend-search-label`, $1.1416 for `data-local-summary`,
+and $1.2590 for `tool-call-recon` ($4.8098 total). Sonnet judge charges for the review and
+reconnaissance tasks are additional and not recorded. Batch 2 is recorded below.
+The dry run below previews the three cells that remain valid without paid model calls:
+
+```bash
+bun probes/run.ts --harness-mode whole --trials 10 --dry-run \
+  --scenario tool-cache-review --scenario frontend-search-label --scenario tool-call-recon
+```
+
+These pilots admit only review and reconnaissance in agent/tooling; exact edits and multi-file
+data work did not discriminate. Batch 2 tried one harder candidate per missing PI-50 mode,
+one per missing domain: `ml-deep-backward` (ML exact edit), `data-revenue-rejects` (data
+multi-file change), `demo-playlist-order` (interactive-demo diagnosis of a seeded keyed `v-for`
+regression in library code), and `frontend-for-iterables` (frontend two-phase continuation).
+Each passed `--check-reference` before the user-approved pilot of 80 whole-mode agent trials
+(10 per default model and task, no judge calls) ran on 2026-10-06 under runner v8, harness
+`b12636ba41b1` and runtime `b7621759a09f`. Recorded agent spend was $0.6667 for
+`ml-deep-backward`, $1.0752 for `data-revenue-rejects`, $1.8758 for `demo-playlist-order`, and
+$4.9161 for `frontend-for-iterables` ($8.5338 total). Three trials interrupted by host sleep were
+recorded as infrastructure failures and topped up; their spend is not recorded.
+
+Only `frontend-for-iterables` is admitted. GPT-6 Luna passed 5 of 10: two final workspaces
+rendered nothing for a Map, and three trials hit the 120,000-token cap. `ml-deep-backward` and
+`data-revenue-rejects` passed every trial on both models and are guards. `demo-playlist-order`
+passed 9/10 on both models, above the band. Its two recorded failures came from the verifier
+rather than the agent's fix. Verifier feedback reveals the fixed port 41191. In one GPT trial,
+the agent started its own `nohup` Vite server on that port, and it outlived the trial. The
+repair rounds then verified against the agent's server, and a later Sonnet trial's verifier
+could not bind the port. Every clean trial passed on both models, so the task is dropped from
+measurement and kept as a diagnostic. A harder interactive-demo diagnosis candidate is needed. The
+runner now reaps leftover agent processes, and this verifier picks its port at run time.
+
+Batch 2 showed a pattern. Short, fully specified tasks reach the ceiling on both models, and GPT-6
+Luna separated only on tasks that need broad reading or long context. Batch 3 therefore targets
+the three still-uncovered modes with wider code surfaces:
+
+- `demo-cart-stale-total` (interactive demo × diagnosis): the cart's totals lag one edit behind. The cause is a
+  seeded snapshot in `src/scheduler.ts`, far from the demo, which drops jobs queued during a
+  flush. A hidden page checks that chained `v-effect`s settle by `await nextTick()`.
+- `data-sort-reverse-cache` (data × exact edit): the cached second iteration of a descending
+  sort larger than the buffer is misordered (seeded in petl's 600-line `sorts.py`). The verifier
+  also requires the sort cache to stay in use and only `sorts.py` or `petl/test/` to change.
+- `ml-checkpoint-resume` (ML × multi-file change): `state_dict`, a PyTorch-semantics SGD, and a
+  JSON checkpoint must resume training to match uninterrupted training. A checkpoint without the
+  momentum buffers fails. micrograd is small, so this task is not broad-surface. A relative
+  tolerance of 1e-9 is needed because backward order follows set iteration, so sums can differ
+  in the last bits.
+
+Each passed `--check-reference` before the 60-trial pilot (10 per default model and task, no
+judge calls), which ran under runner v8, harness `b12636ba41b1` and runtime `b7621759a09f`. Every
+cell passed 10/10 with no repair rounds and no infrastructure failures, so all three are guards,
+not measurement tasks. Recorded agent spend was $1.7395 for `demo-cart-stale-total`, $1.1165 for
+`data-sort-reverse-cache`, and $1.3367 for `ml-checkpoint-resume` ($4.1927 total; $17.5363
+recorded across all PI-92.4 pilots, excluding judge charges and trials lost to host sleep). No
+orphaned trial processes remained after the run.
+
+Exact edit, multi-file verified change, and failure diagnosis remain uncovered. So do the
+interactive-demo, data, and ML domains. Neither a wider code surface nor subtler seeds moved
+either model off the ceiling. The only discriminating cells so far combine long or broad work
+with GPT-6 Luna: review, reconnaissance, and two-phase continuation.
+
+`demo-playlist-order` runs its demo flow in both viewport profiles and ends each on a screenshot,
+and `humanReviewTrials: 1` samples its first trial per model for review (PI-50 AC#6). The revised
+`data-local-summary` is deliberately left out of this batch; piloting it later adds 20 trials.
+Do not run the former eight-task baseline as a substitute for this admission step. Revise PI-50's
+panel to the actually admitted tasks only after pilot results are recorded; any uncovered mode
+remains an explicit blocker, not a reason to count a ceiling task as a measurement task.
 
 Each pinned checkout is public; prior exposure in training data may
-inflate cross-generation model comparisons. The MCP SDK installs in editable mode;
+inflate cross-generation model comparisons. `demo-playlist-order` seeds the removal of the
+`prevMovedBlock` clause from the pinned public `for.ts`, so a model may recall the correct code. The MCP SDK installs in editable mode;
 when checking an edited copy of `src/mcp`, use `PYTHONPATH=src` so imports resolve the
 trial rather than the cached checkout. The SDK's own `AGENTS.md` is an upstream fixture
 file, not a canonical harness instruction. The micrograd fixture needs no installed packages;
@@ -373,11 +507,22 @@ Each verification clones the agent's copy again, overlays `answers/verifier/`, r
 `verifyCommand` there, and discards the clone. Hidden tests therefore never appear in the agent's
 copy, even between repair rounds, and verifier side effects never touch it. The verifier's output
 is still fed back, as verify-turn does, with the clone's path rewritten to the agent's. A
-verifier that times out counts as a failed verification, because the agent's code can cause it.
+verifier that times out counts as a failed verification, because the agent's code can cause it,
+unless the host slept during it, which makes the trial an infrastructure failure.
 
 There is no containment (PI-90). An agent that looks outside its copy can read `answers/` in this
 checkout. Runs use only trusted pinned fixtures, keep `PACKAGE_INSTALL_GUARD_ENV`, and inherit
 host credentials; egress is not blocked.
+
+Each trial's agent children, and each verification, run with a unique `PI_PROBE_TRIAL_TAG` in their
+environment. After every agent round, every verification, and the trial itself, the runner kills
+any process that still carries that tag. This catches a dev server an agent started with `nohup`
+or `&`, which `terminate` cannot find after reparenting. Without it, such a server outlived its
+trial, held a verifier's fixed port, and failed later trials of `demo-playlist-order`. Detection
+reads the environment with macOS `ps -E`, which hides platform binaries such as `/bin/sleep`;
+those leftovers survive until PI-90 containment exists. A trial whose copy cannot be prepared or
+verified, for example a `cp` timeout after host sleep, is recorded as an infrastructure failure.
+An unprovisioned fixture still stops the run.
 
 ### Trial lifecycle
 

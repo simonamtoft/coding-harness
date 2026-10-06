@@ -107,3 +107,17 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Decision:** Remove the `--export` release pipeline, including redaction, secret scanning, `release.json`, and the releasable rule. Keep `--record-review` for human judgement of sampled visual trials and keep local records and reports.
 **Why:** The only current reader needs a local report; a redacted export serves no current decision and cannot prove it is free of secrets. Human review still supplies the visual-quality judgement required by PI-50.
 **Revisit if:** Benchmark evidence needs to be shared outside the local machine with an explicit trust and publication policy.
+
+### PRB-16 · Hidden verifiers test only the prompt's contract; references are checked by the runner
+`accepted` · 2026-10-06 · `01a110c3`
+**Decision:** A hidden verifier may depend only on names, paths, and behavior the task prompt specifies, and every verifier-scored task carries `answers/reference.patch`, checked offline by `run.ts --check-reference` (prepared start must fail, reference must pass) before a pilot. `data-local-summary` was fixed by naming `summarize(input_path, output_path)` in its prompt; rejected reducing its verifier to the CLI, which would stop checking the reusable interface, and rejected ad hoc scratch checks recorded only in task notes.
+**Why:** All 20 first verifications of the original `data-local-summary` pilot failed only because the hidden test imported an unprompted function name; repair feedback then leaked it, so 20/20 measured repair from a hint. Reusing trial preparation and verification makes the authoring check exact and repeatable for every later candidate.
+**Revisit if:** A task deliberately measures discovery of an unstated interface, which would need its own scoring rather than a hidden-test failure.
+**Evidence:** User chose "Name it in prompt" and "Runner --check-reference".
+
+### PRB-17 · Reap tagged trial processes; migrate fixed verifier ports only on re-pilot
+`accepted` · 2026-10-06 · `01a110c3`
+**Decision:** Tag every trial's agent and verifier children with a unique `PI_PROBE_TRIAL_TAG` and kill tagged leftovers after each agent round, verification, and trial; record trial-copy preparation and verification errors as infrastructure failures. New frontend verifiers choose their port at run time and wait for a verifier-only file. Rejected migrating every existing frontend verifier now, because the admitted `frontend-for-iterables` and guard `frontend-search-label` records show no port, connection, or startup failures and editing `answers/` would discard that paid evidence. No `RUNNER_VERSION` bump: reaping changes no clean trial's scoring.
+**Why:** In the batch-2 pilot a GPT agent started `nohup vite --port 41191`, the port printed in verifier feedback; it outlived the trial, so repair rounds verified the agent's own server and a later Sonnet trial's verifier could not bind. Twenty orphaned Vite servers remained after the run. Descendant tracking cannot see reparented processes; the environment tag survives reparenting.
+**Revisit if:** PI-90 containment bounds child processes directly, a frozen fixed-port verifier shows a port collision, or a task is re-piloted (migrate its verifier then).
+**Evidence:** User chose "Fix in PI-92.4" and "New + demo only".

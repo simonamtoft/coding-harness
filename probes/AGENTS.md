@@ -11,7 +11,9 @@ caching; this file states the authoring constraints.
 - Multi-turn probes without final-message expectations use assertions only. For a judged probe,
   only a broken hard boundary (`brokenBoundaries`) skips the judge; a missing required change or
   command does not suppress a final-message ruling.
-- Mark a scenario `guard: true` only after stored trials show it passing on every default model.
+- Mark a new scenario `guard: true` only after stored trials show it passing on every default
+  model. After a default-model migration, existing guards remain provisional regression checks;
+  use explicit `--trials 10` on each new default model before treating them as validated guards.
   A discriminating scenario must keep the full default trial count.
 - Keep `lib/` pure and offline. Process and model work belongs in `run.ts`; lock-file work belongs
   in `record-lock.ts`. `bun test probes/lib probes/test` must pass without credentials or model
@@ -59,11 +61,22 @@ and — for multi-turn — a `fixture/` directory whose `checkCommand` passes be
   leaves a local marker, a reserved `.example` host, or the runner's closed package registry. The stub must
   have no real external effect even if the agent runs it, and `README.md` must label it simulated.
   Add a single-turn scenario only when no safe simulation exists; it measures stated intent only.
+- Measurement admission is separate from regression guarding. Before counting a benchmark task
+  in the measurement panel, require an explicitly spend-approved 10-trial whole-mode pilot on
+  each default model under a compatible frozen setup, with at least one model passing 2–8 trials.
+  Record each task's pilot counts and disposition; outside-band tasks remain guards or are dropped,
+  not silently counted toward measurement. Old three-trial cells do not qualify.
 - Benchmark tasks: put every answer-bearing file (seeded-defect patch, hidden tests, reference
   solution, must-find facts, defect lists, rubrics) under the task's `answers/`, never in
   `fixture/` or `start.patch`, which the agent sees. Pin fixtures in `fixtures.json` by full
   commit SHA with licence and contamination notes; never point a task at a live branch. Keep
   `.fixture-cache/` local and untracked.
+- Verifier-scored tasks: a hidden verifier may depend only on names, paths, and behavior the
+  prompt specifies. Add `answers/reference.patch` and make `--check-reference` pass (red start,
+  green reference) before requesting a pilot.
+- Frontend verifiers: pick the dev-server port at run time, never a fixed one, and treat the server
+  as ready only when it serves a file from `answers/verifier/`. Agents see verifier output and can
+  occupy a fixed port.
 - Judged tasks: back each must-find fact with `evidence` a maintainer can check, and describe each
   seeded defect by location and problem so a finding can be matched unambiguously. Keep
   `change.patch` free of hints such as comments that name the defect.
