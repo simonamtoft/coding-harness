@@ -1,5 +1,10 @@
 # Harness behavior probes
 
+> **Status: parked work in progress (PRB-19).** Paid results are not decision-grade. Do not run
+> paid probes as a verification step or cite them as evidence for a change unless the user asks.
+> The offline runner tests still run in `.agent/verify.sh`. The PI-50 baseline gaps that led to
+> parking are recorded in PRB-19.
+
 Measures whether instruction or harness changes alter agent behavior. Each probe runs a real
 `pi` child against a scenario and scores the outcome, so changes are compared through conduct
 rather than argued from their wording or implementation.
@@ -25,7 +30,8 @@ outside automatic verification.
 
 ## When to run which check
 
-Checks are tiered by cost (PRB-11):
+Checks are tiered by cost (PRB-11). While the suite is parked (PRB-19), the two paid rows run
+only on explicit user request:
 
 | Check | Cost | When |
 | --- | --- | --- |

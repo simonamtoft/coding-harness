@@ -32,9 +32,9 @@ the links point at, not only the staged snapshot.
 
 `.agent/verify.sh` runs the offline checks listed in `AGENTS.md`, about two
 minutes in total, and is the verifier `verify-turn` and the Claude Stop hook
-discover. It makes no model calls. Paid probes stay manual; see
-[probes/README.md](probes/README.md#when-to-run-which-check) for when to run
-them.
+discover. It makes no model calls. Paid probes stay manual and are parked as
+work in progress (PRB-19): they run only on explicit request and are not
+evidence for changes. See [probes/README.md](probes/README.md).
 
 ## Pi packages
 
@@ -81,8 +81,8 @@ this bundle's brand references when it is present.
 - `experiments/bonsai/`: local-model playground with tracked setup notes;
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
 - `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
-  whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Paid runs
-  remain manual and run at batch points rather than per change. See [probes/README.md](probes/README.md).
+  whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Parked as
+  work in progress (PRB-19); paid runs are manual, on request only. See [probes/README.md](probes/README.md).
   Not deployed by `link.sh`.
 - `.agent/verify.sh`, `.githooks/`, and `scripts/`: this repository's offline
   verifier, the pre-commit hook `link.sh` enables, and the model-free Pi

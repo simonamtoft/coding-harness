@@ -3,6 +3,9 @@
 Manual, paid evaluation harness for instruction changes. `README.md` here explains running and
 caching; this file states the authoring constraints.
 
+Status: parked work in progress (PRB-19). Run paid probes only on explicit user request, and do
+not treat their results as evidence for a change.
+
 ## Constraints
 
 - Never wire `run.ts` into `.agent/verify.sh`, a Taskfile `verify` task, or any hook. Runs cost

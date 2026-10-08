@@ -91,7 +91,7 @@ Run checks for the changed component:
 
 `.agent/verify.sh` runs all of these automatically. For a change to Pi runtime inputs, `bun scripts/pi-load-check.ts` checks without model calls that the installed harness loads; the pre-commit hook runs it too.
 
-Paid probes are tiered (PRB-11). For a change to `shared/AGENTS.md` that is meant to alter agent behavior, `bun probes/run.ts --compare` isolates and compares baseline against candidate. Run `bun probes/run.ts --harness-mode whole` at batch points, not per change: before adopting a Pi or package upgrade, and after a set of runtime changes that alters agent-facing behavior, before pushing it. Both commands cost real model calls and minutes, so run them deliberately and read `probes/README.md` first; never put them in an automatic hook.
+The probes suite is parked as work in progress (PRB-19). Do not run paid probes (`bun probes/run.ts --compare` or `--harness-mode whole`) as a verification step, and do not cite their results as evidence for a change, unless the user explicitly asks. The offline probe tests above still run. A requested paid run costs real model calls and minutes: read `probes/README.md` first, and never put it in an automatic hook.
 
 For link-topology changes, exercise `link.sh` with an isolated temporary `HOME`; never test a forced install against the real home directory.
 
