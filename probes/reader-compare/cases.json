@@ -1,0 +1,48 @@
+{
+  "sources": {
+    "pi/agent/extensions/subagent/index.ts": "a7330f4843f3a4de4aa023f472437f3f9c8f4b3af0161856676645d322014488",
+    "probes/README.md": "0505f1c6ba3e175fdefd66bd8af85f94209d35f3701057895ad0fb389f2c1f30",
+    "pi/agent/agents/bulk-reader.md": "54d40b8e3f47625897eec327cc10b215837186c6d3ecbab2540d8774e0435ff6",
+    "pi/agent/extensions/subagent/README.md": "c115bc6fa42a5a8a657274d20c106029a48dca87163f3221041ed6080809aa0f",
+    "shared/skills/bulk-read/BULK-READER.md": "44577045b92740bfae961bddf473cd8daf71432a37069362a8186bec84246285",
+    "decisions/subagents.md": "357e0d51a8b46eab9d5d34758f45cb2606f4eb13e8b07f6c9d7d042c40f6a598"
+  },
+  "cases": [
+    {
+      "id": "large-code",
+      "paths": ["pi/agent/extensions/subagent/index.ts"],
+      "questions": [
+        {"id": "A", "ask": "Which two streamed event types add a message to currentResult.messages?", "mustContain": ["message_end", "tool_result_end"], "evidence": [{"path": "pi/agent/extensions/subagent/index.ts", "lines": [386, 408]}]},
+        {"id": "B", "ask": "When are turns incremented and cost accumulated?", "mustContain": ["assistant", "usage", "cost"], "evidence": [{"path": "pi/agent/extensions/subagent/index.ts", "lines": [391, 398]}]},
+        {"id": "C", "ask": "At which two event-processing points is emitUpdate called?", "mustContain": ["message_end", "tool_result_end", "emitUpdate"], "evidence": [{"path": "pi/agent/extensions/subagent/index.ts", "lines": [405, 410]}]}
+      ]
+    },
+    {
+      "id": "large-document",
+      "paths": ["probes/README.md"],
+      "questions": [
+        {"id": "A", "ask": "What are the Sonnet 5.5 and Luna pass counts for tool-call-recon?", "mustContain": ["tool-call-recon", "10/10", "7/10"], "evidence": [{"path": "probes/README.md", "lines": [387]}]},
+        {"id": "B", "ask": "What are the Sonnet 5.5 and Luna pass counts for tool-cache-review?", "mustContain": ["tool-cache-review", "10/10", "7/10"], "evidence": [{"path": "probes/README.md", "lines": [388]}]},
+        {"id": "C", "ask": "Does guard status alone count as measurement admission?", "mustContain": ["guard", "not", "admission"], "evidence": [{"path": "probes/README.md", "lines": [366]}]}
+      ]
+    },
+    {
+      "id": "small-multifile",
+      "paths": ["pi/agent/agents/bulk-reader.md", "pi/agent/extensions/subagent/README.md", "shared/skills/bulk-read/BULK-READER.md"],
+      "questions": [
+        {"id": "A", "ask": "What are bulk-reader's canonical model and thinking level?", "mustContain": ["gpt-6-luna", "low"], "evidence": [{"path": "pi/agent/agents/bulk-reader.md", "lines": [4, 5]}]},
+        {"id": "B", "ask": "Can a local model override take precedence over that model?", "mustContain": ["override", "precedence"], "evidence": [{"path": "pi/agent/extensions/subagent/README.md", "lines": [42]}]},
+        {"id": "C", "ask": "What answer sections and source support must the reader return?", "mustContain": ["Answered facts", "Unresolved facts", "Coverage limits", "line"], "evidence": [{"path": "shared/skills/bulk-read/BULK-READER.md", "lines": [9, 10, 11]}]}
+      ]
+    },
+    {
+      "id": "decision-history",
+      "paths": ["decisions/subagents.md"],
+      "questions": [
+        {"id": "A", "ask": "What provider and model-pin policy did SUB-14 choose for low-risk utility roles?", "mustContain": ["openai-codex", "Luna"], "evidence": [{"path": "decisions/subagents.md", "lines": [91]}]},
+        {"id": "B", "ask": "Under SUB-16, when does a Pi child inherit its parent's model?", "mustContain": ["unpinned", "parent"], "evidence": [{"path": "decisions/subagents.md", "lines": [106]}]},
+        {"id": "C", "ask": "What thinking levels does SUB-19 pin for bulk-reader and other roles?", "mustContain": ["low", "medium"], "evidence": [{"path": "decisions/subagents.md", "lines": [128]}]}
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@
 /probes/results/*.tmp
 /probes/.fixture-cache/
 /probes/results/artifacts/
+/probes/results/reader-compare/
 
 backlog/
 .agent-report*/
