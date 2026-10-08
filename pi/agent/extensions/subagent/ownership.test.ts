@@ -57,7 +57,7 @@ describe("subagent ownership", () => {
 		expect(Object.fromEntries(piAgents.map((agent) => [agent.name, agent.model]))).toEqual({
 		"bulk-reader": "openai-codex/gpt-6-luna",
 		"commit-planner": "openai-codex/gpt-6-luna",
-		"correctness-reviewer": "anthropic/claude-sonnet-5",
+		"correctness-reviewer": "anthropic/claude-sonnet-5-5",
 		"implementation-worker": "openai-codex/gpt-6-sol",
 		presenter: "openai-codex/gpt-6-luna",
 		"repository-scout": "openai-codex/gpt-6-luna",
