@@ -89,9 +89,9 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 ### SUB-14 · Canonical subagent models use built-in providers by role
 `accepted` · 2026-09-08 · `01a0825e`
 **Decision:** Commit model pins for every canonical Pi role using only built-in `openai-codex` or `anthropic` providers. Use OpenAI Codex Luna for low-risk utility roles and Terra for implementation; use Anthropic Sonnet 5 for correctness review and Opus 4.8 for security review. Machine-local `subagents.json` retains higher precedence for provider, model, credentials, and cost policy.
-**Why:** Custom `IM-GPT` is machine-wired and must not be a portable canonical dependency. Separating OpenAI Codex implementation from Anthropic review also gives correctness and security review an independent provider perspective.
+**Why:** Custom `PrivateGPT` is machine-wired and must not be a portable canonical dependency. Separating OpenAI Codex implementation from Anthropic review also gives correctness and security review an independent provider perspective.
 **Revisit if:** Built-in provider availability, model quality, cost policy, or the desired implementation/review diversity changes.
-**Evidence:** "I wanted to use default provider, as in openai-codex or anthropic, and not IM-GPT"
+**Evidence:** "I wanted to use default provider, as in openai-codex or anthropic, and not [PrivateGPT]"
 
 ### SUB-15 · Bulk-read hooks redirect; the parent frames extraction
 `accepted` · 2026-09-12 · `01a0950d`
@@ -129,3 +129,17 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** A pinned child without `thinking:` receives the untracked local default, and provider defaults drift across model versions (Opus 5 defaulted to `high` effort, Opus 5.5 to `medium`, and Pi's managed-effort path falls back to `high`). Anthropic's Opus 5.5 guidance is to start at `medium` and re-tune rather than carry settings over. Declaring the level keeps review and worker behavior reproducible across machines and model upgrades.
 **Revisit if:** A model upgrade or probe comparison shows a role needs a different level, or `subagents.json` gains per-agent thinking overrides.
 **Evidence:** "YEs add thinking medium"; "Put medium to these as well."
+
+### SUB-20 · Keep Luna for `bulk-reader` after Haiku 5.5 trials
+`rejected` · 2026-10-08 · `01a11ad2`
+**Decision:** Do not switch the canonical `bulk-reader` pin from `openai-codex/gpt-6-luna` to `anthropic/claude-haiku-5-5`. The other four Luna roles were not evaluated and keep their pins.
+**Why:** In 80 worker-only runs Haiku gave far more source-bound citations but cost about 2.6× more at the worker. In a 12-run parent-workflow smoke (3 pairs × 2 tasks), all final answers were correct on both arms, combined cost was within about 2%, and Haiku was about 25% slower; the worker's citation advantage was largely absorbed by parent re-reads. Evidence is small, uses one parent model, and the Luna arm ran on `PrivateGPT` after an `openai-codex` login expiry.
+**Revisit if:** Long-source tasks show parent re-reads dominating combined cost, citation precision becomes worth the extra cost and latency, or pricing changes.
+**Evidence:** "Seems like a more capable model then"; user chose the slim trial and PrivateGPT Luna when auth expired. Details: `probes/reader-compare/REPORT.md`.
+
+### SUB-21 · OpenAI-family roles pin the `PrivateGPT` provider alias
+`accepted` · 2026-10-11 · `01a11ad2`
+**Decision:** The six canonical roles that pinned `openai-codex` (`bulk-reader`, `commit-planner`, `presenter`, `repository-scout`, `test-log-analyst`, `implementation-worker`) pin `PrivateGPT/gpt-6-luna` or `gpt-6-sol` instead. `PrivateGPT` is a neutral name for the team's private OpenAI-family provider (formerly named differently locally); models and tiers are unchanged. Anthropic reviewers keep their pins. This partly reverses SUB-14's rule that committed pins use only built-in providers.
+**Why:** The team routes OpenAI-family traffic through the private provider. A neutral alias avoids committing the internal provider name, but it is not a security control. Each machine must define a `PrivateGPT` provider in its untracked `models.json`; otherwise dispatch fails clearly (SUB-16) and a local `subagents.json` override is needed. Reviewers stay on Anthropic to keep their independence from the implementer.
+**Revisit if:** Another machine needs a different provider name, the alias hides a real misconfiguration, or `PrivateGPT` gains Claude models.
+**Evidence:** "We need to swap everything to [PrivateGPT] instead of openai-codex"; user chose a committed neutral alias and to keep Anthropic where it is.

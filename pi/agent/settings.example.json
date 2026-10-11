@@ -1,0 +1,20 @@
+{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-5-5",
+  "defaultThinkingLevel": "medium",
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "enableInstallTelemetry": false,
+  "showHardwareCursor": false,
+  "warnings": {
+    "anthropicExtraUsage": false
+  },
+  "enabledModels": [
+    "PrivateGPT/gpt-6-sol",
+    "PrivateGPT/gpt-5.6-terra",
+    "PrivateGPT/gpt-6-luna",
+    "anthropic/claude-opus-5-5",
+    "anthropic/claude-sonnet-5-5"
+  ],
+  "hideThinkingBlock": true
+}

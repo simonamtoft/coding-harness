@@ -34,7 +34,7 @@ recommendations. The final 24K results are at the end of this report.
 - Configuration merge preserved existing model-config values. The original backup
   is machine-local: `~/.pi/agent/models.json.pi75-20260918T134006Z.bak`.
   `settings.json` remained last modified on 2026-09-16, before these trials;
-  default provider/model remained `IM-GPT` / `gpt-5.6-terra`.
+  default provider/model remained `PrivateGPT` / `gpt-5.6-terra`.
 - CORS initially used the server default. Before repair 3 and the normal-harness
   trial, startup was tightened to its own loopback origin and the UI/server agent
   disabled. An external-origin preflight did not receive an allowing origin.
@@ -119,8 +119,8 @@ extension, skill, permission dialog, or subagent. Trial prompts prohibited
 delegation, and all recorded assistant messages were `bonsai-local/bonsai-2-pq2`.
 
 Current local subagent overrides route bulk-reader, repository-scout,
-test-log-analyst, and presenter to `IM-GPT/gpt-5.6-luna`, correctness-reviewer to
-`openai-codex/gpt-5.6-terra`, and security-reviewer to `IM-GPT/gpt-5.6-sol`.
+test-log-analyst, and presenter to `PrivateGPT/gpt-5.6-luna`, correctness-reviewer to
+`openai-codex/gpt-5.6-terra`, and security-reviewer to `PrivateGPT/gpt-5.6-sol`.
 The implementation-worker definition is pinned to `openai-codex/gpt-5.6-terra`.
 These do not inherit Bonsai. Parent-side log extraction and implementation review
 used non-Bonsai workers and are **not** credited as local-model capabilities.

@@ -168,11 +168,23 @@ verifier, requires a session-scoped content-bound approval, and is documented in
 `pi/agent/extensions/diagnostics/README.md`.
 
 Pi's `~/.pi/agent/settings.json`, `~/.pi/agent/models.json`, and
-`~/.pi/agent/subagents.json` remain local. The settings file contains package
-paths relative to the native Pi directory, the model catalog points at
-environment-specific providers, and `subagents.json` optionally maps agent
-names to machine-specific `provider/model` values. Authentication and generated
-state are also intentionally not versioned.
+`~/.pi/agent/subagents.json` remain local. The settings file contains a device
+id, the last-seen changelog version, package paths relative to the native Pi
+directory and personal preferences; the model catalog holds provider endpoints
+and credentials; and `subagents.json` optionally maps agent names to
+machine-specific `provider/model` values. Authentication and generated state are
+also intentionally not versioned.
+
+`pi/agent/settings.example.json` lists the shared defaults. For a new machine,
+copy it to `~/.pi/agent/settings.json` (or merge it into an existing file), then
+run `link.sh --packages` to add the plugin entries. Merge the providers you need
+from `pi/agent/models.example.json` into `~/.pi/agent/models.json`: replace the
+`PrivateGPT` placeholder host, set `HETZNER_API_KEY` and `IM_GPT_API_KEY` in the
+environment, and `/login` as needed. `bonsai-local` is only for the local
+experiment. Agent pins in `pi/agent/agents/` use the
+`PrivateGPT` provider name, so dispatch fails clearly where that provider is not
+defined. Prefer editing those pins over keeping a `subagents.json` that
+duplicates them; keep the file only for genuine per-machine overrides.
 
 ## Adding the Hetzner Inference API
 

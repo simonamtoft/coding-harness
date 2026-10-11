@@ -1,7 +1,7 @@
 ---
 name: presenter
 description: Builds and validates the final self-contained HTML report from a parent agent's delivery brief
-model: openai-codex/gpt-6-luna
+model: PrivateGPT/gpt-6-luna
 thinking: medium
 tools: read, bash, write, edit
 ---

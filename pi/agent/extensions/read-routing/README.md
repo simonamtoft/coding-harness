@@ -42,7 +42,7 @@ flowchart TD
 
 Directory symlinks make new canonical files available without relinking. Start a new Pi session or run `/reload` to refresh extensions and skills. Agent definitions are discovered at dispatch. Credentials, installed models/providers, and optional `~/.pi/agent/subagents.json` overrides remain local; linking does not provision them.
 
-The canonical [agent definition](../../agents/bulk-reader.md) pins `openai-codex/gpt-5.6-luna` and permits only `read` and `grep`. A local model override wins. The [subagent runtime](../subagent/README.md) passes explicit provider/model arguments; an unpinned agent inherits the parent. Do not assume the effective worker is cheaper merely because its role is named `bulk-reader`.
+The canonical [agent definition](../../agents/bulk-reader.md) pins `PrivateGPT/gpt-6-luna` and permits only `read` and `grep`. A local model override wins. The [subagent runtime](../subagent/README.md) passes explicit provider/model arguments; an unpinned agent inherits the parent. Do not assume the effective worker is cheaper merely because its role is named `bulk-reader`.
 
 ## Runtime routing
 
@@ -183,11 +183,11 @@ These three Pi sessions ran in `~/research` with Terra on 2026-09-12, before the
 | `01a095f9-6d96-7565-93d3-8761913c9b5a` | The short curated source note was read directly without a limit or redirect. |
 | `01a095f9-cb8f-7565-93d3-8762ff191a12` | The deliberately unbounded MHTML read was blocked; the parent stopped as instructed. This proves hook activation, not extraction success. |
 
-These `jznee-cbam-demo` sessions ran on 2026-09-16 with Terra at medium thinking. The first two predate the coverage footer; the last two ran with it, on `IM-GPT/gpt-5.6-terra` rather than the baseline's `openai-codex` pin (same model, different provider):
+These `jznee-cbam-demo` sessions ran on 2026-09-16 with Terra at medium thinking. The first two predate the coverage footer; the last two ran with it, on `PrivateGPT/gpt-5.6-terra` rather than the baseline's `openai-codex` pin (same model, different provider):
 
 | Session | Observed behavior |
 | --- | --- |
-| `01a0ab20-41d0-72b9-a60f-cde869d2ccf2` | Worker failed (local `IM-GPT` 401). Block message still recommended `bulk-reader`; the parent paged the files under 350 lines. |
+| `01a0ab20-41d0-72b9-a60f-cde869d2ccf2` | Worker failed (local `PrivateGPT` 401). Block message still recommended `bulk-reader`; the parent paged the files under 350 lines. |
 | `01a0ab2f-cf9a-7188-8759-8eb5e49dfbd6` | Baseline for the footer. Worker succeeded with a 6.6 KB answer; the parent ran `wc -l`, then re-read ~1,800 lines of the covered files in ≤350-line pages (`datasets.ts` in three chunks covering all 830 lines). No block fired. |
 | `01a0abc8-2424-734d-8455-572b105cde17` | Same prompt with the footer. Twelve unbounded reads up front, three blocked; the parent then read the skill and dispatched. After the footer (10 files listed): one `rg`, **zero** re-reads of covered files, answer cited worker ranges (`actions.ts:424`, `schema.sql:319-351`). |
 | `01a0abc9-7c0c-715c-9d48-911c920d4ecd` | Forced-dispatch probe on `datasets.ts` and `see.ts`. After the footer: no tool calls at all; answer cited worker ranges (`datasets.ts:483-713`, `:720-736`, `:221-225`). |
@@ -232,7 +232,7 @@ Delegation overhead is close to fixed, because the brief, system prompt, and ans
 
 ### 15-file live routing and accuracy probe
 
-A fresh natural-adoption probe on 2026-09-12 used 15 synthetic, non-sensitive reference files, each 1,400 lines and 99,365 B (1.49 MB total). Each file held one planted `verification_token` at a different line; `retention_days` was absent from all files. The parent was `IM-GPT/gpt-5.6-terra`; `bulk-reader` used its pinned `openai-codex/gpt-5.6-luna` model.
+A fresh natural-adoption probe on 2026-09-12 used 15 synthetic, non-sensitive reference files, each 1,400 lines and 99,365 B (1.49 MB total). Each file held one planted `verification_token` at a different line; `retention_days` was absent from all files. The parent was `PrivateGPT/gpt-5.6-terra`; `bulk-reader` used its pinned `openai-codex/gpt-5.6-luna` model.
 
 The broad-read gate was separately confirmed: an unbounded `read` of one fixture returned the routing error and no file contents. In the natural extraction run, where the prompt did not mention delegation, the parent read the skill, dispatched one `bulk-reader`, and then made 15 one-line bounded reads to verify its citations. It returned all 15 planted values at their exact lines and correctly reported the missing key.
 

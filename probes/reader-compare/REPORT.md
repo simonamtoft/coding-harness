@@ -25,3 +25,22 @@ Across completed runs, Pi reported **$0.27988** of worker usage ($0.07781 Luna, 
 All tasks use this public repository's files, so possible training contamination and repeated prompts limit generalization. Ten runs of each of **four tasks** are not 40 independent tasks; the per-fact counts are even more correlated. The script uses the bulk-reader brief, tools, low thinking setting, and the same child Pi flags as the runtime, but launches children directly: it does **not** measure whether a parent trusts, rereads, repairs, or benefits from their answers. Local model overrides and actual provider billing are not represented. Do not use these numbers to claim an end-to-end economic win or a universal best model.
 
 **Next decision gate:** If the team values precise source citations enough to pay more for this worker, run a small whole-workflow A/B with the same parent tasks and measure verified parent answer quality, rereads, combined usage and latency. Keep canonical pins unchanged until that result supports a switch. If cost is the priority, first test whether a narrow citation-verification instruction or tool affordance improves Luna's line locations without its parent having to reread everything.
+
+## Parent-workflow follow-up (PI-99, 8 October 2026)
+
+**Result: no switch.** A slim parent A/B did not show a workflow benefit from Haiku large enough to change the `bulk-reader` pin. Treat it as a smoke test, not a ranking: **2 tasks × 3 paired repetitions = 6 runs per arm**, one Sonnet 5.5 parent (medium thinking, `read,grep,find,ls,subagent`), identical prompts, with only the worker model changed. The parent was told to delegate first and not read the source beforehand. The Luna arm ran on `PrivateGPT/gpt-6-luna` because the `openai-codex` login expired mid-run, so it is not the canonical `openai-codex` route.
+
+| | Luna (PrivateGPT) | Haiku 5.5 |
+| --- | ---: | ---: |
+| Final parent answers factually correct | 6/6 | 6/6 |
+| Combined parent + worker reported cost, all runs | $0.178 | $0.181 |
+| Worker-only reported cost | $0.020 | $0.035 |
+| Median wall time, event task / record task | 19.6s / 26.7s | 24.5s / 33.2s |
+| Parent source reads after delegation (record task) | 2, 1, 4 | 2, 1, 2 |
+
+- **Accuracy:** every final answer was correct on both arms. Worker line numbers were sometimes wrong on both. On the 726-line README task the parent re-read and corrected them in most runs. Haiku's better worker-level citations therefore did not become better final answers here.
+- **Cost:** combined cost was effectively tied (+2% for Haiku). Haiku's higher worker cost was offset by slightly fewer parent re-reads, but three runs per task cannot separate that from noise.
+- **Latency:** Haiku was about 25% slower per run.
+- **Excluded events, kept locally:** one early Luna timeout, one `openai-codex` authentication failure, and one run where the parent's first worker call lacked the question (the parent retried successfully; counted but flagged). The worker model was verified against the requested pin in every counted run.
+
+**Recommendation:** keep Luna as the canonical `bulk-reader` model. Revisit if reading assignments are long enough that parent rereads dominate cost, or if the team decides worker citation precision is worth roughly 2× worker cost and slower runs. Other Luna roles were not tested.

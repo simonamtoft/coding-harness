@@ -30,10 +30,10 @@ Set machine-specific agent models in `~/.pi/agent/subagents.json`:
 ```json
 {
   "models": {
-    "presenter": "IM-GPT/gpt-5.6-luna",
-    "repository-scout": "IM-GPT/gpt-5.6-luna",
-    "test-log-analyst": "IM-GPT/gpt-5.6-luna",
-    "correctness-reviewer": "IM-GPT/gpt-5.6-terra",
+    "presenter": "PrivateGPT/gpt-5.6-luna",
+    "repository-scout": "PrivateGPT/gpt-5.6-luna",
+    "test-log-analyst": "PrivateGPT/gpt-5.6-luna",
+    "correctness-reviewer": "PrivateGPT/gpt-5.6-terra",
     "security-reviewer": "openai-codex/gpt-5.6-sol"
   }
 }
