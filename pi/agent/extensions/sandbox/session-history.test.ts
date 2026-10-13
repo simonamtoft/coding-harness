@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { hasSessionHistoryReadAccess, permitsSessionHistoryCommand } from "./policy.ts";
@@ -28,9 +28,14 @@ test("history reads require the exact harness root and never grant writes or sib
 
 test("the tool-call guard grants reads, denies writes and arbitrary Bash, and keeps other projects gated", { timeout: 15_000 }, () => {
   const home = mkdtempSync(join(tmpdir(), "pi-history-guard-"));
+  // The checkout has no node_modules, so Bun auto-installs unmocked SDK imports. Keep the real
+  // package cache so the isolated HOME does not force a network download on every run.
+  const bunCache = process.env.BUN_INSTALL_CACHE_DIR
+    ?? join(process.env.BUN_INSTALL ?? join(homedir(), ".bun"), "install/cache");
   try {
     const result = spawnSync(process.execPath, [join(import.meta.dir, "session-history.guard-check.ts")], {
-      encoding: "utf8", timeout: 30_000, env: { ...process.env, HOME: home, PI_HISTORY_TEST_HOME: home },
+      encoding: "utf8", timeout: 30_000,
+      env: { ...process.env, HOME: home, PI_HISTORY_TEST_HOME: home, BUN_INSTALL_CACHE_DIR: bunCache },
     });
     assert.equal(result.status, 0, result.stderr || result.error?.message);
   } finally {
