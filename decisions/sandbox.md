@@ -136,3 +136,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Agents need to discover and inspect their own recent work for analysis without gaining the global transcript access that SBX-16 reserved for harness maintenance. Repository-scoped header checks preserve that boundary while making local session analysis practical.
 **Revisit if:** Project-level session analysis needs unattended transcript reads or repository identity can no longer be inferred reliably from recorded working directories.
 **Evidence:** "Current repo only"
+
+### SBX-22 · Confirm visible SSH-family commands in Pi
+`accepted` · 2026-10-12 · `01a13088`
+**Decision:** The Pi guard asks `Allow once`/`Deny` before Bash commands that visibly invoke `ssh`, `scp`, `sftp`, `sshfs`, `ssh-copy-id`, remote `rsync`, or Git with a custom SSH command; non-interactive sessions deny them. Rejected: prompting on Git network operations (push/fetch/clone), per-host session approval, and a matching Claude hook or `ask` class in `shared/command-safety.tsv`.
+**Why:** Unlike Claude's Seatbelt, Pi leaves `~/.ssh` keys and the SSH agent reachable to subprocesses, so remote access needed a user checkpoint. Git prompts would fire on most pushes while still missing Git invoked by scripts; per-host approval needs fragile host parsing; Claude already falls back to a permission prompt when sandboxed SSH cannot read keys. Like SBX-14, this is a lexical deterrent, not isolation (SBX-13).
+**Revisit if:** Pi Bash gains OS-level isolation (PI-26), or SSH prompts prove too noisy or too easy to bypass in practice.
+**Evidence:** "perhaps we can do some approval extension. E.g. that it asks for permission every time it tries to run an ssh command"
