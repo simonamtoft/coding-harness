@@ -90,6 +90,17 @@ host-side boundary to model tool calls:
   or compare against an empty source; neighboring device paths remain blocked.
   Scratch commands must use absolute paths; Bash does not use the read approval
   prompt.
+- SSH-family commands ask for a one-time `Allow once`/`Deny` confirmation
+  showing the full command: `ssh`, `scp`, `sftp`, `sshfs`, `ssh-copy-id`,
+  `rsync` with a remote operand or `-e`/`--rsh`, and Git given a custom SSH
+  command (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). Detection covers
+  command position after `;`, `&&`, `|`, `$(`, shell keywords (`if`, `while`,
+  `do`, ...), and `find -exec`, with quotes and backslashes removed from words.
+  After a wrapper (`env`, `command`, `eval`, `timeout`, `xargs`, ...) any later
+  SSH-family word prompts, so `xargs grep ssh` also asks. Non-interactive sessions
+  deny these commands. Ordinary `git push`/`fetch` over an SSH remote is not
+  prompted, and SSH started inside scripts or aliases is not detected (see
+  boundary limitations).
 - Subagents inherit this guard, and their requested working directories must
   remain inside the parent project, the scoped plugin workspace, or the private
   session temp workspace.
