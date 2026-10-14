@@ -148,7 +148,7 @@ format or capability:
 | --- | --- |
 | `pi/agent/prompts/` | Pi reads `prompts/`; Claude Code reads `commands/`. `review.md` also calls `review_changes`, a Pi extension tool. |
 | `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `review_changes` drives them. |
-| `claude/agents/` | A Claude-shaped `presenter` so the shared `present` skill works in both harnesses. |
+| `claude/agents/` | Claude-shaped stubs for `bulk-reader`, `commit-planner`, `presenter`, and `test-log-analyst`, each pointing at its brief in the owning shared skill. Claude enforces each stub's `tools` allowlist, and `claude/settings.json` adds `~/.claude/skills` to `additionalDirectories` so subagents can read their briefs without a prompt. |
 
 The `present` and `swarm` skills stay shared: their workflows are
 harness-neutral, and only the delegation call differs (Pi's `subagent` tool vs
