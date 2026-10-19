@@ -23,7 +23,7 @@ import {
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
-import { remoteShellProgram, requestRemoteShellConfirmation } from "./remote-shell.ts";
+import { confirmedCommand, requestCommandConfirmation } from "./confirmed-commands.ts";
 import { changesDirectoryToSessionTemp } from "./session-temp.ts";
 import { registerRecentSessionsTool } from "./recent-sessions-tool.ts";
 import { currentRepositoryRoot, isRepositorySessionTranscript, isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
@@ -287,11 +287,11 @@ export function createSandboxGuard(
         }
       }
 
-      const remoteProgram = remoteShellProgram(event.input.command);
-      if (remoteProgram && !await requestRemoteShellConfirmation(ctx, remoteProgram, event.input.command)) {
+      const confirmation = confirmedCommand(event.input.command);
+      if (confirmation && !await requestCommandConfirmation(ctx, confirmation, event.input.command)) {
         return block(ctx.hasUI
-          ? `${remoteProgram} command denied by user`
-          : `${remoteProgram} commands require interactive approval`);
+          ? `${confirmation.program} command denied by user`
+          : `${confirmation.program} commands require interactive approval`);
       }
     }
 

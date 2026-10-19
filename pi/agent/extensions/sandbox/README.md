@@ -93,14 +93,28 @@ host-side boundary to model tool calls:
 - SSH-family commands ask for a one-time `Allow once`/`Deny` confirmation
   showing the full command: `ssh`, `scp`, `sftp`, `sshfs`, `ssh-copy-id`,
   `rsync` with a remote operand or `-e`/`--rsh`, and Git given a custom SSH
-  command (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). Detection covers
-  command position after `;`, `&&`, `|`, `$(`, shell keywords (`if`, `while`,
-  `do`, ...), and `find -exec`, with quotes and backslashes removed from words.
-  After a wrapper (`env`, `command`, `eval`, `timeout`, `xargs`, ...) any later
-  SSH-family word prompts, so `xargs grep ssh` also asks. Non-interactive sessions
+  command (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). A quote-aware
+  lexer checks only command words: quoted arguments, comments, arithmetic, and
+  heredoc bodies are data, so `git commit -m "fix; ssh"` and `rg 'a|ssh'` do
+  not ask. Heredocs fed to a shell (`bash <<EOF`) or never closed are scanned
+  as commands, and unquoted heredocs are scanned for substitutions.
+  Command words are found after `;`, `&&`, `|`, newlines, shell keywords (`if`,
+  `while`, `do`, ...), inside `$(…)` and backticks (also within double
+  quotes), in `eval` and `sh|bash -c` scripts, after `find -exec`, and after a
+  wrapper's options (`env`, `command`, `timeout`, `xargs`, `nice`, ...).
+  A wrapper option that takes a separate value but is missing from the
+  wrapper table can hide the wrapped command. Non-interactive sessions
   deny these commands. Ordinary `git push`/`fetch` over an SSH remote is not
   prompted, and SSH started inside scripts or aliases is not detected (see
   boundary limitations).
+- State-changing Terraform commands use the same confirmation and detection for
+  `terraform`, `tf`, `tofu`, and `terragrunt`: `apply`, `destroy`, `import`,
+  `init`, `refresh`, `taint`, `untaint`, `force-unlock`, `test`, Terragrunt's
+  legacy `apply-all`/`destroy-all`, `state
+  mv|rm|push|replace-provider`, and `workspace new|delete`. The first known
+  subcommand word decides, so Terragrunt `run-all apply` and flag values are
+  handled. Read-only commands such as `fmt`, `validate`, `plan`, `show`,
+  `output`, and `state list` run without a prompt.
 - Subagents inherit this guard, and their requested working directories must
   remain inside the parent project, the scoped plugin workspace, or the private
   session temp workspace.
