@@ -1,7 +1,7 @@
 ---
 name: implementation-worker
 description: Bounded implementation slice in a coordinator-provided isolated worktree
-model: PrivateGPT/gpt-6-sol
+model: PrivateGPT/gpt-6.1-sol
 thinking: medium
 tools: read, grep, find, ls, bash, edit, write
 ---
