@@ -49,7 +49,7 @@ Agent frontmatter may set `thinking` to `off`, `minimal`, `low`, `medium`, `high
 thinking: low
 ```
 
-An explicit value is passed as `--thinking` regardless of parent thinking or local model overrides; Pi applies the selected model's supported thinking levels. Without it, unpinned agents inherit parent thinking and model-pinned agents retain Pi's startup behavior. Only `bulk-reader` currently sets an explicit level (`low`). This is a bounded-extraction trial, not a measured cost or quality improvement.
+An explicit value is passed as `--thinking` regardless of parent thinking or local model overrides; Pi applies the selected model's supported thinking levels. Without it, unpinned agents inherit parent thinking and model-pinned agents retain Pi's startup behavior. Every canonical agent sets an explicit level: `bulk-reader` uses `low` and the others use `medium` (SUB-19). `off` was measured for `bulk-reader` and rejected because it worsened line citations (SUB-24).
 
 ## Isolation change from the bundled example
 
