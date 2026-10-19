@@ -15,11 +15,12 @@ def main():
     if not folder.is_dir():
         raise SystemExit(f'no local batch: {folder}')
     records = [json.loads(f.read_text()) for f in folder.glob('*.result.json') if '.attempt' not in f.name]
-    for model in ('openai-codex/gpt-6-luna', 'anthropic/claude-haiku-5-5'):
-        group = [r for r in records if r['model'] == model and r['status'] == 'complete']
+    arm = lambda record: record.get('arm', record['model'])
+    for label in sorted({arm(r) for r in records}):
+        group = [r for r in records if arm(r) == label and r['status'] == 'complete']
         if not group:
             continue
-        print(f'\n{model} ({len(group)} complete cells)')
+        print(f'\n{label} ({len(group)} complete cells)')
         for case in sorted({r['case'] for r in group}):
             rows = [r for r in group if r['case'] == case]
             facts = [f for r in rows for f in r['assessment']['facts'].values()]
@@ -32,6 +33,8 @@ def main():
               f'brief first {sum(r["assessment"]["briefFirst"] for r in group)}/{len(group)}, '
               f'source-only {sum(r["assessment"]["sourceOnly"] for r in group)}/{len(group)}, '
               f'cost ${sum(r["cost"] for r in group):.5f}, '
+              f'reasoning tokens {sum(r["usage"].get("reasoning", 0) for r in group)}, '
+              f'output tokens {sum(r["usage"]["output"] for r in group)}, '
               f'median wall {statistics.median(r["seconds"] for r in group):.1f}s')
     attempts = list(folder.glob('*.attempt*.result.json'))
     print(f'\nIncomplete attempts preserved: {len(attempts)}')
