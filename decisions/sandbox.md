@@ -143,3 +143,17 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Unlike Claude's Seatbelt, Pi leaves `~/.ssh` keys and the SSH agent reachable to subprocesses, so remote access needed a user checkpoint. Git prompts would fire on most pushes while still missing Git invoked by scripts; per-host approval needs fragile host parsing; Claude already falls back to a permission prompt when sandboxed SSH cannot read keys. Like SBX-14, this is a lexical deterrent, not isolation (SBX-13).
 **Revisit if:** Pi Bash gains OS-level isolation (PI-26), or SSH prompts prove too noisy or too easy to bypass in practice.
 **Evidence:** "perhaps we can do some approval extension. E.g. that it asks for permission every time it tries to run an ssh command"
+
+### SBX-23 · Confirm state-changing Terraform commands in Pi
+`accepted` · 2026-10-19 · `01a1546f`
+**Decision:** The SBX-22 confirmation also covers state-changing `terraform`, `tf`, `tofu`, and `terragrunt` subcommands (`apply`, `destroy`, `import`, `init`, `refresh`, `taint`, `untaint`, `force-unlock`, `test`, mutating `state` and `workspace` subcommands). Rejected: prompting on every Terraform call, and changing Claude's hook, which already auto-allows read-only Terraform and prompts for everything else.
+**Why:** Read-only `fmt`, `validate`, and `plan` belong to the verify loop, so prompting on them would be noise; the state-changing set mirrors Claude's split.
+**Revisit if:** Terraform prompts prove too noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** "State-changing only"; "these, and also alias such as tf"
+
+### SBX-24 · Match confirmation commands by command word, not substring
+`accepted` · 2026-10-19 · `01a1546f`
+**Decision:** The SBX-22/SBX-23 confirmation uses a quote-aware lexer and checks only command words, including those in substitutions, `eval`, `sh -c`, `find -exec`, and after parsed wrapper options. Reversed: splitting on operators before honouring quotes, and treating every word after a wrapper as a possible command.
+**Why:** The old matching prompted on quoted text such as commit messages, `rg` patterns, and heredoc bodies, which made the prompt noise. The cost is that a wrapper option missing from the value-option table can hide the wrapped command; that miss is a lexical deterrent limitation, as SBX-13 already accepts.
+**Revisit if:** Missed invocations through unlisted wrapper options appear in practice, or a real shell parser becomes available to the extension.
+**Evidence:** "I think the ssh command eagerly triggers. E.g. also just if the text string contains ssh itself."
