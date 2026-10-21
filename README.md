@@ -199,8 +199,8 @@ the standard `/skill:swarm` command rather than a separate prompt alias.
 Per-project verifiers are harness-neutral too. Pi's `verify-turn` extension and
 Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a
 `verify` task in a `Taskfile`, so a repo wires one verifier for both. Pi discovers
-and executes these repository-controlled commands only after Pi project trust
-and a separate content-bound verifier approval for the current session.
+and executes these repository-controlled commands once Pi project trust is
+established, without a separate verifier approval prompt.
 
 Pi's optional fast diagnostics are also project-owned: an executable
 `.agent/diagnostics.sh` receives the changed path after each successful Pi edit or
