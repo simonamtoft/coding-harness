@@ -10,7 +10,8 @@
 /probes/results/artifacts/
 /probes/results/reader-compare/
 
-backlog/
+# No trailing slash: Paseo worktrees hold backlog as a symlink, which `backlog/` does not match
+/backlog
 .agent-report*/
 
 __pycache__/

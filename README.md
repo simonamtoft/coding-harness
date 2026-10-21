@@ -82,6 +82,10 @@ and Claude's user, project, and local settings, including hooks.
 - Worktrees: Paseo workspaces under `~/.paseo/worktrees` own worktree creation
   and cleanup. `swarm` accepts a Paseo workspace as a writable worker's
   pre-created worktree; workers still never create, merge, or remove one.
+- Backlog in worktrees: `backlog/` is untracked, so the root `paseo.json`
+  setup hook symlinks each new worktree's `backlog` to the source checkout's.
+  Every worktree edits the same tracker. Paseo reads `paseo.json` from the
+  committed base branch, so the hook only applies once it is committed there.
 - Orchestration skills: do not enable Paseo's orchestration skills (`paseo`,
   `paseo-handoff`, `paseo-committee`, `paseo-advisor`). Its installer writes
   each one to `~/.claude/skills`, which is the `shared/skills` link, and to

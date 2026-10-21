@@ -16,6 +16,7 @@ pi/agent/
   prompts/                        Pi-only slash-prompt workflows
 claude/                           Claude-only runtime resources
 paseo/config.json                 Paseo daemon configuration, linked to ~/.paseo/config.json
+paseo.json                        Paseo project config: worktree setup symlinks backlog/
 probes/                           manual instruction-behavior evaluation; see probes/AGENTS.md
 link.sh                           deployment topology, Pi package installation, hooks path
 .agent/verify.sh                  offline repository verifier (no model calls)

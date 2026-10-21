@@ -70,3 +70,9 @@ Decision ledger area. Entry ids use the `BKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Drafted an upstream issue and a local branch proposing that the overview read be gated on tracked work. Filed nothing: the user submits it.
 **Why:** The 1.51.0 wording still mandates the overview at conversation start unconditionally, and a controlled probe showed `gpt-5.6-terra` reading it on 6 of 6 tracked-work-free conversations with the new nudge, 9 of 9 with the old one, and 0 of 6 with the nudge removed. `claude-haiku-4-5` read it 0 of 9 times under the same conditions, so the cost is model-dependent and the nudge is the cause.
 **Revisit if:** Upstream declines the change, in which case removing the generated block per project becomes the only lever left.
+
+### BKL-12 · Worktrees share the tracker through a symlink
+`accepted` · 2026-10-21 · `01a15f28-f4ed-7054-b6d2-29b3c0e21338`
+**Decision:** `backlog/` stays gitignored. The root `paseo.json` worktree setup hook symlinks each Paseo worktree's `backlog` to `$PASEO_SOURCE_CHECKOUT_PATH/backlog`, and the ignore rule is `/backlog` so it also matches the symlink. Rejected: copying the folder in setup, and tracking `backlog/` in git.
+**Why:** A copy diverges from the main checkout, and Paseo deletes its edits when the worktree is archived. Tracking would publish tasks and notes to the public GitHub remote, though it is the only way to make `check_active_branches` and `remote_operations` do anything. Paseo removes worktrees with `git worktree remove --force` and Node's `rm`, and neither follows the link, so archiving does not touch the shared tracker.
+**Revisit if:** The tasks can be public, or cross-branch task state becomes wanted; then track `backlog/` instead.
