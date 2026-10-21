@@ -75,3 +75,10 @@ Decision ledger area. Entry ids use the `VER-` prefix; see `../DECISIONS.md` for
 **Decision:** Reversed VER-06's rule that edit-then-commit turns verify. When `HEAD` changes during a normal turn, Pi and Claude skip automatic verification; Pi also leaves deferred review unreleased. Active failure-repair rounds still run verification.
 **Why:** `quick-commit` is the deliberate completion boundary. The cited session `01a09fc9` committed successfully but then triggered redundant verification and review.
 **Revisit if:** Committing ceases to represent a completed unit of work, or automatic checks must enforce a post-commit policy.
+
+### VER-13 · Remove the per-session verifier approval prompt
+`reverted` · 2026-09-15 · `01a15f40`
+**Decision:** Removed `VerifierTrustGate` and its "Trust repository verifier for this session?" prompt. Pi project trust alone now gates verifier discovery and execution. The separate diagnostics approval is unchanged.
+**Why:** The user always approved the prompt, so it added friction without changing any outcome. This removes the gate cited in SBX-15: an agent-edited `.agent/verify.sh` now runs at end of turn without re-approval, and repositories that Pi auto-trusts (no `.pi` resources) run their verifier unprompted.
+**Revisit if:** Sessions routinely run in untrusted repositories, or prompt-injected verifier edits become a concrete threat.
+**Evidence:** "Remove the \"Trust verifier for this session\" check. It's too much friction as I always just auto approve it anyways."

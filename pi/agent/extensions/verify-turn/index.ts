@@ -29,7 +29,6 @@ import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
 } from "../shared/review-coordination.ts";
-import { VerifierTrustGate } from "./verifier-trust.ts";
 import { resolveVerifier, type Verifier } from "./verifier.ts";
 
 const MAX_ROUNDS = 3;
@@ -313,7 +312,6 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
   let snapshotBeforeRun: ProjectSnapshot | undefined;
-  let verifierTrustGate = new VerifierTrustGate();
 
   pi.on("session_start", (_event, ctx) => {
     resetReviewCoordination();
@@ -324,7 +322,6 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = undefined;
     verificationController = undefined;
     snapshotBeforeRun = undefined;
-    verifierTrustGate = new VerifierTrustGate();
     ctx.ui.setStatus("verify-turn", undefined);
   });
 
@@ -341,9 +338,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = controller;
     let verifier: Verifier | undefined;
     try {
-      const verifierTrusted = ctx.isProjectTrusted()
-        && await verifierTrustGate.requestApproval(ctx.cwd, ctx.hasUI, (title, message) => ctx.ui.confirm(title, message));
-      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal, verifierTrusted);
+      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal, ctx.isProjectTrusted());
     } catch (error) {
       if (!controller.signal.aborted) throw error;
       return;
@@ -388,8 +383,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
 
       let verifier: Verifier | undefined;
       try {
-        const verifierTrusted = ctx.isProjectTrusted() && verifierTrustGate.isApproved(cwd);
-        verifier = await resolveVerifier(pi, cwd, controller.signal, verifierTrusted);
+        verifier = await resolveVerifier(pi, cwd, controller.signal, ctx.isProjectTrusted());
       } catch (error) {
         if (verificationController === controller) {
           verificationRunning = false;
