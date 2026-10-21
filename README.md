@@ -42,7 +42,6 @@ evidence for changes. See [probes/README.md](probes/README.md).
 
 | Package | Source |
 | --- | --- |
-| [pi-worktree-agents](https://github.com/simonamtoft/pi-worktree-agents) | `git:github.com/simonamtoft/pi-worktree-agents` |
 | [pi-status-footer](https://github.com/simonamtoft/pi-status-footer) | `git:github.com/simonamtoft/pi-status-footer` |
 
 Install them with:
@@ -55,9 +54,46 @@ This runs `pi install` per entry, which writes the `packages` array in the
 local `~/.pi/agent/settings.json`. Entries already installed are skipped.
 
 When developing one of the plugins, point its settings entry at the local
-checkout instead (for example `../../projects/pi-worktree-agents`, relative to
+checkout instead (for example `../../projects/pi-status-footer`, relative to
 `~/.pi/agent`). The install step recognises a checkout by directory name and
 leaves the override in place.
+
+`pi-worktree-agents` is no longer in the manifest while Paseo owns worktrees
+(see below). Removing it from the manifest does not uninstall it; run
+`pi remove git:github.com/simonamtoft/pi-worktree-agents` to drop it from the
+local install.
+
+### Paseo trial
+
+The `paseo-trial` branch aligns this setup with [Paseo](https://paseo.sh/), a
+desktop and mobile control plane that runs Pi as `pi --mode rpc` and Claude
+through the Agent SDK. Paseo loads the same global resources as a terminal
+session: `~/.pi/agent` (instructions, skills, extensions, prompts, `mcp.json`)
+and Claude's user, project, and local settings, including hooks.
+
+- Configuration: `paseo/config.json` is the canonical `~/.paseo/config.json`,
+  and `link.sh` links it. Paseo writes through the link (it resolves the
+  symlink before its atomic rename), so `paseo daemon config set`,
+  `set-password`, and app settings change the tracked file and may reformat it.
+  Review its diff for secrets before committing: `daemon.auth.password` and
+  provider `env` API keys must not be committed. The rest of `~/.paseo`
+  (worktrees, logs, credentials, sessions) stays local and untracked.
+
+- Worktrees: Paseo workspaces under `~/.paseo/worktrees` own worktree creation
+  and cleanup. `swarm` accepts a Paseo workspace as a writable worker's
+  pre-created worktree; workers still never create, merge, or remove one.
+- Orchestration skills: do not enable Paseo's orchestration skills (`paseo`,
+  `paseo-handoff`, `paseo-committee`, `paseo-advisor`). Its installer writes
+  each one to `~/.claude/skills`, which is the `shared/skills` link, and to
+  `~/.agents/skills`, which Pi also loads, so they would land untracked in this
+  repository and load twice in Pi.
+- RPC sessions: the sandbox, `ask_question`, and trust prompts appear as Paseo
+  question cards. `verify-turn` reports start and pass as notifications because
+  RPC clients do not render its project-checks panel. `custom-header`,
+  `context-monitor`, and `pi-status-footer` are terminal-only.
+- Sandbox boundary: a Pi session started in a Paseo worktree of this repository
+  is not a coding-harness session, so agent control files stay write-protected
+  there. Edit the harness from the canonical checkout.
 
 ### Local-only skills: implement-powerpoint and implement-brand-web
 
@@ -131,6 +167,7 @@ when each run or verifier finishes, so an idle session waiting for input does no
 keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
+- `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`.
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the
 single source of truth for both harnesses:

@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "daemon": {
+    "listen": "127.0.0.1:6767",
+    "terminalProfiles": [
+      {
+        "id": "pi",
+        "name": "Pi",
+        "command": "pi",
+        "args": [
+          "{{{prompt}}}"
+        ],
+        "icon": "pi"
+      }
+    ],
+    "cors": {
+      "allowedOrigins": [
+        "https://app.paseo.sh"
+      ]
+    },
+    "relay": {
+      "enabled": true
+    }
+  },
+  "app": {
+    "baseUrl": "https://app.paseo.sh"
+  },
+  "agents": {
+    "metadataGeneration": {
+      "providers": [
+        { "provider": "pi", "model": "anthropic/claude-haiku-4-5" }
+      ]
+    },
+    "providers": {
+      "pi": {
+        "models": [
+          {
+            "id": "anthropic/claude-opus-5-5",
+            "label": "Opus",
+            "isDefault": true,
+            "thinkingOptions": [
+              { "id": "low", "label": "Low" },
+              { "id": "medium", "label": "Medium", "isDefault": true },
+              { "id": "high", "label": "High" },
+              { "id": "xhigh", "label": "XHigh" },
+              { "id": "max", "label": "Max" }
+            ]
+          },
+          {
+            "id": "anthropic/claude-sonnet-5-5",
+            "label": "Sonnet",
+            "thinkingOptions": [
+              { "id": "low", "label": "Low" },
+              { "id": "medium", "label": "Medium", "isDefault": true },
+              { "id": "high", "label": "High" },
+              { "id": "xhigh", "label": "XHigh" },
+              { "id": "max", "label": "Max" }
+            ]
+          },
+          {
+            "id": "PrivateGPT/gpt-5.6-terra",
+            "label": "Terra",
+            "thinkingOptions": [
+              { "id": "off", "label": "Off" },
+              { "id": "low", "label": "Low" },
+              { "id": "medium", "label": "Medium", "isDefault": true },
+              { "id": "high", "label": "High" },
+              { "id": "xhigh", "label": "XHigh" },
+              { "id": "max", "label": "Max" }
+            ]
+          },
+          {
+            "id": "PrivateGPT/gpt-6.1-sol",
+            "label": "Sol",
+            "thinkingOptions": [
+              { "id": "off", "label": "Off" },
+              { "id": "minimal", "label": "Minimal" },
+              { "id": "low", "label": "Low" },
+              { "id": "medium", "label": "Medium", "isDefault": true },
+              { "id": "high", "label": "High" }
+            ]
+          }
+        ]
+      },
+      "codex": {
+        "enabled": false
+      },
+      "opencode": {
+        "enabled": false
+      },
+      "copilot": {
+        "enabled": false
+      },
+      "claude": {
+        "enabled": false
+      },
+      "antigravity": {
+        "enabled": false
+      },
+      "muse": {
+        "enabled": false
+      }
+    }
+  }
+}

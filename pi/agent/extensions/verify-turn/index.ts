@@ -24,6 +24,7 @@ import {
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
 import { formatVerificationLiveness } from "./liveness.ts";
 import { automaticVerifierNotice } from "./notice.ts";
+import { notifyOutsideTui } from "./progress.ts";
 import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
@@ -426,6 +427,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
         if (!sessionActive || controller.signal.aborted) return;
         if (result.code === 0) {
           rounds = 0;
+          notifyOutsideTui(ctx, `Project checks passed (${verifier.label}).`);
           pi.events.emit("verify-turn:passed");
           return;
         }
@@ -479,6 +481,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
           });
           if (error !== undefined) throw error;
         } else {
+          notifyOutsideTui(ctx, `Running project checks (${verifier.label})…`);
           await runVerification();
         }
       } catch (error) {

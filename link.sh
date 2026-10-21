@@ -11,7 +11,7 @@ usage() {
   cat <<USAGE
 Usage: $(basename "$0") [--force] [--packages]
 
-Link the canonical coding-harness resources into ~/.pi and ~/.claude.
+Link the canonical coding-harness resources into ~/.pi, ~/.claude, and ~/.paseo.
 Existing paths are refused unless --force is supplied. Forced replacements
 are moved to ~/.coding-harness-backups/<timestamp> before linking.
 
@@ -47,6 +47,7 @@ links=(
   "$repo_dir/shared/skills|$HOME/.claude/skills"
   "$repo_dir/claude/statusline-command.sh|$HOME/.claude/statusline-command.sh"
   "$repo_dir/claude/themes|$HOME/.claude/themes"
+  "$repo_dir/paseo/config.json|$HOME/.paseo/config.json"
 )
 
 for entry in "${links[@]}"; do

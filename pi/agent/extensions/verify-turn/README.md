@@ -34,6 +34,8 @@ The extension allows three verification-to-repair rounds. After the third repair
 
 In interactive mode, a project-checks panel names the selected verifier, shows elapsed time, and streams its 12 most recent output lines. It explicitly reports that the verifier is still running and either that it has not produced output yet or how long ago it last did, so quiet runners such as Playwright do not look stalled. This panel covers deterministic project checks only; independent agent review remains a separate `review_changes` step. The panel holds input focus until the verifier exits, so prompts and `!` commands cannot run concurrently with it. Escape cancels verification, waits for the verifier process to stop, and then restores the editor. Cancellation, session shutdown, and normal verifier exit terminate any remaining processes in that verifier's process group, preventing development servers and browser workers from leaking into later checks.
 
+Outside the terminal UI, for example when Paseo drives Pi over RPC, there is no panel: the extension sends a notification when the checks start and another when they pass. Failures are reported to the agent as before.
+
 When a verifier is configured, the extension tells the agent that the full project check runs automatically. The agent should still run targeted checks that provide useful feedback while implementing, but should not invoke the full verifier again as its final check.
 
 A passing verification resets the counter and returns control without another model response. A failure still triggers a repair turn, and active repair rounds rerun the verifier even if the project content did not change or only Markdown changed.
