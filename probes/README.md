@@ -198,6 +198,38 @@ temporary repository copy with `pi` replaced by `probes/test/fake-pi.ts`. The
 `PI_PROBE_AGENT_TIMEOUT_MS`, `PI_PROBE_JUDGE_TIMEOUT_MS`, `PI_PROBE_KILL_GRACE_MS`, and
 `PI_PROBE_BENCHMARK_WALL_MS` variables exist for that suite; leave them unset for real runs.
 
+### Monitoring a long run
+
+An agent that launches a long run should not poll it with `sleep 600` or `sleep 900`. Fixed sleeps
+do not make trials run faster. They can also hide a finished or failed run for up to the full
+sleep, and long idle waits cost cache-warm model calls (PI-97). Use the background helper instead:
+
+```bash
+bun probes/background.ts start "$PI_SESSION_TMPDIR/pilot-1" -- --include-benchmarks --scenario <task> --trials 10
+bun probes/background.ts wait "$PI_SESSION_TMPDIR/pilot-1" --max-seconds 540
+bun probes/background.ts wait "$PI_SESSION_TMPDIR/pilot-1" --max-seconds 540 --from-byte <offset>
+```
+
+`start` creates the run directory exclusively and refuses an existing one, so the same directory
+cannot launch a duplicate job. It then returns while a detached supervisor runs `probes/run.ts`
+with the given arguments. The supervisor writes the runner's stdout and stderr to `run.log`. When
+the runner ends, the supervisor atomically writes `exit` with the exit code or signal. Records
+and locks behave as in a foreground run.
+
+`wait` prints new `run.log` output and checks once a second. It returns as soon as the run ends,
+with the runner's exit status. It exits 1 when the supervisor is gone without writing `exit`.
+After `--max-seconds` (default 300) it exits 75 and prints the `--from-byte` offset for the next
+call. The last line, `[background] finished:`, `running:`, or `lost:`, names the state
+authoritatively; the runner's own exit status could coincide with 1 or 75. Keep `--max-seconds`
+below the calling tool's timeout. Ending `wait`, or a tool timeout,
+never stops the run. To stop a run, send SIGTERM to the pid in `supervisor.pid`. The supervisor
+forwards the signal to the runner, which then cleans up as described above. Keep run directories
+outside the repository, for example under `$PI_SESSION_TMPDIR`.
+
+The PRB-12 sleep guard is a separate mechanism. It stops the Mac sleeping during a run and
+discards any child the host slept through. The background helper changes only how the agent
+waits; it does not affect trial execution.
+
 ## Scenarios
 
 Every current scenario is multi-turn. The runner copies `fixture/` to a temp directory, runs
