@@ -9,3 +9,4 @@ bun test pi/agent/extensions
 bash claude/hooks/test/run.sh
 bash claude/hooks/test/verify-turn-run.sh
 bun test probes/lib probes/test
+bun test ./scripts/

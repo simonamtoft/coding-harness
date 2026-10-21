@@ -91,6 +91,7 @@ Run checks for the changed component:
 - Claude Bash guard: `bash claude/hooks/test/run.sh`
 - Claude verify hook: `bash claude/hooks/test/verify-turn-run.sh`
 - Probe runner libraries and lifecycle (offline, fake `pi`): `bun test probes/lib probes/test`
+- Pi load-check overlay: `bun test ./scripts/`
 
 `.agent/verify.sh` runs all of these automatically. For a change to Pi runtime inputs, `bun scripts/pi-load-check.ts` checks without model calls that the installed harness loads; the pre-commit hook runs it too.
 

@@ -26,7 +26,12 @@ when staged changes touch Pi runtime inputs (`shared/AGENTS.md`,
 The check starts Pi in RPC mode without any model call. It fails when the
 installed links do not point at this checkout, an extension fails to load, or a
 canonical skill or prompt is not registered from here. It tests the working tree
-the links point at, not only the staged snapshot.
+the links point at, not only the staged snapshot. In a linked worktree, such as
+a Paseo workspace, it leaves `~/.pi` alone. It starts Pi with a temporary
+sibling agent directory (`~/.pi/.load-check-agent-*`, removed afterwards) whose
+repository-owned entries link to the worktree and whose other entries link to
+`~/.pi/agent`. Package changes in `packages.txt` are not loaded there until
+`link.sh` installs them.
 
 ## Verification
 

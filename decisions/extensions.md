@@ -90,3 +90,10 @@ Decision ledger area. Entry ids use the `EXT-` prefix; see `../DECISIONS.md` for
 **Why:** Paseo 0.12 hardcodes the Commit action (`git/policy.ts`), which runs `git add -A` and commits a generated message without review, and offers no config or plugin API to hide or redirect it. A plugin could only add a second button, costing unsandboxed plugin code for a command Paseo already autocompletes from Pi's command list. A bundle patch is lost on every Paseo update.
 **Revisit if:** Paseo exposes a way to override or hide built-in git actions, or typing the command becomes a recurring burden.
 **Evidence:** User chose "Just type it".
+
+### EXT-15 · Worktree load checks use an overlay agent directory
+`accepted` · 2026-10-21 · `01a15f5e`
+**Decision:** In a linked worktree, `scripts/pi-load-check.ts` starts Pi with `PI_CODING_AGENT_DIR` set to a temporary overlay: repository-owned entries link to the worktree, all other entries link to the real agent directory. The overlay is a sibling of the agent directory. The main checkout keeps the check that `~/.pi` links to it. Rejected: skipping the check with a warning in worktrees, always using the overlay, running `link.sh` from a worktree, and committing with `--no-verify`.
+**Why:** Paseo commits from worktrees whose `~/.pi` links point at the main checkout, so the hook always failed there, and a merge into main does not run pre-commit. A skip would let unchecked runtime changes reach main. Always using the overlay drops the check that the real install is linked. Pi resolves local package paths in `settings.json` relative to the agent directory, so an overlay under `$TMPDIR` lost the `../../pi-plugins/...` package.
+**Revisit if:** Worktree changes to `packages.txt` need load checking, Pi stops honouring `PI_CODING_AGENT_DIR`, or the Paseo trial ends without worktree commits.
+**Evidence:** User chose "Overlay in worktrees".
