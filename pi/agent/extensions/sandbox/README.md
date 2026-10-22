@@ -79,7 +79,9 @@ host-side boundary to model tool calls:
   by a nested repository, and other names such as `.env.sample` stay denied.
 - Bash hard-denies the cross-harness command-safety contract in
   `shared/command-safety.tsv`: privilege escalation, pipe-to-shell execution,
-  Git author-identity queries, force pushes, destructive Git history changes,
+  Git author-identity queries, `Co-Authored-By:`/`Claude-Session:` trailers or
+  `claude.ai/code/session_` links in commit, merge, tag, note, and `gh` text, force
+  pushes, destructive Git history changes,
   `chmod 777`, deletion outside the workspace or temporary directories, and
   protected-secret access. It returns an actionable reason; `git push
   --force-with-lease` remains permitted.

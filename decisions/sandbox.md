@@ -158,3 +158,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** The old matching prompted on quoted text such as commit messages, `rg` patterns, and heredoc bodies, which made the prompt noise. The cost is that a wrapper option missing from the value-option table can hide the wrapped command; that miss is a lexical deterrent limitation, as SBX-13 already accepts.
 **Revisit if:** Missed invocations through unlisted wrapper options appear in practice, or a real shell parser becomes available to the extension.
 **Evidence:** "I think the ssh command eagerly triggers. E.g. also just if the text string contains ssh itself."
+
+### SBX-25 · Block agent attribution and session links at the agent's command layer
+`accepted` · 2026-10-23 · `01a1639c`
+**Decision:** The shared command-safety contract hard-denies `git commit`/`commit-tree`/`merge`/`tag`/`notes` and `gh pr`/`issue`/`release`/`api` commands whose text contains a `Co-Authored-By` trailer (`:` or `--trailer` `=` form), `Claude-Session:`, or `claude.ai/code/session_`. Rejected: a Git `commit-msg` hook (repository-local or a global `core.hooksPath`), and blocking all URLs in messages.
+**Why:** Claude Code cloud sessions put session links in public `cv-website` commits and PR bodies; a session shared later would expose its whole transcript to any claude.ai account. A Git hook misses PR bodies, and a global hooks path disables repositories' own hooks unless it chains them. Ordinary URLs are legitimate. Message files (`-F`, `--body-file`) and cloud sessions, which run neither guard, remain uncovered; cloud repositories need `{"attribution": false}` in their `.claude/settings.json`.
+**Revisit if:** Agents start writing messages through files, cloud sessions gain a local enforcement point, or human co-author credit becomes needed in agent commits.
+**Evidence:** "Agent-side only"; "Session links + co-author"

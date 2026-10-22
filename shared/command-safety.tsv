@@ -63,6 +63,25 @@ deny	git var GIT_AUTHOR_IDENT
 deny	git var GIT_COMMITTER_IDENT
 permit	git config --get core.editor
 
+# Agent attribution and Claude session links in commits and GitHub text
+# A public commit or PR carrying a claude.ai session link exposes the transcript
+# whenever that session is shared. Message files (-F, --body-file) are not inspected.
+deny	git commit -m "fix" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+deny	git commit -m 'fix' -m 'co-authored-by: Someone <someone@example.com>'
+deny	git -C /Users/example/projects/sample-project commit --amend -m "fix https://claude.ai/code/session_01ABC"
+deny	git commit -m "$(printf 'fix\n\nClaude-Session: https://claude.ai/code/session_01ABC')"
+deny	git commit -m fix --trailer "Co-authored-by=Claude <noreply@anthropic.com>"
+deny	git merge --no-ff -m "merge https://claude.ai/code/session_01ABC" feature
+deny	git commit-tree HEAD^{tree} -m "fix https://claude.ai/code/session_01ABC"
+deny	git tag -a v1 -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+deny	gh pr create --title fix --body "See https://claude.ai/code/session_01ABC"
+deny	gh pr edit 4 --body 'Co-Authored-By: Claude <noreply@anthropic.com>'
+deny	git add -A && git commit -m "fix" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+permit	git commit -m "fix: follow https://example.com/docs"
+permit	gh pr create --title fix --body "Closes #12, see https://github.com/example/repo/issues/12"
+permit	rg 'Co-Authored-By:' docs
+permit	git log --grep 'claude.ai/code/session_'
+
 # Protected secrets
 deny	cat ~/.ssh/id_rsa
 deny	cat /Users/example/.aws/credentials

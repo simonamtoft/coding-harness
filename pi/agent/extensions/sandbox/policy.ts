@@ -403,6 +403,13 @@ function removesOutsideWorkspace(command: string, cwd: string, home: string, ses
   return false;
 }
 
+/** Message text is usually quoted, so this inspects the unmasked command. */
+function publishesAgentAttribution(command: string): boolean {
+  const writesMessage = /\bgit(?:\s+[^;|&\s]+)*\s+(?:commit|commit-tree|merge|tag|notes)(?=\s|$)/.test(command)
+    || /(?:^|[^A-Za-z0-9_-])gh\s+(?:pr|issue|release|api)\b/.test(command);
+  return writesMessage && /co-authored-by[:=]|claude-session:|claude\.ai\/code\/session_/i.test(command);
+}
+
 /** Returns the hard-deny reason for a Bash command, if the shared safety policy blocks it. */
 export function deniedBashCommandReason(
   command: string,
@@ -438,6 +445,9 @@ export function deniedBashCommandReason(
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+config\b[^;|&]*(?:\buser\.(?:name|email)\b|--(?:list|name-only|get-regexp)\b|-l\b)/)
     || commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+var\s+GIT_(?:AUTHOR|COMMITTER)_IDENT\b/)) {
     return "Git author identity queries are blocked";
+  }
+  if (publishesAgentAttribution(command)) {
+    return "Co-Authored-By trailers and Claude session links are blocked in commits and GitHub text";
   }
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+(?:filter-branch|filter-repo)\b/)) return "Git history rewrites are blocked";
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+clean\b[^;|&]*\s-[^\s;|&]*f/)) return "`git clean -f` deletes untracked files irrecoverably";

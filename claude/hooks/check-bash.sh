@@ -301,6 +301,15 @@ _hard_denied() {
     _deny_reason="Git author identity queries are blocked."; return 0
   fi
 
+  # Message text is usually quoted, so inspect the unmasked command.
+  local lowered
+  lowered=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
+  if { [[ "$lowered" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+(commit|commit-tree|merge|tag|notes)([[:space:]]|$) ]] \
+      || [[ "$lowered" =~ (^|[^[:alnum:]_-])gh[[:space:]]+(pr|issue|release|api)([[:space:]]|$) ]]; } \
+    && [[ "$lowered" =~ (co-authored-by[:=]|claude-session:|claude\.ai/code/session_) ]]; then
+    _deny_reason="Co-Authored-By trailers and Claude session links are blocked in commits and GitHub text."; return 0
+  fi
+
   if [[ "$scan" =~ git([[:space:]]+[^[:space:]\;\|\&]+)*[[:space:]]+(filter-branch|filter-repo) ]]; then
     _deny_reason="git history rewrite."; return 0
   fi
