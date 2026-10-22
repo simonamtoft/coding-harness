@@ -20,19 +20,21 @@ type AskQuestionTool = {
   parameters: {
     questions: {
       items: {
-        options: { maxItems: number };
+        options: { minItems: number; maxItems: number };
       };
+      maxItems: number;
     };
   };
   promptGuidelines?: string[];
-  prepareArguments?: (args: unknown) => unknown;
   execute: (
     toolCallId: string,
     params: {
       questions: Array<{
         question: string;
+        header: string;
         details?: string;
-        options?: Array<{ label: string; description?: string }>;
+        options?: Array<{ label: string; description: string }>;
+        multiSelect?: boolean;
       }>;
     },
     signal: AbortSignal | undefined,
@@ -45,25 +47,34 @@ function registerTool(): AskQuestionTool {
   return askQuestionTool as unknown as AskQuestionTool;
 }
 
+const YES_NO = [{ label: "Yes", description: "Release now" }, { label: "No", description: "Hold" }];
+
 const ONE_QUESTION = {
-  questions: [{ question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] }],
+  questions: [{ question: "Ship it?", header: "Ship", options: YES_NO }],
 };
+
+function described(...labels: string[]) {
+  return labels.map((label) => ({ label, description: `${label} tradeoff` }));
+}
 
 const RPC_CONTEXT = { mode: "rpc", hasUI: true };
 
-describe("ask_question prompt guidance", () => {
+describe("ask_user_question prompt guidance", () => {
   test("states the whole clarification policy once, in the injected gate", () => {
     const injectedPrompt = CLARIFICATION_GATE;
 
-    expect(injectedPrompt).toContain("MUST use ask_question");
+    expect(injectedPrompt).toContain("MUST use ask_user_question");
     expect(injectedPrompt).toContain("Put the deciding context in each question's details field");
+    expect(injectedPrompt).toContain("write each question so it can be answered on its own");
     expect(injectedPrompt).toContain("put the plan itself in the assistant response");
     expect(injectedPrompt).toContain("do not batch it with edit, write, bash, or other tool calls");
     expect(injectedPrompt).toContain("do not restate the details in prose");
     expect(injectedPrompt).toContain("interactive UI is unavailable");
     expect(injectedPrompt).toContain("do not infer answers");
-    expect(injectedPrompt).toContain("up to five");
-    expect(registerTool().parameters.questions.items.options.maxItems).toBe(5);
+    expect(injectedPrompt).toContain("offer two to four");
+    expect(injectedPrompt).toContain("at most four questions");
+    const { questions } = registerTool().parameters;
+    expect([questions.items.options.minItems, questions.items.options.maxItems, questions.maxItems]).toEqual([2, 4, 4]);
   });
 
   test("permits read-only discovery before asking, and still gates consequential action", () => {
@@ -85,7 +96,7 @@ describe("ask_question prompt guidance", () => {
   });
 });
 
-describe("ask_question outcomes", () => {
+describe("ask_user_question outcomes", () => {
   test("reports an aborted turn without opening the UI", async () => {
     const select = mock(() => Promise.resolve(undefined));
     const result = await registerTool().execute(
@@ -130,12 +141,9 @@ describe("ask_question outcomes", () => {
   test("uses the scrolling native selector for more than three TUI options", async () => {
     const select = mock((_title: string, options: string[]) => Promise.resolve(options[3]));
     const result = await registerTool().execute(
-      "call-five-options",
+      "call-four-options",
       {
-        questions: [{
-          question: "Pick one?",
-          options: ["One", "Two", "Three", "Four", "Five"].map((label) => ({ label })),
-        }],
+        questions: [{ question: "Pick one?", header: "Pick", options: described("One", "Two", "Three", "Four") }],
       },
       undefined,
       undefined,
@@ -149,7 +157,7 @@ describe("ask_question outcomes", () => {
     const input = mock(() => Promise.resolve("unused"));
     const result = await registerTool().execute(
       "call-5",
-      { questions: [{ question: "Name it?" }] },
+      { questions: [{ question: "Name it?", header: "Name" }] },
       undefined,
       undefined,
       { ...RPC_CONTEXT, ui: { input, editor: () => Promise.resolve("  a name  ") } },
@@ -166,8 +174,9 @@ describe("ask_question outcomes", () => {
         questions: [
           {
             question: "Ship it?",
+            header: "Ship",
             details: "The release branch is already tagged.",
-            options: [{ label: "Yes" }, { label: "No" }],
+            options: YES_NO,
           },
         ],
       },
@@ -200,7 +209,7 @@ describe("ask_question outcomes", () => {
     let releaseFirst!: () => void;
     const first = registerTool().execute("call-queued-1", ONE_QUESTION, undefined, undefined, {
       ...RPC_CONTEXT,
-      ui: { select: () => new Promise<string>((resolve) => { releaseFirst = () => resolve("1. Yes"); }) },
+      ui: { select: () => new Promise<string>((resolve) => { releaseFirst = () => resolve("1. Yes — Release now"); }) },
     });
     await Promise.resolve();
 
@@ -218,32 +227,33 @@ describe("ask_question outcomes", () => {
     await first;
   });
 
-  test("returns an ordered multi-select answer with a custom value", async () => {
-    const choices = ["[ ] 1. Unit", "Write a different answer…", "Done selecting"];
+  test("returns an ordered TUI multi-select answer with a custom value", async () => {
+    const choices = ["[ ] 1. Unit — Unit tradeoff", "Write a different answer…", "Done selecting"];
     let call = 0;
     const result = await registerTool().execute(
       "call-multiple",
-      { questions: [{ question: "Checks?", multiple: true, options: [{ label: "Unit" }, { label: "Integration" }] }] },
+      { questions: [{ question: "Checks?", header: "Checks", multiSelect: true, options: described("Unit", "Integration", "Smoke", "Manual") }] },
       undefined,
       undefined,
-      { ...RPC_CONTEXT, ui: { select: () => Promise.resolve(choices[call++]), editor: () => Promise.resolve("Manual") } },
+      { mode: "tui", hasUI: true, ui: { select: () => Promise.resolve(choices[call++]), editor: () => Promise.resolve("Manual") } },
     );
 
     expect(result.details.answers).toEqual([{ question: "Checks?", answer: ["Unit", "Manual"], wasCustom: true }]);
   });
 
   test("removes a multi-select custom answer when it is resubmitted empty", async () => {
-    const choices = ["[ ] 1. Unit", "Write a different answer…", "Write a different answer…", "Done selecting"];
+    const choices = ["[ ] 1. Unit — Unit tradeoff", "Write a different answer…", "Write a different answer…", "Done selecting"];
     const editorValues = ["Manual", ""];
     let choiceIndex = 0;
     let editorIndex = 0;
     const result = await registerTool().execute(
       "call-remove-custom",
-      { questions: [{ question: "Checks?", multiple: true, options: [{ label: "Unit" }] }] },
+      { questions: [{ question: "Checks?", header: "Checks", multiSelect: true, options: described("Unit", "Integration", "Smoke", "Lint") }] },
       undefined,
       undefined,
       {
-        ...RPC_CONTEXT,
+        mode: "tui",
+        hasUI: true,
         ui: {
           select: () => Promise.resolve(choices[choiceIndex++]),
           editor: (_title: string, prefill?: string) => {
@@ -258,20 +268,20 @@ describe("ask_question outcomes", () => {
     expect(result.details.status).toBe("answered");
   });
 
-  test("stages multi-question answers until explicit confirmation and permits going back", async () => {
-    const selections = ["1. First", "Back to previous question", "2. Revised", "1. Final", "Confirm answers"];
+  test("stages TUI multi-question answers until explicit confirmation and permits going back", async () => {
+    const selections = ["1. First — First tradeoff", "Back to previous question", "2. Revised — Revised tradeoff", "1. Final — Final tradeoff", "Confirm answers"];
     let call = 0;
     const result = await registerTool().execute(
       "call-navigation",
       {
         questions: [
-          { question: "First?", options: [{ label: "First" }, { label: "Revised" }] },
-          { question: "Second?", options: [{ label: "Final" }] },
+          { question: "First?", header: "First", options: described("First", "Revised", "Third", "Fourth") },
+          { question: "Second?", header: "Second", options: described("Final", "Other final", "Third", "Fourth") },
         ],
       },
       undefined,
       undefined,
-      { ...RPC_CONTEXT, ui: { select: () => Promise.resolve(selections[call++]) } },
+      { mode: "tui", hasUI: true, ui: { select: () => Promise.resolve(selections[call++]) } },
     );
 
     expect(result.details.answers).toEqual([
@@ -280,14 +290,61 @@ describe("ask_question outcomes", () => {
     ]);
   });
 
-  test("accepts plain string options and drops the retired recommended field", () => {
-    const prepared = registerTool().prepareArguments?.({
-      questions: [{ question: "Ship it?", options: ["Yes", "No"], recommended: "Yes" }],
-    });
+  // Paseo answers its one question form by replaying rpiv-ask-user-question's dialog order.
+  test("follows the rpiv dialog order outside the TUI, without back or review dialogs", async () => {
+    const dialogs: Array<{ method: string; options?: string[] }> = [];
+    const replies = [
+      (options: string[]) => options[1],
+      () => "1,2",
+      (options: string[]) => options[2],
+      () => "Nebula",
+    ];
+    let call = 0;
+    const result = await registerTool().execute(
+      "call-rpiv",
+      {
+        questions: [
+          { question: "Which snack?", header: "Snack", options: described("Apple", "Cookie") },
+          { question: "Which colors?", header: "Colors", multiSelect: true, options: described("Red", "Blue") },
+          { question: "What project name?", header: "Project", options: described("Atlas", "Beacon") },
+        ],
+      },
+      undefined,
+      undefined,
+      {
+        ...RPC_CONTEXT,
+        ui: {
+          select: (_title: string, options: string[]) => {
+            dialogs.push({ method: "select", options });
+            return Promise.resolve(replies[call++](options));
+          },
+          input: () => {
+            dialogs.push({ method: "input" });
+            return Promise.resolve(replies[call++]([]));
+          },
+        },
+      },
+    );
 
-    expect(prepared).toEqual({
-      questions: [{ question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] }],
-    });
+    expect(dialogs.map(({ method }) => method)).toEqual(["select", "input", "select", "input"]);
+    expect(dialogs[0].options).toEqual(["1. Apple \u2014 Apple tradeoff", "2. Cookie \u2014 Cookie tradeoff", "3. Write a different answer\u2026"]);
+    expect(result.details.answers).toEqual([
+      { question: "Which snack?", answer: "Cookie", wasCustom: false },
+      { question: "Which colors?", answer: ["Red", "Blue"], wasCustom: false },
+      { question: "What project name?", answer: "Nebula", wasCustom: true },
+    ]);
+  });
+
+  test("splits a multi-select reply that mixes labels and typed text", async () => {
+    const result = await registerTool().execute(
+      "call-rpiv-mixed",
+      { questions: [{ question: "Checks?", header: "Checks", multiSelect: true, options: described("Unit", "Smoke") }] },
+      undefined,
+      undefined,
+      { ...RPC_CONTEXT, ui: { input: () => Promise.resolve("Smoke, Manual, then review") } },
+    );
+
+    expect(result.details.answers).toEqual([{ question: "Checks?", answer: ["Smoke", "Manual, then review"], wasCustom: true }]);
   });
 });
 

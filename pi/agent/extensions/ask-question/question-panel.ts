@@ -150,13 +150,13 @@ export function askWithPanel(
   allowBack = false,
 ): Promise<PanelResult> {
   const options = spec.options ?? [];
-  const items = buildSelectItems(options, spec.multiple, allowBack);
+  const items = buildSelectItems(options, spec.multiSelect, allowBack);
 
   return ctx.ui.custom<PanelResult>((tui, theme, _keybindings, done) => {
     const container = new Container();
     const selected = new Set<number>();
     let customAnswer: string | undefined;
-    const optionList = new OptionList(items, theme, selected, () => customAnswer, Boolean(spec.multiple));
+    const optionList = new OptionList(items, theme, selected, () => customAnswer, Boolean(spec.multiSelect));
     const editor = new Editor(tui, {
       borderColor: (line: string) => theme.fg("accent", line),
       selectList: {
@@ -181,7 +181,7 @@ export function askWithPanel(
       }
       if (item.value !== CUSTOM_ANSWER_VALUE) {
         const index = Number(item.value);
-        if (spec.multiple) {
+        if (spec.multiSelect) {
           selected.has(index) ? selected.delete(index) : selected.add(index);
           optionList.invalidate();
           return;
@@ -198,7 +198,7 @@ export function askWithPanel(
 
     editor.onSubmit = (value: string) => {
       const answer = value.trim();
-      if (!spec.multiple) {
+      if (!spec.multiSelect) {
         if (answer) done({ answer, wasCustom: true });
         return;
       }
@@ -228,7 +228,7 @@ export function askWithPanel(
       } else {
         container.addChild(optionList);
         container.addChild(
-          new WrappedText(spec.multiple ? "↑↓ navigate • enter toggle/select • esc cancel" : "↑↓ navigate • enter select • esc cancel", (line) => theme.fg("dim", line)),
+          new WrappedText(spec.multiSelect ? "↑↓ navigate • enter toggle/select • esc cancel" : "↑↓ navigate • enter select • esc cancel", (line) => theme.fg("dim", line)),
         );
       }
 

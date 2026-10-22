@@ -29,11 +29,11 @@ Turn the current working tree into one or more coherent commits. This is the com
 
 3. **Resolve planner clarifications.** Do not read the evidence to second-guess the planner or silently fold material into a group.
 
-   - For a blocking clarification, call `ask_question` exactly once with the planner's `question`, plain-text `details`, and up to three labelled options.
+   - For a blocking clarification, write the planner's details in the assistant response, then call `ask_user_question` exactly once with the planner's question, a short header, and its two or three options, each with its consequence as the description. Paseo's question form does not show `details`, so the response carries them.
    - If the user chooses manual hunk staging, remove the snapshot directory in a separate cleanup command, tell them to use `git add -p -- <path>` with their normal index-isolation workflow, and stop without mutation.
    - For any other answer or requested revision, re-dispatch the planner with the answer and same evidence. Repeat only for an independent unresolved issue.
 
-4. **Show the ready-plan decision.** Call `ask_question` exactly once for each ready plan. Ask whether to commit it. Its plain-text details must contain every group in order, each message, and every exact path:
+4. **Show the ready-plan decision.** For each ready plan, write the plan in the assistant response, then call `ask_user_question` exactly once to ask whether to commit the plan shown above. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
 
    ```text
    1. [message]
@@ -42,7 +42,7 @@ Turn the current working tree into one or more coherent commits. This is the com
       ← docs/readme.md
    ```
 
-   Include all warnings: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**. A positive confirmation covers the entire plan.
+   Include all warnings in the response: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**, each with a one-line description. A positive confirmation covers the entire plan.
 
 5. **Commit the accepted groups.** Remove the snapshot directory in a separate cleanup command using the resolved parent directory of the evidence file. For each full-file group, in order, run:
 

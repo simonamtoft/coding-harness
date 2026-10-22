@@ -18,4 +18,4 @@ Options:
 3. <label> — <one-line consequence>
 ```
 
-Supply no more than three options. The parent will display these fields through `ask_question` and re-dispatch you with the user's answer. Treat that answer as authoritative and return a ready plan unless an independent unresolved issue remains. Do not invent details or ask the user directly.
+Supply two or three options. The parent will display these fields through `ask_user_question` and re-dispatch you with the user's answer. Treat that answer as authoritative and return a ready plan unless an independent unresolved issue remains. Do not invent details or ask the user directly.

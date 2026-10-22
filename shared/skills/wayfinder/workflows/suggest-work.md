@@ -20,6 +20,6 @@ A child is on the **frontier** when it is `To Do` and all dependencies are compl
 
 ## Presenting candidates
 
-Use one native structured selection question in the harness's `ask_question` format. The question asks which ticket to handle next; the details name the map or state that no active map was identified. Offer at most the first three ranked candidates. Each option's label carries the ticket title, ID, and capacity; its description gives the question it resolves. The user may supply another ticket through the free-text answer.
+Use one native structured selection question in the harness's `ask_user_question` format. The question asks which ticket to handle next; the details name the map or state that no active map was identified. Give it a short header. Offer the first two or three ranked candidates as options; with a single candidate, name it in the question and offer no options. Each option's label carries the ticket title, ID, and capacity; its description gives the question it resolves. The user may supply another ticket through the free-text answer.
 
 If no candidate is ready, present no selection question and report the blocking condition instead.
