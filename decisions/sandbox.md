@@ -16,6 +16,7 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Explicit user requirement — the project boundary is not a reason to expose secrets.
 **Revisit if:** An equally strong centrally enforced mechanism replaces it.
 **Evidence:** "We should always deny .env etc. also inside current cwd."
+**Exception (2026-10-22, `01a1624d`):** A regular file named exactly `.env.example` inside the session root that the session's Git repository tracks is exempt for reads, edits, and Bash. Untracked or ignored copies, symlinks, files tracked only by a nested repository, and other template names (`.env.sample`, `.env.template`) stay denied. The tracking check runs `git ls-files` from the session root with `core.fsmonitor` and bare-repository discovery disabled, so an attacker-controlled repository's config cannot run commands during a path check. A Paseo session hit the block four times documenting a config key and began probing for workarounds. User: "exempt ONLY the file named EXACTLY .env.example, and only if tracked by git".
 
 ### SBX-03 · Bash gets denial only, never the read prompt
 `accepted` · 2026-08-24 · `01a03286`

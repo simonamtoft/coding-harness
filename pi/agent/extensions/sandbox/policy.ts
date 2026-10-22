@@ -1,7 +1,9 @@
-import { existsSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { parseSessionHistoryExtraction } from "./session-history-command.ts";
+import { literalSecretCandidates, maskNonPathText } from "./shell-path-text.ts";
 
 const POSIX_NULL_DEVICE = "/dev/null";
 
@@ -60,7 +62,7 @@ export function permitsSessionHistoryCommand(command: string, sessionRoot: strin
   // One literal query argument, no shell expansion, chaining, or redirection.
   const query = `(?:[A-Za-z0-9._-]+|"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+')`;
   if (command.includes("\n") || command.includes("\r")) return false;
-  if (new RegExp(`^bun ${script} --audit-bulk-reads --limit (?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$`).test(command)) return true;
+  if (new RegExp(`^bun ${script} --audit-(?:bulk-reads|blocks) --limit (?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$`).test(command)) return true;
   if (new RegExp(`^bun ${script} --match ${query} --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command)) return true;
   const extraction = new RegExp(`^bun ${script} (.+)$`).exec(command);
   return extraction !== null && parseSessionHistoryExtraction(extraction[1]!.split(" ")) !== undefined;
@@ -143,6 +145,35 @@ export function hasPluginWorkspaceAccess(
 export function isProtectedSecretPath(path: string): boolean {
   const normalized = normalize(path);
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const ENV_TEMPLATE_NAME = ".env.example";
+
+/**
+ * SBX-02 exception: a regular file named exactly `.env.example` inside the session root that the session's Git
+ * repository tracks is a committed template, not a secret. Untracked, ignored, symlinked, outside-root, or
+ * differently named `.env*` files stay protected. Runs `git ls-files` from the session root with fsmonitor and
+ * bare-repository discovery disabled, so a nested repository's config cannot run commands.
+ */
+export function isTrackedEnvTemplate(path: string, sessionRoot: string): boolean {
+  try {
+    const root = realpathSync.native(sessionRoot);
+    const real = realpathSync.native(path);
+    if (basename(real) !== ENV_TEMPLATE_NAME || !isWithin(root, real)
+      || isProtectedSecretPath(dirname(real)) || !lstatSync(real).isFile()) return false;
+    const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1" };
+    for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]) delete env[key];
+    execFileSync("git", ["-c", "core.fsmonitor=false", "-c", "safe.bareRepository=explicit",
+      "ls-files", "--error-unmatch", "--", relative(root, real)], { cwd: root, stdio: "ignore", env });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Protected secret path, after the tracked `.env.example` exception; `path` must be absolute. */
+export function isProtectedSecretTarget(path: string, sessionRoot: string): boolean {
+  return isProtectedSecretPath(path) && !isTrackedEnvTemplate(path, sessionRoot);
 }
 
 function isProjectInstructionPath(path: string): boolean {
@@ -298,7 +329,8 @@ function searchFileOptionValues(tokens: string[]): string[] {
 }
 
 export function shellPathCandidates(command: string): string[] {
-  const segments = stripInlineEvalBodies(command).split(/&&|\|\||[;|]/);
+  const { command: pathText, literals } = maskNonPathText(stripInlineEvalBodies(command));
+  const segments = pathText.split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
     if (unprefixed === POSIX_NULL_DEVICE) return false;
@@ -311,7 +343,8 @@ export function shellPathCandidates(command: string): string[] {
   };
   const isSystemCommand = (token: string) => /^\/(?:bin|sbin|usr\/(?:bin|sbin|local\/bin)|opt\/homebrew\/(?:bin|sbin))\//.test(token);
 
-  return segments.flatMap((segment) => {
+  const literalSecrets = literalSecretCandidates(literals).filter(isProtectedSecretPath);
+  return [...segments.flatMap((segment) => {
     const tokens = segment
       .replace(/'[^']*'/g, (value) => value.slice(1, -1))
       .replace(/"(?:\\.|[^"\\])*"/g, (value) => value.slice(1, -1))
@@ -328,7 +361,7 @@ export function shellPathCandidates(command: string): string[] {
       return !isRootComparisonValue && (looksLikePath(token) || isProtectedSecretPath(token));
     });
     return [...positionalPaths, ...searchFileOptionValues(tokens).filter((token) => looksLikePath(token) || isProtectedSecretPath(token))];
-  });
+  }), ...literalSecrets];
 }
 
 function maskSingleQuotedStrings(command: string): string {
@@ -380,7 +413,12 @@ export function deniedBashCommandReason(
   const masked = maskSingleQuotedStrings(command);
 
   const secretCandidates = [...shellPathCandidates(masked), ...inlineEvalStringLiterals(command)];
-  if (secretCandidates.some(isProtectedSecretPath)) return "touches a protected secret path";
+  const absolute = (candidate: string) => candidate === "~" || candidate.startsWith("~/")
+    ? join(home, candidate.slice(1))
+    : resolve(cwd, candidate.replace(/^@/, ""));
+  if (secretCandidates.some((candidate) => isProtectedSecretPath(candidate) && !isTrackedEnvTemplate(absolute(candidate), cwd))) {
+    return "touches a protected secret path";
+  }
   if (commandMatches(command, /(^|[^A-Za-z0-9_-])(?:sudo|\/(?:usr\/bin|bin)\/sudo)(?=\s|$)/)) {
     return "`sudo` is never run by Pi";
   }

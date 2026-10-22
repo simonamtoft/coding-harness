@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { hasSessionHistoryReadAccess, permitsSessionHistoryCommand } from "./policy.ts";
-import { auditRecentBulkReads, findSessionHistory, isSafeSessionHistoryTree, listRecentSessionHistory } from "./session-history.ts";
+import { auditRecentBulkReads, auditRecentSandboxBlocks, findSessionHistory, isSafeSessionHistoryTree, listRecentSessionHistory } from "./session-history.ts";
 
 const harness = "/Users/example/coding-harness";
 const history = "/Users/example/.pi/agent/sessions";
@@ -61,6 +61,8 @@ test("only the literal bounded discovery and audit commands are granted", () => 
     assert.equal(permitsSessionHistoryCommand(audit, harness, harness), true);
     assert.equal(permitsSessionHistoryCommand(`bun ${script} --audit-bulk-reads --limit 200`, harness, harness), true);
     assert.equal(permitsSessionHistoryCommand(`bun ${script} --audit-bulk-reads --limit 201`, harness, harness), false);
+    assert.equal(permitsSessionHistoryCommand(`bun ${script} --audit-blocks --limit 200`, harness, harness), true);
+    assert.equal(permitsSessionHistoryCommand(`bun ${script} --audit-blocks --limit 201`, harness, harness), false);
     assert.equal(permitsSessionHistoryCommand(audit, `${harness}/shared`, harness), false);
     for (const suffix of ["; ls", " | tee file", " > file", " --output file", " "]) {
       assert.equal(permitsSessionHistoryCommand(audit + suffix, harness, harness), false);
@@ -124,6 +126,43 @@ test("recent listing is scoped to the current repository and reads only session 
     assert.match(broad.stderr, /narrower than the home directory/);
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("block audit groups parent and worker sandbox blocks by category and path root", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-history-blocks-"));
+  const project = join(root, "project");
+  mkdirSync(project, { recursive: true });
+  const blocked = (toolName: string, text: string) => ({ role: "toolResult", toolName, content: [{ type: "text", text: `Sandbox blocked tool call: ${text}` }] });
+  writeFileSync(join(project, "session.jsonl"), [
+    { type: "session", id: "s", timestamp: "2026-10-21T10:00:00Z", cwd: "/work/app" },
+    { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Sandbox blocked tool call: quoted" }, { type: "toolCall" }, { type: "toolCall" }] } },
+    { type: "message", id: "r1", message: blocked("read", `~/repo/src/a.ts: path resolves outside the session directory (${homedir()}/repo/src/a.ts)`) },
+    { type: "message", id: "r2", message: blocked("bash", "`sudo` is never run by Pi") },
+    { type: "message", id: "r3", message: blocked("read", "/Volumes/My Drive/doc.md: path resolves outside the session directory (/Volumes/My Drive/doc.md)") },
+    { type: "message", message: { role: "toolResult", toolName: "read", content: [{ type: "text", text: "source mentioning Sandbox blocked tool call: x" }] } },
+    { type: "message", id: "r4", message: { role: "toolResult", toolName: "subagent", content: [], details: { results: [{ messages: [
+      { role: "assistant", content: [{ type: "toolCall" }] },
+      blocked("read", "/etc/hosts: outside reads require interactive approval"),
+    ] }] } } },
+  ].map((value) => JSON.stringify(value)).join("\n"));
+  try {
+    assert.deepEqual(await auditRecentSandboxBlocks(root, 200), [{
+      id: "s", timestamp: "2026-10-21T10:00:00Z", cwd: "/work/app", toolCalls: 2, blocks: 3, workerToolCalls: 1, workerBlocks: 1,
+      reasons: {
+        "read: path resolves outside the session directory": 2,
+        "bash: `sudo` is never run by Pi": 1,
+        "subagent read: outside reads require interactive approval": 1,
+      },
+      targets: {
+        "read: path resolves outside the session directory": { "~/repo/src": 1, "/Volumes/My Drive": 1 },
+        "subagent read: outside reads require interactive approval": { "/etc/hosts": 1 },
+      },
+      blockRecords: ["r1", "r2", "r3", "r4"],
+    }]);
+    await assert.rejects(auditRecentSandboxBlocks(root, 201), /1\u2013200/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

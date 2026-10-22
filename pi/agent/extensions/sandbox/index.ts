@@ -13,7 +13,7 @@ import {
   hasSessionHistoryReadAccess,
   permitsSessionHistoryCommand,
   isControlPlaneWriteBlocked,
-  isProtectedSecretPath,
+  isProtectedSecretTarget,
   isTrustedSharedSkillHelper,
   permitsRootVerifierScriptBashReference,
   isWithin,
@@ -130,7 +130,7 @@ function inspectPath(root: string, rawPath: string): { resolved?: string; reason
   }
 
   const resolved = realpathForCheck(normalizedInput);
-  if (isProtectedSecretPath(resolved)) return { resolved, reason: "protected secret path" };
+  if (isProtectedSecretTarget(resolved, root)) return { resolved, reason: "protected secret path" };
   if (!isWithin(root, resolved)) {
     return { resolved, outside: true, reason: `path resolves outside the session directory (${resolved})` };
   }

@@ -72,7 +72,11 @@ host-side boundary to model tool calls:
   the lexical-boundary limitation below.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
-  the project.
+  the project. The one exception is a regular file named exactly
+  `.env.example` inside the session directory that its Git repository tracks
+  (`git ls-files` from the session root, with `core.fsmonitor` and bare-repository
+  discovery disabled); untracked or ignored copies, symlinks, files tracked only
+  by a nested repository, and other names such as `.env.sample` stay denied.
 - Bash hard-denies the cross-harness command-safety contract in
   `shared/command-safety.tsv`: privilege escalation, pipe-to-shell execution,
   Git author-identity queries, force pushes, destructive Git history changes,
@@ -198,6 +202,23 @@ child output. It cannot inspect Claude history, establish whether a child loaded
 the shared brief, score answer quality, or prove cost savings. Inspect selected
 original records before making those claims.
 
+To count sandbox blocks in the same unfiltered window:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --audit-blocks --limit 200
+```
+
+Each JSONL row reports session id, start time, cwd, parent and subagent tool-call
+counts, and how many tool results start with `Sandbox blocked tool call:`.
+`reasons` groups blocks by tool and reason, with the requested path, resolved
+path, and recovery guidance removed; subagent blocks carry a `subagent` prefix.
+`targets` maps each reason to the blocked paths' home-relative first two
+segments (`<cwd>` for paths inside the session directory). `blockRecords` lists
+the record IDs holding a block, for `--session --record` extraction below.
+Paths come from the lexical guard, so `sed` addresses and URL fragments appear as
+root-level targets. Approved prompts leave no block, so the audit counts only
+denials and hard blocks.
+
 For a record too large for the read tool's single-line limit, select its session
 UUID, record ID (the top-level `id`, not a tool-call ID), and a JSON field:
 
@@ -239,6 +260,25 @@ evaluation flag (`node`, `bun`, `deno`, `python`, `perl`, `ruby` with `-e`,
 excluded from path extraction; the equivalent script file was never inspected
 either. String literals inside those bodies are still matched against the
 protected secret patterns, so inline code that names credentials is denied.
+The same masking, with the same secret check, applies to three other kinds of
+text:
+
+- closed heredoc bodies with a quoted delimiter fed to those interpreters
+  (`python3 - <<'EOF'`); unquoted bodies still expand substitutions and stay
+  inspected;
+- `sed` programs made only of `p`, `d`, `P`, `=`, and `s` commands with line or
+  regex addresses, and `awk` programs without `system`, `getline`, `close`, `|`,
+  or `>`; programs that can read, write, or run files stay inspected, as do `-f`
+  program files;
+- quoted prose given to `backlog`, `echo`, `printf`, `git -m`/`--message`, or
+  `gh` title/body options: a quoted string containing whitespace that has no `$`,
+  does not start like a path (`/`, `~`, `./`, `../`), contains no `..` segment,
+  names no control path (`.pi`, `.agents`, `AGENTS.md`, `CLAUDE.md`,
+  `.agent/verify.sh`, `.git/config`), and is not a redirect target.
+
+Commands
+containing ANSI-C `$'…'` strings or substitutions inside double quotes are
+inspected without this masking.
 Nested `sh`, `bash`, and `zsh` command strings remain denied outright. Bash commands using variables, redirections, or command
 substitution can likewise evade the filesystem check. Use a container, VM, or OS
 sandbox when a strong filesystem boundary is required. User-entered `!` commands

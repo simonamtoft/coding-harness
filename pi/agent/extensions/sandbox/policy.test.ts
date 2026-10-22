@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,6 +13,7 @@ import {
   isControlPlaneWriteBlocked,
   isTrustedSharedSkillHelper,
   isProtectedSecretPath,
+  isProtectedSecretTarget,
   playwrightBrowsersRoot,
   permitsRootVerifierScriptBashReference,
   requestResearchVaultConfirmation,
@@ -269,6 +271,83 @@ test("search patterns and globs are not filesystem candidates", () => {
   assert.deepEqual(shellPathCandidates("rg --ignore-file=~/.ssh/id_rsa ."), ["~/.ssh/id_rsa"]);
   assert.ok(deniedBashCommandReason("grep -e. ~/.ssh/id_rsa", "/Users/example/project", "/Users/example"));
   assert.ok(deniedBashCommandReason("rg -f ~/.ssh/id_rsa .", "/Users/example/project", "/Users/example"));
+});
+
+test("interpreter heredocs, sed and awk programs, and quoted prose are not path candidates", () => {
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\ns = s.replace(' // 2', '/x')\nopen('/etc/hosts')\nEOF"), []);
+  assert.deepEqual(shellPathCandidates("backlog task view X --plain | sed -n '/Implementation Notes/,$p' | tail -n +20"), []);
+  assert.deepEqual(shellPathCandidates("grep -n '' README.md | sed -n '/onfiguration/,/^[0-9]*:## /p'"), []);
+  assert.deepEqual(shellPathCandidates("awk 'f;/Implementation Notes/{f=1}' notes.txt"), []);
+  assert.deepEqual(shellPathCandidates("sed -e '/a/d' -e '/b/d' input"), []);
+  assert.deepEqual(shellPathCandidates('backlog task edit X --notes "POST /speechtotext/x then /openai/v1 (see /)"'), []);
+  assert.deepEqual(shellPathCandidates("backlog task edit X --final-summary='Rejected per /Acceptance/,/Definition/p'"), []);
+});
+
+test("masked shell text keeps real operands and protected secrets", () => {
+  assert.deepEqual(shellPathCandidates("sed -n '/x/p' /etc/hosts"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("sed -f /etc/script.sed input"), ["/etc/script.sed"]);
+  assert.deepEqual(shellPathCandidates("awk -f /etc/prog.awk input"), ["/etc/prog.awk"]);
+  assert.deepEqual(shellPathCandidates('cat "/etc/my file"'), ["/etc/my"]);
+  assert.deepEqual(shellPathCandidates('cat "../outside file"'), ["../outside"]);
+  assert.deepEqual(shellPathCandidates("bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nprint(1)"), []);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nprint(1)\nEOF\ncat /etc/hosts"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('echo "$(cat "/etc/a b")"'), ["/etc/a"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nopen('/Users/example/.ssh/id_rsa')\nEOF"), ["/Users/example/.ssh/id_rsa"]);
+  assert.deepEqual(shellPathCandidates('echo "see backend/.env for keys"'), ["backend/.env"]);
+});
+
+test("masking never hides executed text, file-writing programs, redirect targets, or control paths", () => {
+  assert.deepEqual(shellPathCandidates('eval "cat /etc/hosts"'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("git -c alias.x='!cat /etc/hosts' x"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("sed -n '1w /Users/example/.pi/agent/AGENTS.md' input"), ["/Users/example/.pi/agent/AGENTS.md"]);
+  assert.deepEqual(shellPathCandidates("sed -n '/x/r /etc/hosts' input"), ["/x/r", "/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("awk 'BEGIN{print > \"/etc/x\"}'"), ["/etc/x"]);
+  assert.deepEqual(shellPathCandidates("awk 'BEGIN{system(\"cat /etc/hosts\")}'"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('cp /tmp/payload ".pi/extensions/my ext.ts"'), ["/tmp/payload", ".pi/extensions/my"]);
+  assert.deepEqual(shellPathCandidates('echo "x y" > ".pi/extensions/a b.ts"'), [".pi/extensions/a"]);
+  assert.deepEqual(shellPathCandidates('echo "edit .agents/skills now" > out'), [".agents/skills"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<EOF\nx = \"$(cat /etc/hosts)\"\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('git commit -m "fix /a and /b"'), []);
+});
+
+test("only a Git-tracked file named exactly .env.example is exempt from secret protection", () => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), "pi-env-template-")));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  try {
+    git("init", "-q");
+    mkdirSync(join(repo, "backend"));
+    for (const name of [".env.example", ".env", ".env.sample"]) writeFileSync(join(repo, "backend", name), "KEY=");
+    writeFileSync(join(repo, ".env.example"), "KEY=");
+    mkdirSync(join(repo, "linked"));
+    symlinkSync(join(repo, "backend", ".env"), join(repo, "linked", ".env.example"));
+    git("add", "backend/.env.example", "backend/.env.sample", "linked/.env.example");
+
+    const nested = join(repo, "nested");
+    mkdirSync(nested);
+    const marker = join(repo, "fsmonitor-ran");
+    execFileSync("git", ["init", "-q"], { cwd: nested, stdio: "ignore" });
+    writeFileSync(join(nested, ".env.example"), "KEY=");
+    execFileSync("git", ["add", ".env.example"], { cwd: nested, stdio: "ignore" });
+    execFileSync("git", ["config", "core.fsmonitor", `touch ${marker}`], { cwd: nested, stdio: "ignore" });
+    const target = (...parts: string[]) => isProtectedSecretTarget(join(repo, ...parts), repo);
+
+    assert.equal(target("backend", ".env.example"), false);
+    assert.equal(target(".env.example"), true, "untracked");
+    assert.equal(target("backend", ".env.sample"), true, "tracked, other name");
+    assert.equal(target("backend", ".env"), true);
+    assert.equal(target("backend", "missing", ".env.example"), true);
+    assert.equal(target("linked", ".env.example"), true, "tracked symlink to .env");
+    assert.equal(isProtectedSecretTarget(join(repo, "backend", ".env.example"), join(repo, "linked")), true, "outside the session root");
+    assert.equal(target("nested", ".env.example"), true, "tracked only by a nested repository");
+    assert.equal(isProtectedSecretTarget(join(nested, ".env.example"), repo), true);
+    assert.equal(existsSync(marker), false, "nested repository config must not run");
+    assert.equal(deniedBashCommandReason("cat backend/.env.example", repo, "/Users/example"), undefined);
+    assert.ok(deniedBashCommandReason("cat .env.example", repo, "/Users/example"));
+    assert.ok(deniedBashCommandReason("cat backend/.env.example backend/.env", repo, "/Users/example"));
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test("Bash path inspection still catches explicit and protected paths", () => {
