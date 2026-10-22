@@ -44,6 +44,12 @@ import {
 	requestReview,
 	type ReviewRequest,
 } from "../shared/review-coordination.ts";
+import {
+	parseVerifierChangeVerdict,
+	registerVerifierChangeReviewer,
+	type VerifierChangeReview,
+	type VerifierChangeReviewRequest,
+} from "../shared/verifier-change-review.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -498,7 +504,83 @@ const SubagentParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
 
+async function prepareReviewBundle(
+	pi: ExtensionAPI,
+	base: string | undefined,
+	cwd: string,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
+	const prepared = await pi.exec(prepareScript, [base ?? "AUTO", cwd], { cwd, signal });
+	if (prepared.code !== 0) {
+		throw new Error((prepared.stderr || prepared.stdout || "Could not prepare review bundle").trim());
+	}
+
+	const bundlePath = prepared.stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.at(-1);
+	if (!bundlePath || !fs.existsSync(bundlePath)) {
+		throw new Error("Review bundle preparation did not return a readable file");
+	}
+	return bundlePath;
+}
+
+const VERIFIER_CHANGE_REVIEWER = "verifier-change-reviewer";
+
+async function runVerifierChangeReview(
+	pi: ExtensionAPI,
+	request: VerifierChangeReviewRequest,
+): Promise<VerifierChangeReview> {
+	const discovery = discoverAgents(request.cwd, "user");
+	const reviewerError = discovery.error ?? validateReviewerAgents(discovery.agents, [VERIFIER_CHANGE_REVIEWER]);
+	if (reviewerError) {
+		return { verdict: "undecided", report: `Verifier-change review dispatch failed closed: ${reviewerError}` };
+	}
+
+	const bundlePath = await prepareReviewBundle(pi, request.base, request.cwd, request.signal);
+	try {
+		const changed = request.changedPaths.length
+			? request.changedPaths.map((file) => `- ${file}`).join("\n")
+			: "- (none recorded)";
+		const accepted = !request.acceptedPath
+			? "The session had no verifier before this change; the entry point is new."
+			: request.acceptedContent === undefined
+				? `Accepted ${request.acceptedPath} content is unavailable; judge the entry point's changes in the bundle.`
+				: `Accepted ${request.acceptedPath} content (judge the current entry point against this, not against the bundle base):\n\n\`\`\`\`\n${request.acceptedContent}\n\`\`\`\``;
+		const task = [
+			`Review bundle: ${bundlePath}`,
+			`Changed verifier entry point: ${request.verifierPath}`,
+			accepted,
+			"Files changed in the agent turn that triggered this review (judge test and configuration changes among these):",
+			changed,
+			"Follow your configured brief. Do not edit files.",
+		].join("\n\n");
+		const result = await runSingleAgent(
+			request.cwd,
+			{ model: request.model, thinkingLevel: request.thinkingLevel as ThinkingLevel | undefined },
+			discovery.agents,
+			VERIFIER_CHANGE_REVIEWER,
+			task,
+			undefined,
+			undefined,
+			request.signal,
+			undefined,
+			(results) => ({ mode: "single", agentScope: "user", projectAgentsDir: discovery.projectAgentsDir, results }),
+		);
+		if (isFailedResult(result)) {
+			return { verdict: "undecided", report: `The verifier-change reviewer failed: ${getResultOutput(result)}` };
+		}
+		return parseVerifierChangeVerdict(getResultOutput(result));
+	} finally {
+		await fs.promises.rm(bundlePath, { force: true });
+	}
+}
+
 export default function (pi: ExtensionAPI) {
+	registerVerifierChangeReviewer((request) => runVerifierChangeReview(pi, request));
+
 	pi.events.on("verify-turn:passed", () => {
 		const request = releaseReviewAfterVerification();
 		if (!request) return;
@@ -1184,23 +1266,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
-			const prepared = await pi.exec(prepareScript, [params.base ?? "AUTO", ctx.cwd], {
-				cwd: ctx.cwd,
-				signal,
-			});
-			if (prepared.code !== 0) {
-				throw new Error((prepared.stderr || prepared.stdout || "Could not prepare review bundle").trim());
-			}
-
-			const bundlePath = prepared.stdout
-				.split("\n")
-				.map((line) => line.trim())
-				.filter(Boolean)
-				.at(-1);
-			if (!bundlePath || !fs.existsSync(bundlePath)) {
-				throw new Error("Review bundle preparation did not return a readable file");
-			}
+			const bundlePath = await prepareReviewBundle(pi, params.base, ctx.cwd, signal);
 
 			const discovery = discoverAgents(ctx.cwd, "user");
 			const reviewerNames = params.security

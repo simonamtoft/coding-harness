@@ -28,6 +28,17 @@ SH
 chmod +x .agent/verify.sh
 ```
 
+## Verifier-change review
+
+An agent may edit the verifier (SBX-15), and there is no per-session trust prompt (VER-13), so the extension does not trust a verifier whose entry point the agent changed until it is reviewed. The entry point is `.agent/verify.sh` or the selected Taskfile. The session's accepted content is the entry point as first seen in the session, or no verifier when the session started without one; it changes only when a review clears an edit or the user accepts one. A verifier the agent creates is therefore reviewed too.
+
+Before running a verifier whose entry point differs from the accepted content, the extension asks the `subagent` extension to dispatch the read-only `verifier-change-reviewer`. The reviewer gets a review bundle diffed against the accepted revision, the accepted entry-point text (up to 64 KiB), and the files changed in the triggering turn. It judges the entry point against its accepted text, so edits the user already accepted are not judged again, and judges weakening in tests or test configuration among the turn's files.
+
+- `VERDICT: CLEAR` accepts the edit and runs the verifier.
+- `VERDICT: CIRCUMVENTS`, any other output, a failed reviewer, or a missing `subagent` extension is undecided. In the terminal UI the report is shown and the user chooses to accept the change and run the verifier, or send it back. Without a UI, or when sent back, the verifier does not run and the report is fed to the agent as a failed round under the same three-round limit.
+
+Because the comparison is against the accepted content, not the previous turn, a later turn that leaves the edited verifier untouched is reviewed again. A commit-only turn still skips verification, but the next verifier run reviews the committed edit. Weakening in tests alone, without a verifier edit, does not trigger this review; `review_changes` remains the general change review. Without Git snapshots, changes cannot be detected and the verifier runs as before.
+
 ## Retry behavior
 
 The extension allows three verification-to-repair rounds. After the third repair attempt, it runs the verifier once more and surfaces any remaining failure without triggering another repair turn.

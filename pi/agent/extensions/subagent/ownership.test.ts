@@ -63,6 +63,7 @@ describe("subagent ownership", () => {
 		"repository-scout": "PrivateGPT/gpt-6-luna",
 		"security-reviewer": "anthropic/claude-opus-5-5",
 		"test-log-analyst": "PrivateGPT/gpt-6-luna",
+		"verifier-change-reviewer": "anthropic/claude-sonnet-5-5",
 	});
 	});
 

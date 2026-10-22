@@ -14,6 +14,7 @@ Bundled roles and their owners:
 - `commit-planner` — commit grouping and messages from a supplied working-tree snapshot; owned by `quick-commit`
 - `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `review_changes`
 - `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `review_changes`
+- `verifier-change-reviewer` — judges whether an agent's verifier edit weakens the checks; owned by `code-review`, dispatched by this extension when `verify-turn` requests it (see `../verify-turn/README.md`)
 - `test-log-analyst` — diagnosis of an oversized test or build log artifact; owned by `diagnose-failure`
 - `bulk-reader` — question-directed extraction from explicit large reference files; owned by `bulk-read`
 - `repository-scout` — repository reconnaissance for a recon slice; owned by `swarm`
