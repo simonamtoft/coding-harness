@@ -10,7 +10,7 @@ Select exactly one workflow below. All workflows are read-only except for their 
 
 ## Select the workflow
 
-1. **Pi session queries** — use `workflows/pi-session-queries.md` for Pi session cost, project/model/day rollups; listing or rendering a past Pi session; searching Pi transcripts; or dumping Pi prompts to inspect general patterns.
+1. **Pi session queries** — use `workflows/pi-session-queries.md` for Pi session cost, project/model/day rollups; per-skill usage counts; listing or rendering a past Pi session; searching Pi transcripts; or dumping Pi prompts to inspect general patterns.
 2. **Skill opportunities** — use `workflows/skill-opportunities.md` when the user asks which repeated work across their recent history should become a reusable skill. This workflow reads Claude Code and Cursor prompts and ends by asking the user which candidate to scaffold.
 3. **Repository retrospective** — use `workflows/repository-retrospective.md` only when the user explicitly asks to reflect on a completed agent session to find durable improvements for its repository. This workflow writes one HTML report in the session temporary workspace and requires later approval for any follow-up changes.
 
@@ -24,7 +24,7 @@ If a request could fit more than one workflow, choose **skill opportunities** on
 
 ## Included tools
 
-- `scripts/cost.py`, `prompts.py`, `show_session.py`, and `search.py` query Pi JSONL sessions under `~/.pi/agent/sessions/`; their shared parser is `scripts/sessions.py`.
+- `scripts/cost.py`, `prompts.py`, `show_session.py`, `search.py`, and `skill_usage.py` query Pi JSONL sessions under `~/.pi/agent/sessions/`; their shared parser is `scripts/sessions.py`.
 - `scripts/extract_claude_cursor_prompts.py` emits recent Claude Code and Cursor user prompts as JSONL for the skill-opportunity workflow.
 
 The Pi query scripts were adapted from [amosblomqvist/pi-config analyze-sessions](https://github.com/amosblomqvist/pi-config/tree/main/skills/analyze-sessions) and use only Python's standard library.
