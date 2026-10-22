@@ -17,6 +17,18 @@ Start with what the user named: a feature, a directory, a branch, or the whole p
 
 Read the documentation inside the scope completely. Read source files as far as the findings need, not file by file across the repository.
 
+## Scanning scripts
+
+The scripts do the mechanical part of checks 1 and 2. Each one needs only `python3` and takes the project root as an optional argument, defaulting to the current directory. Resolve the scripts relative to this skill directory and run them from the scope's project root:
+
+| Script | Finds | Limits |
+|---|---|---|
+| `scripts/dead_code.py` | Detects the JavaScript/TypeScript and Python stacks, then runs the installed analysers: `knip`, `tsc` (only its unused-code diagnostics), `ruff`, `vulture` and `deptry` | Looks only at the given root, so run it once per package in a monorepo. Uses tools from `node_modules/.bin`, `.venv/bin`, `venv/bin` or `PATH`, and never installs any |
+| `scripts/doc_refs.py` | Markdown link targets, repository paths in code spans, and `npm/pnpm/yarn/bun run` and `make` targets that do not exist | Does not check anchors, external URLs or paths outside the repository |
+| `scripts/env_vars.py` | Variables read in code but not declared in an env template or a documented `NAME=value` line, and the reverse | Never reads real `.env` files. Skips test files. Misses dynamic names, destructuring and settings classes such as pydantic `BaseSettings` |
+
+Every script lists Git-tracked and untracked-but-not-ignored files only. Treat their output as candidates. Verify each candidate before reporting it, because analysers miss framework conventions, dynamic imports and entry points. When `dead_code.py` lists analysers under `Not installed`, report them as a coverage gap. Ask the user before installing any of them.
+
 ## What to check
 
 ### 1. Documentation drift
@@ -37,7 +49,7 @@ Treat the code as the default source of truth for current behavior. When a docum
 - Debug output, commented-out code, scratch files, and committed experiment artifacts.
 - `TODO`/`FIXME` comments that refer to finished or abandoned work.
 
-Prefer the project's own tooling for unused-code detection when it is configured, such as `knip`, `ts-prune`, `depcheck`, `vulture`, or linter rules for unused code. Ask before installing a new tool. Before reporting code as unused, search for dynamic references: string-based imports, reflection, framework conventions, configuration files, and entry points declared in manifests.
+Start with `scripts/dead_code.py`. For other stacks, use the project's own unused-code tooling or linter rules when they are configured, and ask before installing a new tool. Before reporting code as unused, search for dynamic references: string-based imports, reflection, framework conventions, configuration files, and entry points declared in manifests.
 
 ### 3. Test pruning
 
