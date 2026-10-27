@@ -11,6 +11,7 @@ import {
   hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
   isControlPlaneWriteBlocked,
+  isReadOnlyInspectionCommand,
   isTrustedSharedSkillHelper,
   isProtectedSecretPath,
   isProtectedSecretTarget,
@@ -19,6 +20,7 @@ import {
   requestResearchVaultConfirmation,
   researchVaultBashOperation,
   researchVaultBashPaths,
+  sameRepositoryWorktrees,
   shellPathCandidates,
 } from "./policy.ts";
 
@@ -309,6 +311,114 @@ test("masking never hides executed text, file-writing programs, redirect targets
   assert.deepEqual(shellPathCandidates('echo "edit .agents/skills now" > out'), [".agents/skills"]);
   assert.deepEqual(shellPathCandidates("python3 - <<EOF\nx = \"$(cat /etc/hosts)\"\nEOF"), ["/etc/hosts"]);
   assert.deepEqual(shellPathCandidates('git commit -m "fix /a and /b"'), []);
+});
+
+test("awk regex and string literals and cat or tee heredoc data are not path candidates", () => {
+  assert.deepEqual(shellPathCandidates("awk '/\\f/{p++} /Introduction|Related Work/{print p+1\": \"substr($0,1,90)}' x.txt"), []);
+  assert.deepEqual(shellPathCandidates("awk '/^<<<<<<< /{p=1} p{print} /^>>>>>>> /{p=0}' README.md"), []);
+  assert.deepEqual(shellPathCandidates("awk '$3 >= 2 || /a|b/' f"), []);
+  assert.deepEqual(shellPathCandidates("cat > $PI_SESSION_TMPDIR/u.sh <<'EOF'\npython /probe/wait_db.py\nEOF\necho done"), []);
+  assert.deepEqual(shellPathCandidates("tee x.md <<'EOF' >/dev/null\nPOST /api/health\nEOF"), []);
+  assert.ok(shellPathCandidates("awk '{print x/1 > \"/etc/x\" /1}'").includes("/etc/x"));
+  assert.ok(shellPathCandidates("awk '/a/{print | \"cat /etc/hosts\"}'").includes("/etc/hosts"));
+  assert.deepEqual(shellPathCandidates("cat <<EOF\n$(cat /etc/hosts)\nEOF"), ["/etc/hosts"]);
+  assert.ok(shellPathCandidates("awk 'BEGIN { ARGV[1] = \"/etc/hosts\"; ARGC = 2 } { print }'").includes("/etc/hosts"));
+  assert.deepEqual(shellPathCandidates("cat <<< x\ncat /etc/hosts"), ["/etc/hosts"], "a here-string is not a heredoc");
+});
+
+function directoryFixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-cd-")));
+  mkdirSync(join(root, "repo/backend/src"), { recursive: true });
+  mkdirSync(join(root, "repo/scripts"));
+  mkdirSync(join(root, "tmp/session"), { recursive: true });
+  symlinkSync(join(root, "tmp"), join(root, "repo/link"));
+  const repo = join(root, "repo");
+  const context = {
+    cwd: repo,
+    home: join(root, "home"),
+    realpath: (path: string) => existsSync(path) ? realpathSync(path) : path,
+    isDirectory: (path: string) => existsSync(path),
+    variables: { PI_SESSION_TMPDIR: join(root, "tmp/session") },
+  };
+  return { root, repo, context };
+}
+
+test("relative paths after a literal cd resolve against the directory the command runs in", () => {
+  const { root, repo, context } = directoryFixture();
+  try {
+    const paths = (command: string) => shellPathCandidates(command, context);
+    assert.deepEqual(paths("cd backend && uv run ruff format ../scripts/x.py"), [join(repo, "scripts/x.py")]);
+    assert.deepEqual(paths("cd backend/src; sed -n 1,5p ../../scripts/x.py"), [join(repo, "scripts/x.py")]);
+    assert.deepEqual(paths("cd $PI_SESSION_TMPDIR && cat ./a.log"), [join(root, "tmp/session"), join(root, "tmp/session/a.log")]);
+    assert.deepEqual(paths("cd \"${PI_SESSION_TMPDIR}/../..\" && ls"), [join(root, "tmp/session/../..")]);
+    assert.deepEqual(paths("cd link && cat ../x"), [join(root, "x")], "symlinked directories resolve physically");
+    assert.deepEqual(paths("(cd backend && make) && cat ../x"), ["../x"], "subshell cd does not leak");
+    assert.deepEqual(paths("echo $(cd backend && pwd) && cat ../x"), ["../x"]);
+    assert.deepEqual(paths("cd backend | true; cat ../x"), ["../x"], "pipeline members run in subshells");
+    assert.deepEqual(paths("cd new; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort(), "a missing target may fail");
+    assert.deepEqual(paths("test -d backend && cd backend; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort());
+    assert.deepEqual(paths("cd backend && cat ../x"), [join(repo, "x")], "the && chain runs only after cd succeeded");
+    assert.deepEqual(paths("pushd backend; popd; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort());
+    assert.deepEqual(paths("cat <<EOF\ncd backend/src\nEOF\ncat ../../x"), ["../../x"], "heredoc text cannot move the shell");
+    assert.deepEqual(paths("cd $UNKNOWN && cat ../x"), ["../x"]);
+    assert.deepEqual(paths("cd backend 2>&1 && cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("cd -- backend && cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("if true; then cd backend; fi; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort(),
+      "a cd in an if body may not run");
+    assert.deepEqual(paths("cd backend || cat ../x"), ["../x"], "the command after || runs only when cd failed");
+    assert.deepEqual(paths("cd backend || exit; cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("cat <<< x >/dev/null\ncd link\ncat ./f"), [join(root, "tmp/f")], "a here-string is not a heredoc");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("read-only inspection commands are recognised conservatively", () => {
+  for (const command of [
+    "grep -n 'model' /pi/docs/a.md | head -20",
+    "cd /pi && rg -n 'x|y' dist 2>/dev/null | head",
+    "sed -n '1,40p' /pi/README.md",
+    "find /pi -name '*.md' -maxdepth 2 2>&1 | wc -l",
+  ]) assert.equal(isReadOnlyInspectionCommand(command), true, command);
+  for (const command of [
+    "grep x /pi/a > out",
+    "sed -i '' 's/a/b/' /pi/a",
+    "sed -n '1w /pi/b' /pi/a",
+    "find /pi -delete",
+    "find /pi -exec rm {} +",
+    "rg --pre ./x pattern /pi",
+    "cat $(echo /pi/a)",
+    "cp /pi/a b",
+    "FOO=1 cat /pi/a",
+    "sed -I.bak 's/x/y/' /pi/a",
+    "sed -n -e p -f prog /pi/a",
+    "sed --expression=p /pi/a",
+  ]) assert.equal(isReadOnlyInspectionCommand(command), false, command);
+});
+
+test("sibling worktrees of the session repository are listed; unrelated or broad paths are not", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-worktrees-")));
+  try {
+    const main = join(root, "main");
+    mkdirSync(main);
+    execFileSync("git", ["init", "-q", main]);
+    execFileSync("git", ["-C", main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"]);
+    execFileSync("git", ["-C", main, "worktree", "add", "-q", join(root, "wt")]);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "home")), [join(root, "wt")]);
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "wt"), join(root, "home")), [main]);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "wt/inner")), [], "a worktree containing home is dropped");
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "nothing")), []);
+    const other = join(root, "other");
+    mkdirSync(other);
+    execFileSync("git", ["init", "-q", other]);
+    mkdirSync(join(main, ".git/worktrees/forged"));
+    writeFileSync(join(main, ".git/worktrees/forged/gitdir"), `${join(other, ".git")}\n`);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "home")), [join(root, "wt")], "a record without a link back is ignored");
+    writeFileSync(join(root, "wt/.git"), `gitdir: ${join(other, ".git")}\n`);
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "wt"), join(root, "home")), [], "a forged session .git file grants nothing");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("only a Git-tracked file named exactly .env.example is exempt from secret protection", () => {

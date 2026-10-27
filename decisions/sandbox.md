@@ -151,6 +151,7 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Read-only `fmt`, `validate`, and `plan` belong to the verify loop, so prompting on them would be noise; the state-changing set mirrors Claude's split.
 **Revisit if:** Terraform prompts prove too noisy, or Pi Bash gains OS-level isolation (PI-26).
 **Evidence:** "State-changing only"; "these, and also alias such as tf"
+**Narrowed by SBX-26:** `init -backend=false` no longer asks.
 
 ### SBX-24 · Match confirmation commands by command word, not substring
 `accepted` · 2026-10-19 · `01a1546f`
@@ -165,3 +166,30 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Claude Code cloud sessions put session links in public `cv-website` commits and PR bodies; a session shared later would expose its whole transcript to any claude.ai account. A Git hook misses PR bodies, and a global hooks path disables repositories' own hooks unless it chains them. Ordinary URLs are legitimate. Message files (`-F`, `--body-file`) and cloud sessions, which run neither guard, remain uncovered; cloud repositories need `{"attribution": false}` in their `.claude/settings.json`.
 **Revisit if:** Agents start writing messages through files, cloud sessions gain a local enforcement point, or human co-author credit becomes needed in agent commits.
 **Evidence:** "Agent-side only"; "Session links + co-author"
+
+### SBX-26 · Local-only `terraform init -backend=false` runs without confirmation
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** `terraform init` (and `tf`, `tofu`, `terragrunt`) skips the SBX-23 confirmation when its last `-backend` flag is `-backend=false`. Other `init` forms keep it. Refused: auto-allowing every `init`, and every `init` except `-migrate-state`/`-force-copy`.
+**Why:** An unanswered confirmation for a local-only init stalled a Paseo turn for 2.1 h. With the backend disabled, init only downloads providers and modules into `.terraform`, so the prompt protected nothing. The user chose the narrowest form.
+**Revisit if:** Backend-configuring inits also prove noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "-backend=false only".
+
+### SBX-27 · Track literal `cd` instead of blocking `cd` into the session temp directory
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** The Bash path check resolves relative paths against the directory each command runs in. Literal `cd`/`pushd` targets (with `~` and `$PI_SESSION_TMPDIR` expanded) move later commands; subshells and command substitutions confine their `cd`; pipeline members move nothing; a `cd` that may not take effect makes later commands pass in both directories; and `popd`/`cd -` may return to any directory seen. Directories resolve physically. Heredoc bodies stay inspected but cannot move the shell. The blanket block on `cd` into the session temp directory, and the system-prompt sentence telling agents to avoid it, are removed. A `cd` to an unknown target still leaves the tracked directory unchanged.
+**Why:** Of 182 sandbox blocks in the 50 newest Paseo sessions, about 40 came from resolving `cd sub && tool ../x` against the session root or from the `cd`-to-temp block. The temp-directory block existed only because relative paths after that `cd` were resolved against the root. Tracking the directory fixes both and also catches `cd link && cat ../x` through a symlinked directory, which the root-relative check allowed.
+**Revisit if:** Pi Bash gains OS-level isolation (PI-26), or dynamic `cd` targets become a common source of false denials.
+
+### SBX-28 · Same-repository worktrees are readable and Bash-addressable, not editable
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** The read tools and Bash may reference the main checkout and other worktrees that `git worktree list` reports for the session root's repository, recomputed on every check. `write` and `edit` stay blocked there. Listed worktrees that contain the home directory or the session root, or that lack a `.git` entry, are ignored. Refused: treating sibling worktrees like the session root, and read-tool-only access.
+**Why:** Paseo runs each task in its own worktree, and merge and comparison work needs to inspect the siblings; 14 blocks in the analysed sessions were of this kind. The lexical Bash guard cannot make Bash read-only, so Bash access implies possible modification; the user accepted that for Bash while keeping file-tool edits blocked.
+**Revisit if:** A session modifies a sibling worktree unintentionally, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Bash + read, no edits" and asked that access stay "boxed within current repo or similar".
+
+### SBX-29 · Read-only Bash inspection of installed Pi packages
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** Bash may name the Volta package root (installed Pi docs and code) only when every command in the line is a listed inspection program without writing options, substitutions, environment assignments, or output redirection other than to `/dev/null` or another descriptor. Any other command naming that root stays blocked.
+**Why:** The system prompt sends agents to the Pi docs, but `grep` over them was blocked eight times in the analysed sessions. The read tools already had this access (SBX-06's read-only trust model), and the root holds executable harness code, so Bash gets inspection only.
+**Revisit if:** Agents need other tools there, or the allowlist is shown to permit a write.
+

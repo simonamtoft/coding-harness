@@ -98,6 +98,8 @@ test("state-changing Terraform invocations require confirmation", () => {
     ["tf apply", "tf apply"],
     ["tofu import aws_s3_bucket.b my-bucket", "tofu import"],
     ["terraform init -upgrade", "terraform init"],
+    ["terraform init -backend=false -backend=true", "terraform init"],
+    ["terraform init -backend-config=dev.hcl", "terraform init"],
     ["terraform state rm aws_instance.web", "terraform state rm"],
     ["terraform workspace new staging", "terraform workspace new"],
     ["terraform force-unlock 1234", "terraform force-unlock"],
@@ -106,6 +108,7 @@ test("state-changing Terraform invocations require confirmation", () => {
     ["terragrunt --working-dir live/prod destroy", "terragrunt destroy"],
     ["cd infra && terraform apply", "terraform apply"],
     ["timeout 600 ./bin/terraform apply", "terraform apply"],
+    ["grep x <<< \"$(terraform apply)\"", "terraform apply"],
   ];
   for (const [command, program] of cases) {
     assert.deepEqual(confirmedCommand(command), { category: "state-changing Terraform", program }, command);
@@ -124,6 +127,8 @@ test("read-only Terraform commands run without confirmation", () => {
     "terraform workspace list",
     "terragrunt run-all plan",
     "terragrunt plan-all",
+    "terraform init -backend=false -input=false",
+    "cd infra && terraform init --backend=false",
     "rg 'terraform apply' docs",
   ]) assert.equal(confirmedCommand(command), undefined, command);
 });

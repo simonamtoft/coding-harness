@@ -204,7 +204,11 @@ function simpleCommands(source: string): string[][] {
       readDoubleQuoted();
     } else if (char === "#" && !inWord) {
       while (index < source.length && source[index] !== "\n") index += 1;
-    } else if (source.startsWith("<<", index) && !source.startsWith("<<<", index)) {
+    } else if (source.startsWith("<<<", index)) {
+      // A here-string: its word is ordinary shell text, scanned like any other.
+      endWord();
+      index += 3;
+    } else if (source.startsWith("<<", index)) {
       endWord();
       index += 2;
       readHeredocDelimiter();
@@ -245,12 +249,19 @@ function terraformStateChangingSubcommand(args: string[]): string | undefined {
   const index = args.findIndex((arg) => TERRAFORM_SUBCOMMANDS.has(arg));
   const subcommand = args[index];
   if (subcommand === undefined) return undefined;
+  if (subcommand === "init" && initSkipsBackend(args.slice(index + 1))) return undefined;
   if (TERRAFORM_STATE_CHANGING_SUBCOMMANDS.has(subcommand)) return subcommand;
 
   const nested = args.slice(index + 1).find((arg) => !arg.startsWith("-"));
   return nested !== undefined && TERRAFORM_STATE_CHANGING_NESTED[subcommand]?.has(nested)
     ? `${subcommand} ${nested}`
     : undefined;
+}
+
+/** `init -backend=false` only installs providers and modules locally; the last `-backend` flag wins, as in Terraform. */
+function initSkipsBackend(args: string[]): boolean {
+  const backend = args.filter((arg) => /^--?backend=/.test(arg)).at(-1);
+  return backend !== undefined && /=false$/.test(backend);
 }
 
 /** Index of the wrapped command word after a wrapper's options, assignments, and operands. */

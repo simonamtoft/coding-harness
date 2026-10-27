@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { parseSessionHistoryExtraction } from "./session-history-command.ts";
-import { literalSecretCandidates, maskNonPathText } from "./shell-path-text.ts";
+import { shellSegments, type ShellDirectoryContext } from "./shell-directories.ts";
+import { isSideEffectFreeSedProgram, literalSecretCandidates, maskNonPathText } from "./shell-path-text.ts";
 
 const POSIX_NULL_DEVICE = "/dev/null";
 
@@ -62,7 +63,7 @@ export function permitsSessionHistoryCommand(command: string, sessionRoot: strin
   // One literal query argument, no shell expansion, chaining, or redirection.
   const query = `(?:[A-Za-z0-9._-]+|"[A-Za-z0-9 ._-]+"|'[A-Za-z0-9 ._-]+')`;
   if (command.includes("\n") || command.includes("\r")) return false;
-  if (new RegExp(`^bun ${script} --audit-(?:bulk-reads|blocks) --limit (?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$`).test(command)) return true;
+  if (new RegExp(`^bun ${script} --audit-(?:bulk-reads|blocks|asks) --limit (?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$`).test(command)) return true;
   if (new RegExp(`^bun ${script} --match ${query} --limit (?:[1-9]|[1-9][0-9]|100)$`).test(command)) return true;
   const extraction = new RegExp(`^bun ${script} (.+)$`).exec(command);
   return extraction !== null && parseSessionHistoryExtraction(extraction[1]!.split(" ")) !== undefined;
@@ -169,6 +170,96 @@ export function isTrackedEnvTemplate(path: string, sessionRoot: string): boolean
   } catch {
     return false;
   }
+}
+
+function gitFilePointer(dotGit: string): string | undefined {
+  const match = /^gitdir: (.+)$/m.exec(readFileSync(dotGit, "utf8"));
+  return match ? realpathSync.native(resolve(dirname(dotGit), match[1]!.trim())) : undefined;
+}
+
+/** Whether `<worktree>/.git` is a file naming `record`, and `record/gitdir` names that file back. */
+function linksBack(worktree: string, record: string): boolean {
+  const dotGit = join(worktree, ".git");
+  if (!lstatSync(dotGit).isFile() || gitFilePointer(dotGit) !== record) return false;
+  const backLink = readFileSync(join(record, "gitdir"), "utf8").trim();
+  return realpathSync.native(resolve(record, backLink)) === realpathSync.native(dotGit);
+}
+
+/**
+ * Real paths of the other worktrees (including the main checkout) of the session root's Git repository. Read
+ * from the repository's own metadata, not `git worktree list`: a linked worktree counts only when its `.git` file
+ * and its `<common-dir>/worktrees/<id>/gitdir` record name each other, and the session root must link back the same
+ * way, so a forged record cannot make another repository look like a sibling without writing inside it. Worktrees
+ * that contain the home directory or the session root are dropped.
+ */
+export function sameRepositoryWorktrees(sessionRoot: string, home = homedir()): string[] {
+  try {
+    const root = realpathSync.native(sessionRoot);
+    const realHome = existsSync(home) ? realpathSync.native(home) : resolve(home);
+    const rootGit = join(root, ".git");
+    let commonDir: string;
+    if (lstatSync(rootGit).isDirectory()) {
+      commonDir = realpathSync.native(rootGit);
+    } else {
+      const record = gitFilePointer(rootGit);
+      if (!record || basename(dirname(record)) !== "worktrees" || !linksBack(root, record)) return [];
+      commonDir = dirname(dirname(record));
+    }
+    const worktrees: string[] = [];
+    const main = dirname(commonDir);
+    if (basename(commonDir) === ".git") worktrees.push(main);
+    const records = join(commonDir, "worktrees");
+    for (const id of existsSync(records) ? readdirSync(records) : []) {
+      try {
+        const record = join(records, id);
+        const worktree = dirname(resolve(record, readFileSync(join(record, "gitdir"), "utf8").trim()));
+        if (linksBack(worktree, realpathSync.native(record))) worktrees.push(realpathSync.native(worktree));
+      } catch {
+        // A pruned or unreadable worktree record grants nothing.
+      }
+    }
+    return worktrees.filter((path) => path !== root && !isWithin(path, realHome) && !isWithin(path, root));
+  } catch {
+    return [];
+  }
+}
+
+const INSPECTION_PROGRAMS = new Set(["cat", "head", "tail", "grep", "rg", "ls", "wc", "find", "sed", "cd", "nl", "cut", "tr", "jq"]);
+const WRITING_FIND_ACTIONS = /^-(?:exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$/;
+const SHELL_WORD = /'([^']*)'|"((?:\\.|[^"\\])*)"|(\S+)/g;
+
+/**
+ * Whether every command in a Bash line only reads files: listed inspection programs, no substitutions, no output
+ * redirection other than to `/dev/null` or another descriptor, no in-place or file-writing options. Used to let
+ * agents inspect trusted read-only trees, such as the installed Pi docs, with ordinary shell tools.
+ */
+export function isReadOnlyInspectionCommand(command: string): boolean {
+  if (/\$\(|`|[<>]\(/.test(command)) return false;
+  const withoutHarmlessRedirects = command.replace(/\d*>&\d/g, " ").replace(/\d*>\s*\/dev\/null(?=\s|$|[;&|])/g, " ");
+  if (/>/.test(withoutHarmlessRedirects.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, ""))) return false;
+  return shellSegments(withoutHarmlessRedirects).every(({ text: segment }) => {
+    const words = [...segment.matchAll(SHELL_WORD)].map(([, single, double, bare]) => single ?? double ?? bare ?? "");
+    const [program, ...args] = words;
+    if (program === undefined) return true;
+    if (!INSPECTION_PROGRAMS.has(program)) return false;
+    if (program === "find") return !args.some((arg) => WRITING_FIND_ACTIONS.test(arg));
+    if (program === "rg") return !args.some((arg) => /^--pre(?:=|$)/.test(arg));
+    if (program === "sed") {
+      // Only print-only flags and `-e` scripts: `-i`/`-I` edit in place, `-f` reads an uninspected script.
+      const scripts: string[] = [];
+      const operands: string[] = [];
+      for (let index = 0; index < args.length; index += 1) {
+        const arg = args[index]!;
+        if (arg === "-e") scripts.push(args[++index] ?? "");
+        else if (arg.startsWith("-")) {
+          if (!/^-[nEr]+$/.test(arg)) return false;
+        } else operands.push(arg);
+      }
+      const programs = scripts.length ? scripts : operands.slice(0, 1);
+      return programs.length > 0 && programs.every(isSideEffectFreeSedProgram);
+    }
+    return true;
+  });
 }
 
 /** Protected secret path, after the tracked `.env.example` exception; `path` must be absolute. */
@@ -328,9 +419,13 @@ function searchFileOptionValues(tokens: string[]): string[] {
   return values;
 }
 
-export function shellPathCandidates(command: string): string[] {
+/**
+ * Paths a Bash command may touch. With a directory context, relative candidates after a literal `cd` are returned
+ * once per absolute directory they may run in (see `shellSegments`), and `cd` targets expanded from known
+ * variables are included; without one, relative candidates are returned as written.
+ */
+export function shellPathCandidates(command: string, context?: ShellDirectoryContext): string[] {
   const { command: pathText, literals } = maskNonPathText(stripInlineEvalBodies(command));
-  const segments = pathText.split(/&&|\|\||[;|]/);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
     if (unprefixed === POSIX_NULL_DEVICE) return false;
@@ -344,7 +439,7 @@ export function shellPathCandidates(command: string): string[] {
   const isSystemCommand = (token: string) => /^\/(?:bin|sbin|usr\/(?:bin|sbin|local\/bin)|opt\/homebrew\/(?:bin|sbin))\//.test(token);
 
   const literalSecrets = literalSecretCandidates(literals).filter(isProtectedSecretPath);
-  return [...segments.flatMap((segment) => {
+  return [...shellSegments(pathText, context).flatMap(({ text: segment, directories, targets }) => {
     const tokens = segment
       .replace(/'[^']*'/g, (value) => value.slice(1, -1))
       .replace(/"(?:\\.|[^"\\])*"/g, (value) => value.slice(1, -1))
@@ -360,7 +455,13 @@ export function shellPathCandidates(command: string): string[] {
         && ["=", "==", "!=", "=~"].some((operator) => operator === tokens[index - 1] || operator === tokens[index + 1]);
       return !isRootComparisonValue && (looksLikePath(token) || isProtectedSecretPath(token));
     });
-    return [...positionalPaths, ...searchFileOptionValues(tokens).filter((token) => looksLikePath(token) || isProtectedSecretPath(token))];
+    const candidates = [...positionalPaths, ...searchFileOptionValues(tokens).filter((token) => looksLikePath(token) || isProtectedSecretPath(token))];
+    const rebase = (candidate: string) => {
+      const path = candidate.replace(/^@/, "");
+      if (!directories || isAbsolute(path) || path === "~" || path.startsWith("~/")) return [candidate];
+      return directories.map((directory) => join(directory, path));
+    };
+    return [...targets, ...candidates.flatMap(rebase)];
   }), ...literalSecrets];
 }
 

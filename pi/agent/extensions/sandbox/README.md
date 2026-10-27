@@ -25,8 +25,21 @@ host-side boundary to model tool calls:
   may inspect installed package content under Volta's `tools/image/packages`
   directory, and Playwright's managed browser cache
   (`PLAYWRIGHT_BROWSERS_PATH` when absolute, otherwise
-  `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`). Write, edit,
-  and Bash access to those roots is unchanged.
+  `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`). Write and edit
+  access to those roots stays blocked. Bash may name the Volta package root only
+  in read-only inspection commands: every command is `cat`, `head`, `tail`,
+  `grep`, `rg` (without `--pre`), `ls`, `wc`, `find` (without `-exec`,
+  `-delete`, or `-fprint`), `sed` with a print/delete/substitute-only script and
+  no `-i`, `cd`, `nl`, `cut`, `tr`, or `jq`; no substitutions, no environment
+  assignments, and no output redirection other than to `/dev/null` or another
+  descriptor.
+- `read`, `grep`, `find`, and `ls` may also access the other worktrees of the
+  session root's Git repository, including the main checkout, as listed by
+  `git worktree list` (fsmonitor and bare-repository discovery disabled) at each
+  check. Bash may name paths there too; because the Bash guard is lexical, that
+  includes commands that modify them. `write` and `edit` stay blocked. Listed
+  worktrees that contain the home directory or the session root, or that no
+  longer hold a `.git` entry, are ignored.
 - Sessions started **at the canonical `coding-harness` root** may use `read`,
   `grep`, `find`, and `ls` on `~/.pi/agent/sessions`. This exception does not
   apply from checkout subdirectories or other projects, and the session-store
@@ -86,16 +99,24 @@ host-side boundary to model tool calls:
   protected-secret access. It returns an actionable reason; `git push
   --force-with-lease` remains permitted.
 - Bash is also blocked when it contains an explicit filesystem path outside the
-  current, permitted plugin workspace, or session temp directory; changes its
-  working directory to the session temp directory; or names a protected secret
-  pattern. `rg` and `grep` search patterns and glob values are not filesystem
+  current, permitted plugin workspace, same-repository worktree, or session temp
+  directory, or names a protected secret pattern. Relative paths are resolved
+  against the directory each command runs in: a literal `cd` or `pushd` (with
+  `~` or `$PI_SESSION_TMPDIR` expanded) moves later commands of the same shell,
+  `( … )` and `$( … )` confine their `cd`, and pipeline or background members
+  move nothing. Directories resolve physically, so `cd link && cat ../x` is
+  checked where the kernel opens it. When a `cd` may not take effect (its target
+  does not exist yet, or it runs after `&&`/`||`), commands outside its `&&`
+  chain must pass in both directories; `popd` and `cd -` may return to any
+  directory seen. A `cd` to an unknown target, such as another variable, leaves
+  the tracked directory unchanged. Heredoc bodies are inspected but cannot move
+  the shell. `rg` and `grep` search patterns and glob values are not filesystem
   paths, while their explicit file operands remain inspected.
   The research-vault and session-history exceptions are limited to their
   documented commands.
   The exact POSIX null device path is exempt so commands can safely discard output
   or compare against an empty source; neighboring device paths remain blocked.
-  Scratch commands must use absolute paths; Bash does not use the read approval
-  prompt.
+  Bash does not use the read approval prompt.
 - SSH-family commands ask for a one-time `Allow once`/`Deny` confirmation
   showing the full command: `ssh`, `scp`, `sftp`, `sshfs`, `ssh-copy-id`,
   `rsync` with a remote operand or `-e`/`--rsh`, and Git given a custom SSH
@@ -115,7 +136,9 @@ host-side boundary to model tool calls:
   boundary limitations).
 - State-changing Terraform commands use the same confirmation and detection for
   `terraform`, `tf`, `tofu`, and `terragrunt`: `apply`, `destroy`, `import`,
-  `init`, `refresh`, `taint`, `untaint`, `force-unlock`, `test`, Terragrunt's
+  `init` (except `init -backend=false`, which only installs providers and
+  modules locally; the last `-backend` flag wins), `refresh`, `taint`,
+  `untaint`, `force-unlock`, `test`, Terragrunt's
   legacy `apply-all`/`destroy-all`, `state
   mv|rm|push|replace-provider`, and `workspace new|delete`. The first known
   subcommand word decides, so Terragrunt `run-all apply` and flag values are
@@ -221,6 +244,17 @@ Paths come from the lexical guard, so `sed` addresses and URL fragments appear a
 root-level targets. Approved prompts leave no block, so the audit counts only
 denials and hard blocks.
 
+To time clarification waits in the same window:
+
+```bash
+bun pi/agent/extensions/sandbox/session-history.ts --audit-asks --limit 200
+```
+
+Each row lists the session's `ask_question` and `ask_user_question` calls with
+the result record ID and the seconds from the asking assistant message to the
+answer. Extract a record's `message.content` below to read the question and
+answer; the audit itself prints neither.
+
 For a record too large for the read tool's single-line limit, select its session
 UUID, record ID (the top-level `id`, not a tool-call ID), and a JSON field:
 
@@ -266,11 +300,13 @@ The same masking, with the same secret check, applies to three other kinds of
 text:
 
 - closed heredoc bodies with a quoted delimiter fed to those interpreters
-  (`python3 - <<'EOF'`); unquoted bodies still expand substitutions and stay
-  inspected;
+  (`python3 - <<'EOF'`) or copied as data by `cat` or `tee`
+  (`cat > notes.md <<'EOF'`); unquoted bodies still expand substitutions and
+  stay inspected;
 - `sed` programs made only of `p`, `d`, `P`, `=`, and `s` commands with line or
   regex addresses, and `awk` programs without `system`, `getline`, `close`, `|`,
-  or `>`; programs that can read, write, or run files stay inspected, as do `-f`
+  or `>` outside string and regex literals (`||` and `>=` are operators, and a
+  `/` opens a regex only where an operand is expected); programs that can read, write, or run files stay inspected, as do `-f`
   program files;
 - quoted prose given to `backlog`, `echo`, `printf`, `git -m`/`--message`, or
   `gh` title/body options: a quoted string containing whitespace that has no `$`,

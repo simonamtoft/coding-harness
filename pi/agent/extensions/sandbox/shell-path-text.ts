@@ -1,4 +1,6 @@
 const INTERPRETERS = new Set(["node", "bun", "deno", "python", "python3", "perl", "ruby"]);
+/** Commands that copy heredoc bodies to output or a file as data; the shell never interprets the body. */
+const DATA_SINKS = new Set(["cat", "tee"]);
 const PROGRAM_COMMANDS = new Set(["sed", "gsed", "awk", "gawk", "mawk", "nawk"]);
 /** Commands whose quoted arguments are only printed or stored as text; `undefined` means every argument. */
 const PROSE_ARGUMENTS: Record<string, Set<string> | undefined> = {
@@ -19,14 +21,14 @@ const LITERAL_SEPARATORS = /[\s'"`()[\]{},;=]+/;
 const SED_ADDRESS = String.raw`(?:\d+|\$|/(?:\\.|[^/\\])*/I?)`;
 const SED_COMMAND = String.raw`(?:[pdP=]|s(?<delimiter>[^\s\\\n])(?:\\.|(?!\k<delimiter>)[^\\])*\k<delimiter>(?:\\.|(?!\k<delimiter>)[^\\])*\k<delimiter>[gpiI0-9]*)`;
 const SAFE_SED_STEP = new RegExp(String.raw`^\s*(?:${SED_ADDRESS}(?:\s*,\s*(?:${SED_ADDRESS}|\+\d+))?)?\s*!?\s*${SED_COMMAND}\s*(?:[;\n]|$)`);
-// awk programs that can redirect output, pipe, or run commands.
-const AWK_SIDE_EFFECT = /system|getline|close|[|>]/;
+// awk programs that can redirect output, pipe, run commands, or open files named in code through ARGV/ARGC.
+const AWK_SIDE_EFFECT = /system|getline|close|ARGV|ARGC|[|>]/;
 
 type Word = { start: number; end: number; value: string; quotes: Array<{ start: number; end: number; content: string }> };
 
 /**
  * Masks shell text that names no file the shell itself opens, so lexical path extraction does not mistake it for
- * a path: quoted-delimiter heredoc bodies fed to interpreters, side-effect-free `sed`/`awk` programs, and quoted
+ * a path: quoted-delimiter heredoc bodies fed to interpreters or copied by `cat`/`tee`, side-effect-free `sed`/`awk` programs, and quoted
  * prose given to commands that only print or store text. Masked text is returned as `literals` so callers still
  * check it for protected secret paths. Commands whose quoting this scanner cannot follow (ANSI-C `$'…'` strings,
  * or substitutions inside double quotes, which may nest further quotes) are returned unchanged.
@@ -90,7 +92,10 @@ export function maskNonPathText(command: string): { command: string; literals: s
       index += 1;
     } else if (char === "#" && !word) {
       while (index < command.length && command[index] !== "\n") index += 1;
-    } else if (command.startsWith("<<", index) && !command.startsWith("<<<", index)) {
+    } else if (command.startsWith("<<<", index)) {
+      endWord();
+      index += 3;
+    } else if (command.startsWith("<<", index)) {
       endWord();
       index += 2;
       const stripTabs = command[index] === "-";
@@ -104,7 +109,8 @@ export function maskNonPathText(command: string): { command: string; literals: s
         index += 1;
       }
       // Unquoted bodies still expand `$(…)` and backticks in the shell before the interpreter runs.
-      pendingHeredocs.push({ delimiter, stripTabs, code: quoted && INTERPRETERS.has(commandName(words)) });
+      const name = commandName(words);
+      pendingHeredocs.push({ delimiter, stripTabs, code: quoted && (INTERPRETERS.has(name) || DATA_SINKS.has(name)) });
     } else if (char === "\\") {
       startWord().value += command[index + 1] ?? "";
       index += 2;
@@ -157,7 +163,8 @@ function commandName(words: Word[]): string {
   return words[commandIndex(words)]?.value.split("/").at(-1) ?? "";
 }
 
-function isSafeSedProgram(program: string): boolean {
+/** Whether a `sed` script only prints, deletes, or substitutes: no `w`, `r`, `e`, or `W` commands. */
+export function isSideEffectFreeSedProgram(program: string): boolean {
   let rest = program;
   while (rest.trim()) {
     const step = SAFE_SED_STEP.exec(rest);
@@ -204,7 +211,28 @@ function programWordIndexes(name: string, words: Word[], start: number): number[
 
 function isSideEffectFreeProgram(name: string, word: Word): boolean {
   const program = word.value.replace(/^--expression=/, "");
-  return name.endsWith("awk") ? !AWK_SIDE_EFFECT.test(program) : isSafeSedProgram(program);
+  return name.endsWith("awk") ? !AWK_SIDE_EFFECT.test(awkCodeOutsideLiterals(program)) : isSideEffectFreeSedProgram(program);
+}
+
+/**
+ * awk program text with string and regex literals removed, and `||` and `>=` operators blanked, so the side-effect
+ * check sees only pipes and redirections in code. A `/` opens a regex only where an operand is expected (program
+ * start or after `{ } ; ( , ! ~ & |` or a newline); elsewhere it is division.
+ */
+function awkCodeOutsideLiterals(program: string): string {
+  let code = "";
+  for (let index = 0; index < program.length; index += 1) {
+    const char = program[index]!;
+    if (char === "\"" || (char === "/" && /(?:^|[{};(,!~&|\n])\s*$/.test(code))) {
+      let end = index + 1;
+      while (end < program.length && program[end] !== char) end += program[end] === "\\" ? 2 : 1;
+      code += "\"\"";
+      index = end;
+    } else {
+      code += char;
+    }
+  }
+  return code.replace(/\|\||>=/g, " ");
 }
 
 function isRedirectTarget(words: Word[], index: number): boolean {
