@@ -1,6 +1,6 @@
 ---
 name: quick-commit
-description: Use when the user wants changes actually committed — "quick commit", "commit this", "commit these changes", or "commit and push". Groups the working tree into coherent commits, confirms the plan once, and commits it.
+description: Use when the user wants changes actually committed — "quick commit", "commit this", "commit these changes", or "commit and push". Groups the working tree into coherent commits and commits them, confirming first only when the plan carries warnings.
 ---
 
 # Quick commit
@@ -33,7 +33,7 @@ Turn the current working tree into one or more coherent commits. This is the com
    - If the user chooses manual hunk staging, remove the snapshot directory in a separate cleanup command, tell them to use `git add -p -- <path>` with their normal index-isolation workflow, and stop without mutation.
    - For any other answer or requested revision, re-dispatch the planner with the answer and same evidence. Repeat only for an independent unresolved issue.
 
-4. **Show the ready-plan decision.** For each ready plan, write the plan in the assistant response, then call `ask_user_question` exactly once to ask whether to commit the plan shown above. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
+4. **Commit or confirm the ready plan.** If the plan's warnings section reads exactly `Warnings: none`, go straight to step 5: the user's request to commit is the authorization, and the report shows the plan. Otherwise write the plan in the assistant response, then call `ask_user_question` exactly once to ask whether to commit the plan shown above. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
 
    ```text
    1. [message]
@@ -53,14 +53,14 @@ Turn the current working tree into one or more coherent commits. This is the com
 
    `--only` excludes unrelated pre-existing index entries. Never use `git add -A` across groups.
 
-6. **Push only when requested.** If the user said "and push", separately confirm the remote and branch before `git push`. Otherwise stop after committing; do not push unprompted.
+6. **Push only when requested.** If the user said "and push", separately confirm the remote and branch before `git push`. When the plan was committed without confirmation, the response before that question must show every committed group with its message and exact paths. Otherwise stop after committing; do not push unprompted.
 
-7. **Report.** Show `git log --oneline -n <number of commits made>`.
+7. **Report.** Show `git log --oneline -n <number of commits made>`. When the plan was committed without confirmation, also list each commit's paths and note that `git reset --soft HEAD~<n>` undoes the commits while keeping the changes.
 
 ## Rules
 
 - Never bundle unrelated changes into one commit.
-- Confirm before committing and again before pushing.
+- Confirm before committing a plan with any warning, and always before pushing.
 - The planner alone reads and analyzes working-tree evidence; the parent owns confirmation and Git mutations.
 - Stop and flag possible secrets, credentials, client data, or large generated blobs rather than committing them automatically.
 - Respect `.gitignore` and standing instructions about material that must not be committed.

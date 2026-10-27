@@ -189,3 +189,10 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** The user chose installed-only analysers. Missing analysers are reported as a coverage gap so that installing one remains the user's decision. The grep fallback was too noisy to justify. Command and env checks were limited to code spans, fenced blocks, and non-test files after a smoke run on this repository showed prose ("make the") and test harness variables producing most false positives.
 **Revisit if:** Projects routinely lack the analysers and the user wants ephemeral runs, or another stack becomes common enough to need its own runner.
 **Evidence:** Selected "Installed only" and scripts "Dead code, Doc references, Env-var drift"; asked "Would it be possible to detect the stack of the repo and then run the appropriate ones?"
+
+### SKL-30 · Quick-commit commits warning-free plans without confirmation
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** When the commit planner's ready plan ends with exactly `Warnings: none`, quick-commit commits it without `ask_user_question` and reports the plan and an undo command afterwards. Plans with any warning still need confirmation, and pushing still needs an explicit request and confirmation. Refused: skipping only single-commit plans, and keeping the unconditional confirmation.
+**Why:** Across the 50 newest Paseo sessions, 13 of 14 commit-plan confirmations were accepted unchanged, yet the waits totalled about 1.1 h, up to 18.5 m each. The user had already asked to commit, and local commits stay reversible with `git reset --soft` until pushed. The planner now ends every ready plan with an explicit warnings line, so the skip condition does not depend on parsing free-form prose.
+**Revisit if:** A committed warning-free plan groups changes the user would have regrouped, or the planner omits warnings it should have raised.
+**Evidence:** The user chose "Any warning-free plan".
