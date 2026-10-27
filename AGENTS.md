@@ -16,6 +16,7 @@ pi/agent/
   prompts/                        Pi-only slash-prompt workflows
 claude/                           Claude-only runtime resources
 paseo/config.json                 Paseo daemon configuration, linked to ~/.paseo/config.json
+paseo/pi-diagnostic.sh            temporary opt-in Pi launcher for diagnosing Pi deaths under Paseo
 paseo.json                        Paseo project config: worktree setup symlinks backlog/
 probes/                           manual instruction-behavior evaluation; see probes/AGENTS.md
 link.sh                           deployment topology, Pi package installation, hooks path
@@ -33,7 +34,7 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - `pi/agent/` owns Pi-only instructions, agents, extensions, prompts, MCP configuration, and the package manifest.
 - Keep test files out of `pi/agent/extensions/` root. Pi auto-loads every root `*.ts`; colocate tests inside extension subdirectories, where only `index.ts` is auto-discovered.
 - `claude/` owns Claude-only agents, hooks, settings, statusline, and themes.
-- `paseo/` owns only Paseo's `config.json`. Paseo writes to it through the link, so check its diff for `daemon.auth.password` or provider `env` secrets before committing.
+- `paseo/` owns Paseo's `config.json` and the temporary `pi-diagnostic.sh` launcher. Paseo writes to it through the link, so check its diff for `daemon.auth.password` or provider `env` secrets before committing.
 - `probes/` owns isolated instruction comparisons and whole-Pi-harness behavior scenarios. Runs make paid model calls, so keep the suite manual and out of automatic verification; keep `probes/results/` local and untracked.
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.

@@ -84,6 +84,17 @@ and Claude's user, project, and local settings, including hooks.
   provider `env` API keys must not be committed. The rest of `~/.paseo`
   (worktrees, logs, credentials, sessions) stays local and untracked.
 
+- Pi deaths under Paseo: Paseo launches `pi`, the Volta shim, which reports a
+  signal-killed Node child as `Pi RPC process exited with code 1 and signal
+  null` with empty stderr. `paseo/pi-diagnostic.sh` is a temporary opt-in
+  launcher that runs Pi's Node entry directly, logs the real exit signal plus
+  periodic memory and process-list samples to `~/.paseo/pi-diagnostic/`, and
+  re-raises the signal so Paseo reports it. Enable it with
+  `launchctl setenv PI_COMMAND "$PWD/paseo/pi-diagnostic.sh"` from this
+  checkout, then quit and reopen Paseo. Disable it with
+  `launchctl unsetenv PI_COMMAND` and another Paseo restart. Remove the script
+  once the cause is known.
+
 - Worktrees: Paseo workspaces under `~/.paseo/worktrees` own worktree creation
   and cleanup. `swarm` accepts a Paseo workspace as a writable worker's
   pre-created worktree; workers still never create, merge, or remove one.
@@ -105,7 +116,9 @@ and Claude's user, project, and local settings, including hooks.
   `context-monitor`, and `pi-status-footer` are terminal-only.
 - Sandbox boundary: a Pi session started in a Paseo worktree of this repository
   is not a coding-harness session, so agent control files stay write-protected
-  there. Edit the harness from the canonical checkout.
+  there. Edit the harness from the canonical checkout. Sessions may read, and
+  reference from Bash, the other worktrees of their own repository, but
+  file-tool edits there stay blocked.
 
 ### Local-only skills: implement-powerpoint and implement-brand-web
 
@@ -179,7 +192,8 @@ when each run or verifier finishes, so an idle session waiting for input does no
 keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
-- `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`.
+- `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
+  and the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`).
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the
 single source of truth for both harnesses:
