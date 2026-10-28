@@ -1,6 +1,6 @@
 ---
 name: tdd-bug-fix
-description: Use only when the user explicitly asks for TDD, a failing test, or a regression test, or when an unrequested bug fix has an obvious cheap local test seam. For unrequested bugs, skip when the test path is unclear, expensive, or integration-heavy.
+description: Use only when the user explicitly asks for TDD, a failing test, or a regression test, or when a bug fix touches engine-room code that the shared permanent-test rule names. Do not use it for other unrequested bug fixes.
 ---
 
 # TDD bug fix

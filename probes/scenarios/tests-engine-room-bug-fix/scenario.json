@@ -1,0 +1,19 @@
+{
+  "kind": "multi-turn",
+  "prompt": "splitBill in src/split.ts loses cents: splitBill(1000, 3) returns [333, 333, 333], which sums to 999. The shares must always add up to the total. Please fix it.",
+  "checkCommand": [
+    "bun",
+    "test"
+  ],
+  "assertions": {
+    "checksPass": true,
+    "filesChanged": [
+      "src/split.ts",
+      "test/split.test.ts"
+    ],
+    "allowedChangedFiles": [
+      "src/split.ts",
+      "test/split.test.ts"
+    ]
+  }
+}

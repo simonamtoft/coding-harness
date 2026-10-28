@@ -37,7 +37,7 @@ For JavaScript and TypeScript, treat each function independently, including nest
 
 ### 2. Secure behavior before refactoring
 
-Run the narrowest existing tests that exercise the target. If coverage is missing, add characterization tests before changing structure. Cover:
+Run the narrowest existing tests that exercise the target. If coverage is missing, write characterization tests before changing structure. Keep them in the session temp directory and out of the repository unless the user asks for permanent tests or the target is engine-room code under the shared permanent-test rule. Cover:
 
 - each branch and early-exit path
 - boundary and nullish inputs

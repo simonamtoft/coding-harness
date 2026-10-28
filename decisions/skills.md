@@ -61,6 +61,7 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Use the TDD bug-fix workflow for explicit TDD/regression requests, or for an unrequested bug with an obvious cheap local seam. Skip unclear, expensive, or integration-heavy paths.
 **Why:** Keeps red–fix–green practical instead of forcing tests where the path is uncertain.
 **Revisit if:** A cheap reliable seam appears for the impractical case.
+Superseded by OWN-12: unrequested bug fixes use the workflow only for engine-room code.
 
 ### SKL-11 · Domain context is a planning input
 `constraint` · 2026-08-25 · `01a038b7`
