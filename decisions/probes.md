@@ -142,3 +142,10 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** In session `01a110c3` an 80-trial pilot was monitored with `sleep 600`/`sleep 900`. Those sleeps could delay noticing completion or failure by up to 15 minutes, and the idle waits cost cache-warm model calls. This is separate from PRB-12, which keeps the host awake.
 **Revisit if:** Pi gains a native way to wait on background processes, or long-running commands outside `probes/` need the same workflow.
 **Evidence:** The user chose "Probe launch/wait helper" over "Docs-only shell recipe" and "Generic Pi background-job tool".
+
+### PRB-21 · Default probe Luna model uses the `PrivateGPT` alias
+`accepted` · 2026-10-28 · `01a17e8b`
+**Decision:** Change the runner's default small model from `openai-codex/gpt-6-luna` to `PrivateGPT/gpt-6-luna`, following SUB-21. Stored `openai-codex` Luna records stay on disk but no longer serve as cached default baselines; select them with `--models openai-codex/gpt-6-luna`.
+**Why:** SUB-21 moved the OpenAI-family subagent pins to `PrivateGPT` but missed the runner while the suite was parked (PRB-19). Default runs then sent Luna trials to a provider with no login, and every trial failed as infrastructure.
+**Revisit if:** SUB-21 is revisited or the probe default pair changes (see PRB-19's revisit condition).
+**Evidence:** "luna should be available from privategpt in pi..." then "go ahead".
