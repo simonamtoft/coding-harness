@@ -56,6 +56,10 @@ An explicit value is passed as `--thinking` regardless of parent thinking or loc
 
 Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions. The sandbox and secret-result guard are explicitly re-enabled for every child; parent read-routing is not, so bulk readers can inspect source without recursive cost routing while retaining filesystem and model-egress protections.
 
+## Child transcripts and progress
+
+Each child writes its transcript to a private directory under the parent's session temp workspace (`$PI_SESSION_TMPDIR/subagent-runs/`), never to the session store, and each result reports it as `sessionFile` (SUB-25). Paseo's built-in `pi-subagents` adapter shows that transcript for single-agent `subagent` calls after the child finishes. Without a session temp workspace, children run with `--no-session`. While children run, the partial tool text has one status line per child (agent, elapsed time, turn, current tool or `waiting for model`). The TUI renders from details; RPC clients such as Paseo show only this text.
+
 ## Swarm workflow
 
 Invoke the shared `/skill:swarm` workflow. It requires an explicit frame, done predicate, partition/race/mixed shape, standalone briefs, terminal evidence, and parent-owned aggregation. Read-only workers may share a checkout. Write workers require distinct pre-created worktrees and explicit absolute `cwd` values; the parent owns allocation, merge, and cleanup. Dropouts remain visible as `BLOCKED` rather than receiving a generic fallback.

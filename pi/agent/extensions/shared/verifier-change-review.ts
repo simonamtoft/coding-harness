@@ -30,10 +30,19 @@ export interface VerifierChangeReviewRequest {
 
 type VerifierChangeReviewer = (request: VerifierChangeReviewRequest) => Promise<VerifierChangeReview>;
 
-let reviewer: VerifierChangeReviewer | undefined;
+/**
+ * The registration lives on globalThis rather than in module scope: pi loads each extension through its
+ * own module registry, so `subagent` (which registers) and `verify-turn` (which asks) each get a separate
+ * copy of this file.
+ */
+const REVIEWER_KEY = "__piVerifierChangeReviewer";
 
 export function registerVerifierChangeReviewer(next: VerifierChangeReviewer | undefined): void {
-	reviewer = next;
+	(globalThis as Record<string, unknown>)[REVIEWER_KEY] = next;
+}
+
+function registeredReviewer(): VerifierChangeReviewer | undefined {
+	return (globalThis as Record<string, unknown>)[REVIEWER_KEY] as VerifierChangeReviewer | undefined;
 }
 
 const VERDICT_LINE = /^VERDICT:\s*(CLEAR|CIRCUMVENTS)\s*$/;
@@ -52,6 +61,7 @@ export function parseVerifierChangeVerdict(output: string): VerifierChangeReview
 }
 
 export async function reviewVerifierChange(request: VerifierChangeReviewRequest): Promise<VerifierChangeReview> {
+	const reviewer = registeredReviewer();
 	if (!reviewer) {
 		return { verdict: "undecided", report: "No verifier-change reviewer is available; the subagent extension is not loaded." };
 	}

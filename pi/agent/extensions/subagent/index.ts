@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, ToolCall } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
@@ -184,6 +184,8 @@ interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	/** The child's transcript. Paseo's pi-subagents adapter reads `results[].sessionFile` to show the child run. */
+	sessionFile?: string;
 }
 
 interface SubagentDetails {
@@ -218,10 +220,46 @@ function getResultOutput(result: SingleResult): string {
 
 function formatElapsed(result: SingleResult): string {
 	if (!result.startedAt || !result.finishedAt) return "";
-	const elapsedSeconds = Math.max(0, Math.floor((result.finishedAt - result.startedAt) / 1000));
-	const minutes = Math.floor(elapsedSeconds / 60);
-	const seconds = elapsedSeconds % 60;
-	return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+	return formatClock(result.finishedAt - result.startedAt);
+}
+
+function formatClock(milliseconds: number): string {
+	const elapsedSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+	return `${Math.floor(elapsedSeconds / 60).toString().padStart(2, "0")}:${(elapsedSeconds % 60).toString().padStart(2, "0")}`;
+}
+
+/**
+ * One plain-text status line per child run. The TUI renders from `details`; RPC clients such as Paseo
+ * show only a running tool's partial text, so this line is their view of the child.
+ */
+function describeProgress(result: SingleResult): string {
+	if (result.status === "queued") return `${result.agent} · queued`;
+	if (result.status === "completed" || result.status === "failed") {
+		return `${result.agent} · ${result.status} ${formatElapsed(result)}`.trimEnd();
+	}
+	const parts = [result.agent];
+	if (result.startedAt) parts.push(formatClock(Date.now() - result.startedAt));
+	const assistantIndex = result.messages.findLastIndex((message) => message.role === "assistant");
+	const assistant = result.messages[assistantIndex];
+	const finished = new Set(
+		result.messages.slice(assistantIndex + 1).flatMap((message) => (message.role === "toolResult" ? [message.toolCallId] : [])),
+	);
+	const pendingCalls = assistant?.role === "assistant"
+		? assistant.content.filter((part): part is ToolCall => part.type === "toolCall" && !finished.has(part.id))
+		: [];
+	if (pendingCalls.length) {
+		parts.push(`turn ${result.usage.turns}`);
+		parts.push(pendingCalls.map((call) => formatToolCall(call.name, call.arguments, (_color, text) => text)).join(", "));
+	} else if (assistant && assistantIndex === result.messages.length - 1) {
+		parts.push(`turn ${result.usage.turns}`, "finishing");
+	} else {
+		parts.push(`turn ${result.usage.turns + 1}`, "waiting for model");
+	}
+	return parts.join(" · ");
+}
+
+function formatRunsProgress(header: string, results: SingleResult[]): string {
+	return [header, ...results.map(describeProgress)].join("\n");
 }
 
 function truncateParallelOutput(output: string): string {
@@ -298,6 +336,24 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
+/**
+ * Gives one child run a private transcript directory inside the parent's session temp workspace, so
+ * transcripts stay out of the session store and expire with the workspace. Without a workspace the
+ * child runs without a session.
+ */
+async function createTranscriptDirectory(agentName: string): Promise<string | undefined> {
+	const sessionTemp = process.env.PI_SESSION_TMPDIR;
+	if (!sessionTemp) return undefined;
+	const runsDir = path.join(sessionTemp, "subagent-runs");
+	await fs.promises.mkdir(runsDir, { recursive: true, mode: 0o700 });
+	return fs.promises.mkdtemp(path.join(runsDir, `${agentName.replace(/[^\w.-]+/g, "_")}-`));
+}
+
+async function findTranscript(transcriptDir: string): Promise<string | undefined> {
+	const files = (await fs.promises.readdir(transcriptDir)).filter((file) => file.endsWith(".jsonl"));
+	return files.length === 1 ? path.join(transcriptDir, files[0]) : undefined;
+}
+
 interface DispatchDefaults {
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
@@ -325,8 +381,11 @@ async function runSingleAgent(
 
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
 	const secretResultGuardExtension = path.resolve(path.dirname(__filename), "../secret-result-guard/index.ts");
+	const transcriptDir = await createTranscriptDirectory(agentName);
 	const args: string[] = [
-		"--mode", "json", "-p", "--no-session", "--no-extensions",
+		"--mode", "json", "-p",
+		...(transcriptDir ? ["--session-dir", transcriptDir] : ["--no-session"]),
+		"--no-extensions",
 		"--extension", sandboxExtension,
 		"--extension", secretResultGuardExtension,
 	];
@@ -352,8 +411,9 @@ async function runSingleAgent(
 
 	const emitUpdate = () => {
 		if (onUpdate) {
+			const output = getFinalOutput(currentResult.messages);
 			onUpdate({
-				content: [{ type: "text", text: getFinalOutput(currentResult.messages) || "(running...)" }],
+				content: [{ type: "text", text: output ? `${describeProgress(currentResult)}\n\n${output}` : describeProgress(currentResult) }],
 				details: makeDetails([currentResult]),
 			});
 		}
@@ -452,6 +512,7 @@ async function runSingleAgent(
 
 		currentResult.exitCode = exitCode;
 		currentResult.finishedAt = Date.now();
+		if (transcriptDir) currentResult.sessionFile = await findTranscript(transcriptDir);
 		currentResult.status = isFailedResult(currentResult) ? "failed" : "completed";
 		if (isFailedResult(currentResult)) {
 			const failure = currentResult.errorMessage || currentResult.stderr.trim() || "The child process exited without an error message.";
@@ -804,7 +865,10 @@ export default function (pi: ExtensionAPI) {
 						const done = allResults.filter((r) => r.exitCode !== -1).length;
 						onUpdate({
 							content: [
-								{ type: "text", text: `Parallel: ${done}/${allResults.length} done, ${running} running...` },
+								{
+									type: "text",
+									text: formatRunsProgress(`Parallel: ${done}/${allResults.length} done, ${running} running...`, allResults),
+								},
 							],
 							details: makeDetails("parallel")([...allResults]),
 						});
@@ -1301,7 +1365,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (onUpdate) {
 				onUpdate({
-					content: [{ type: "text", text: `Independent review: 0/${reviewerNames.length} complete` }],
+					content: [{ type: "text", text: formatRunsProgress(`Independent review: 0/${reviewerNames.length} complete`, results) }],
 					details: makeDetails([...results]),
 				});
 			}
@@ -1328,7 +1392,7 @@ export default function (pi: ExtensionAPI) {
 								reviewer.status === "completed" || reviewer.status === "failed",
 							).length;
 							onUpdate({
-								content: [{ type: "text", text: `Independent review: ${complete}/${reviewerNames.length} complete` }],
+								content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
 								details: makeDetails([...results]),
 							});
 						},
@@ -1340,7 +1404,7 @@ export default function (pi: ExtensionAPI) {
 							reviewer.status === "completed" || reviewer.status === "failed",
 						).length;
 						onUpdate({
-							content: [{ type: "text", text: `Independent review: ${complete}/${reviewerNames.length} complete` }],
+							content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
 							details: makeDetails([...results]),
 						});
 					}

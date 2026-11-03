@@ -59,7 +59,7 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Revisit if:** A reproducible probe shows a presenter child mutating the parent session.
 
 ### SUB-10 · Subagent runs remain ephemeral
-`accepted` · 2026-09-03 · `01a06634`
+`accepted` · 2026-09-03 · `01a06634` · Superseded by SUB-25
 **Decision:** Keep `--no-session` on every subagent and reviewer subprocess. Surface child usage through the parent subagent tool result rather than retaining child session files.
 **Why:** Persistent child sessions would help only with occasional forensic analysis. The parent already presents per-run and aggregate tokens and cost; persistence would not merge those provider calls into the parent session's native accounting, while it would accumulate disposable and potentially sensitive run histories.
 **Revisit if:** Full child-run forensic inspection becomes a recurring operational need, or Pi gains supported parent-session cost aggregation.
@@ -163,3 +163,10 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** `PrivateGPT/gpt-6-luna` accepts `off` (0 reasoning tokens), and facts were equally correct in both arms. In 80 paired worker runs, however, `off` cited a key-covering line for 10 of 120 facts against 25 for `low`, and 0 of 30 on the 726-line document against 13; it saved only ~3% worker cost. In a 12-run Sonnet 5.5 parent smoke, `off` was 21% cheaper end to end only because parents re-read less, and 3 of 6 `off` final answers passed wrong line citations through unchecked against 1 of 6 for `low`. Small n, one parent model, one worker model. Details: `probes/reader-compare/REPORT.md`.
 **Revisit if:** the worker model changes, a citation-verification affordance makes worker line numbers reliable without thinking, or parents are required to verify every cited line.
 **Evidence:** "Let's try with bulk-reader"; after the comparison, selected "Revert to low".
+
+### SUB-25 · Child transcripts live in the session temp workspace for Paseo visibility
+`accepted` · 2026-11-03 · `01a1a06d-b69f-7118-8fa7-d3cf1b87d12a`
+**Decision:** Subagent and reviewer children run with `--session-dir` set to a fresh private directory under `$PI_SESSION_TMPDIR/subagent-runs/` and report the file as `results[].sessionFile`; running children's partial tool text is one status line per child. Children still never write to `~/.pi/agent/sessions`. Without a session temp workspace they keep `--no-session`. Supersedes SUB-10. Not done: emulating another subagent package's runtime bridge for live child following in Paseo.
+**Why:** Under Paseo, `subagent` and `review_changes` showed only a spinner, and the user asked for visibility into child runs. Paseo 0.13's `pi-subagents` adapter already matches single-agent `subagent` calls and renders a reported `sessionFile` after completion, but it does not map parallel/chain calls or `review_changes`, and RPC clients render only partial text, not the TUI's details view. The temp workspace keeps SUB-10's concern bounded: transcripts stay private (mode 0700), out of session listings and audits, and expire with the operating system's temp cleanup.
+**Revisit if:** Paseo adds live following for completed-on-return tools or adapters for parallel calls and `review_changes`, transcript volume in the temp workspace becomes a problem, or child transcripts are needed beyond temp cleanup.
+**Evidence:** The user chose "Progress + transcripts".

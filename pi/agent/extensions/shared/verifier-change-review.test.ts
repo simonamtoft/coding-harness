@@ -50,3 +50,15 @@ test("the registered reviewer's verdict is returned", async () => {
 	assert.equal((await reviewVerifierChange(request())).verdict, "circumvents");
 	registerVerifierChangeReviewer(undefined);
 });
+
+test("a reviewer registered by one extension's module copy serves another's", async () => {
+	// Pi loads each extension through its own module registry; query strings give Bun separate copies.
+	const subagentCopy = await import("./verifier-change-review.ts?extension=subagent");
+	const verifyTurnCopy = await import("./verifier-change-review.ts?extension=verify-turn");
+	subagentCopy.registerVerifierChangeReviewer(async () => ({ verdict: "clear", report: "VERDICT: CLEAR" }));
+	try {
+		assert.equal((await verifyTurnCopy.reviewVerifierChange(request())).verdict, "clear");
+	} finally {
+		subagentCopy.registerVerifierChangeReviewer(undefined);
+	}
+});
