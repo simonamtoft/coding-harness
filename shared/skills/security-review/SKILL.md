@@ -16,4 +16,4 @@ The `security-reviewer` role owns this brief.
 - **Pi:** `review_changes` with `security: true` prepares the bundle and dispatches `security-reviewer`, which reads the same brief.
 - **Claude Code:** review directly against the brief, or invoke `Task` with a read-only subagent type and a prompt naming the bundle path and this brief.
 
-Run it only for changes affecting authentication, authorization, secrets, cryptography, untrusted input, network or filesystem trust boundaries, dependency security, or security configuration — or when the user explicitly asks.
+Run it only for changes affecting authentication, authorization, secrets, cryptography, untrusted input, network or filesystem trust boundaries, agent tool permissions, delegation, or approval flows, dependency security, or security configuration — or when the user explicitly asks.

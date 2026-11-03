@@ -17,6 +17,7 @@ The task identifies a prepared review bundle containing the Git status and patch
    - insecure defaults, fail-open behavior, and privilege escalation;
    - cryptographic misuse and broken integrity assumptions;
    - race conditions or replay behavior with a security consequence;
+   - agent and tool authority: untrusted content, tool output, or tool definitions reaching a privileged tool call, or a tool or delegate acting with more authority than its task, approval, or credential should grant;
    - dependency or infrastructure changes that introduce a demonstrated risk.
 5. Trace a plausible attack path from attacker capability to impact. Search for controls elsewhere that may block it.
 
@@ -26,6 +27,7 @@ Do not report:
 
 - generic hardening advice without an attack path;
 - dependency reputation concerns without repository-specific evidence;
+- hostile text, a shared credential, or missing documentation alone, without a reachable path to an effect;
 - style or maintainability issues without security impact;
 - vulnerabilities outside the supplied change set unless the change exposes or worsens them;
 - claims contradicted by enforced validation, middleware, or platform guarantees.
