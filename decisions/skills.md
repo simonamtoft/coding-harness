@@ -197,3 +197,10 @@ Superseded by OWN-12: unrequested bug fixes use the workflow only for engine-roo
 **Why:** Across the 50 newest Paseo sessions, 13 of 14 commit-plan confirmations were accepted unchanged, yet the waits totalled about 1.1 h, up to 18.5 m each. The user had already asked to commit, and local commits stay reversible with `git reset --soft` until pushed. The planner now ends every ready plan with an explicit warnings line, so the skip condition does not depend on parsing free-form prose.
 **Revisit if:** A committed warning-free plan groups changes the user would have regrouped, or the planner omits warnings it should have raised.
 **Evidence:** The user chose "Any warning-free plan".
+
+### SKL-31 · Zoom-out adapts upstream globalmaxxing as a user-triggered checkpoint
+`accepted` · 2026-11-03 · `01a1a06e-358b-722b-a4a4-f475dffc97cb`
+**Decision:** Add `zoom-out`, adapted from kasperjunge/skills `globalmaxxing`: map Goal/Objective/Approach/Constraints, generate reframes with six moves, ask, then rank candidates including the current approach. Changes from upstream: renamed to a descriptive name; `disable-model-invocation: true` instead of model-triggered on "diminishing returns"; up to four questions through one `ask_user_question` call instead of 3–5 prose questions; explicitly read-only until the user picks a direction.
+**Why:** No existing skill checks mid-flight whether work is on a local maximum or chasing a proxy: `grill` deepens one plan, `technical-design` runs before implementation, `over-engineering-audit` targets code deletion. Model invocation could make an autonomous task abandon its work and stop on questions; the question limit and tool follow the clarification gate.
+**Revisit if:** The user wants agents to self-trigger the check, or invocations show overlap with `grill` in practice.
+**Evidence:** "Call it zoom-out and build it" — a direct request, not derived from analyze-sessions evidence.
