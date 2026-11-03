@@ -119,6 +119,11 @@ and Claude's user, project, and local settings, including hooks.
   there. Edit the harness from the canonical checkout. Sessions may read, and
   reference from Bash, the other worktrees of their own repository, but
   file-tool edits there stay blocked.
+- Isolated runs: [`paseo/box/`](paseo/box/README.md) runs a second Paseo
+  daemon with Pi and this repository's Pi setup in a Colima container, behind
+  a default-deny egress firewall, on one mounted checkout. Add it in Paseo as a
+  direct-connection host for unattended or untrusted agent runs. It is not
+  linked by `link.sh`; its launcher mounts this checkout read-only.
 
 ### Local-only skills: implement-powerpoint and implement-brand-web
 
@@ -139,8 +144,10 @@ this bundle's brand references when it is present.
 
 ## Layout
 
-- `experiments/bonsai/`: local-model playground with tracked setup notes;
+- `local-models/bonsai/`: local-model playground with tracked setup notes;
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
+- `local-models/gemma/`: foreground launcher and Pi setup notes for a local
+  Gemma 4 12B llama.cpp server. Not deployed by `link.sh`.
 - `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
   whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Parked as
   work in progress (PRB-19); paid runs are manual, on request only. See [probes/README.md](probes/README.md).
@@ -193,7 +200,9 @@ keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 - `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
-  and the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`).
+  the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),
+  and `box/`, the isolated Paseo and Pi container (not linked; started with
+  `paseo/box/paseo-box.sh`).
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the
 single source of truth for both harnesses:

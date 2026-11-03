@@ -168,7 +168,7 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Evidence:** "Agent-side only"; "Session links + co-author"
 
 ### SBX-26 · Local-only `terraform init -backend=false` runs without confirmation
-`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d` · Superseded by SBX-32
 **Decision:** `terraform init` (and `tf`, `tofu`, `terragrunt`) skips the SBX-23 confirmation when its last `-backend` flag is `-backend=false`. Other `init` forms keep it. Refused: auto-allowing every `init`, and every `init` except `-migrate-state`/`-force-copy`.
 **Why:** An unanswered confirmation for a local-only init stalled a Paseo turn for 2.1 h. With the backend disabled, init only downloads providers and modules into `.terraform`, so the prompt protected nothing. The user chose the narrowest form.
 **Revisit if:** Backend-configuring inits also prove noisy, or Pi Bash gains OS-level isolation (PI-26).
@@ -207,3 +207,37 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Revisit if:** Sibling-repository blocks recur outside one-off migrations.
 **Evidence:** The user chose "Keep blocked".
 
+### SBX-32 · `terraform init` needs confirmation only when it can migrate state
+`accepted` · 2026-11-03 · `01a1a06d-b69f-7118-8fa7-d3cf1b87d12a`
+**Decision:** `terraform init` (and `tf`, `tofu`, `terragrunt`) runs without confirmation when `-backend=false` is in effect, or when `-input=false` is in effect, neither `-migrate-state` nor `-force-copy` is, and the command text does not mention `TF_CLI_ARGS` (last occurrence of each flag wins; `=false`/`=0` disables). Backend-configuring forms such as `-backend-config=…`, `-reconfigure`, and `-upgrade` qualify with `-input=false`. The other SBX-23 subcommands keep confirmation; `terraform test` stays confirmed because its run blocks apply real infrastructure unless every block uses `plan` or mocks, which the lexical guard cannot see. Reverses the 2026-10-26 refusal recorded in SBX-26. Refused after review: the user-approved narrower rule of confirming only `-migrate-state`/`-force-copy`, because `TF_CLI_ARGS`/`TF_CLI_ARGS_init` can append those flags and a piped answer (`yes | terraform init`) can accept the migration prompt when input is enabled.
+**Why:** In the 50 newest Paseo sessions, 6 of 22 Terraform confirmations were backend inits, waiting 61–1,614 s; Paseo shows the agent as running while the prompt waits, so the wait reads as a hung command. With `-input=false` Terraform errors instead of prompting, so only the explicit flags can migrate state. Other init effects (`.terraform/`, `.terraform.lock.hcl`) are local and visible in Git. Inits without `-input=false` still prompt.
+**Revisit if:** An unconfirmed init changes remote state, agents routinely omit `-input=false` so the prompt stays noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Allow init"; the security review of the first implementation found the `TF_CLI_ARGS` and piped-input paths.
+
+### SBX-33 · OS-level isolation runs the Paseo daemon inside a Colima container
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** Isolated agent runs use `paseo/box/`: a second Paseo daemon with Pi in a Linux container on Colima, added to the Paseo app as a direct-connection host, with a default-deny egress firewall applied by root before Paseo drops to an unprivileged user. Refused: the host daemon launching Pi through a `docker exec` wrapper (Paseo terminals and setup hooks would stay on the host); VS Code devcontainers as the workflow (the user drives agents from Paseo, not an editor); Docker Desktop as the runtime (a paid subscription at Implement's size, and the user prefers Colima); OrbStack (paid for commercial use); Apple `container` (no Docker API or devcontainer support); Anthropic's reference firewall script (all rights reserved; `firewall.sh` is independent and also drops its any-host SSH rule).
+**Why:** The container boundary covers everything Paseo launches, which the lexical guard cannot (SBX-13). Measured on the M4: Colima's bind mounts and volumes were faster than Docker Desktop's, and the repository checks passed in the box faster than on the host.
+**Revisit if:** Paseo gains a native sandbox for agents, Colima stops supporting `vz` with virtiofs, or the box's firewall proves too coarse.
+**Evidence:** The user chose "A: daemon in container" and asked to use Colima.
+
+### SBX-34 · The box reads the Pi setup and local Pi files read-only
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** The box mounts this repository and `~/pi-plugins` read-only and runs `link.sh --packages` inside, so agents load the same setup but cannot change it. `models.json` and `settings.json` reach the box as copies that `paseo-box.sh` refreshes on every start into `~/.config/paseo-box/pi`, which is mounted read-only; the daemon password sits outside that folder. The entrypoint resets the home directory as root on every start, persisting only the Pi sign-in, Pi sessions and Paseo state, because Pi auto-loads agent-directory files (`APPEND_SYSTEM.md`, themes) and `~/.agents/skills`. Refused: symlinks to `~/.pi/agent` (Colima resolves them inside the VM, where they break); mounting `~/.pi/agent` into the VM (it exposes sessions and `auth.json` to the VM); the box's own `settings.json` from the example (the user wanted their real preferences, whose package entry needs `~/pi-plugins`).
+**Why:** Agents that can write their own instructions, extensions or `link.sh` could disable the controls meant to contain them.
+**Revisit if:** Pi supports a read-only configuration root, or the copies drift in ways that a restart does not fix.
+**Evidence:** The user chose "Read-only mount", then "B: copy, then mount" and "Real + pi-plugins".
+
+### SBX-35 · Box credentials: own Pi sign-in and passed API keys only
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** Pi signs in to Anthropic separately inside the box, and the launcher passes only `IM_GPT_API_KEY` and `HETZNER_API_KEY`. No SSH keys, Git credentials, cloud CLI configuration or Docker socket enter the box. Refused: copying `auth.json` from the Mac.
+**Why:** Sharing OAuth tokens means a refresh in the box may rotate them and sign the Mac out (inferred from OAuth behaviour, not verified for Pi), and the box should hold no more than it needs to call models.
+**Revisit if:** Pi supports scoped or per-device tokens, or a separate sign-in becomes a burden.
+**Evidence:** The user chose "Separate /login" and both API keys.
+
+### SBX-36 · The box edits the mounted checkout but cannot write its `.git`
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** The box mounts the checkout being worked on at `/workspace` on its current branch, with the whole `.git` directory read-only; agents edit files, while commits, branches and Paseo worktrees happen on the Mac or the host Paseo daemon. The launcher refuses linked worktrees. Refused: read-only `.git/hooks` and `.git/config` only (the first implementation; the security review showed, and a reproduction with Git 2.53 confirmed, that a planted `.git/commondir` makes a plain `git status` on the Mac run the agent's `core.fsmonitor`); a separate clone inside the box (keeps commits and worktrees, but loses live edits to the current checkout); accepting the risk.
+**Why:** Git on the Mac executes what `.git` says, and the checkout is the one host path agents can write.
+**Revisit if:** Agents in the box need to commit routinely, or Paseo supports worktrees whose Git data stays outside the Mac checkout.
+**Evidence:** The user chose to "use current checkout / branch we work on", then "A: read-only .git" after the review.

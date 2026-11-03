@@ -149,8 +149,10 @@ host-side boundary to model tool calls:
   boundary limitations).
 - State-changing Terraform commands use the same confirmation and detection for
   `terraform`, `tf`, `tofu`, and `terragrunt`: `apply`, `destroy`, `import`,
-  `init` (except `init -backend=false`, which only installs providers and
-  modules locally; the last `-backend` flag wins), `refresh`, `taint`,
+  `init` (except `-backend=false`, or `-input=false` without `-migrate-state`,
+  `-force-copy`, or any `TF_CLI_ARGS` mention in the command; those forms cannot
+  copy state between backends; the last occurrence of each flag wins),
+  `refresh`, `taint`,
   `untaint`, `force-unlock`, `test`, Terragrunt's
   legacy `apply-all`/`destroy-all`, `state
   mv|rm|push|replace-provider`, and `workspace new|delete`. The first known

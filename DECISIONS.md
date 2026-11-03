@@ -9,7 +9,7 @@ Entries live in `decisions/`, one file per area. Read only the area your change 
 | Area | File | Ids | Owning paths |
 | --- | --- | --- | --- |
 | Repository and instruction ownership | `decisions/ownership.md` | `OWN-` | `AGENTS.md`, `shared/AGENTS.md`, `README.md` |
-| Sandbox and command safety | `decisions/sandbox.md` | `SBX-` | `pi/agent/extensions/sandbox`, `shared/command-safety.tsv`, `claude/hooks/check-bash.sh` |
+| Sandbox and command safety | `decisions/sandbox.md` | `SBX-` | `pi/agent/extensions/sandbox`, `shared/command-safety.tsv`, `claude/hooks/check-bash.sh`, `paseo/box` |
 | Verification loop | `decisions/verification.md` | `VER-` | `pi/agent/extensions/verify-turn`, `pi/agent/extensions/diagnostics`, `claude/hooks/verify-turn.sh` |
 | Subagents and review | `decisions/subagents.md` | `SUB-` | `pi/agent/agents`, `pi/agent/extensions/subagent`, `shared/skills/code-review`, `shared/skills/security-review` |
 | Clarification UI | `decisions/clarification-ui.md` | `ASK-` | `pi/agent/extensions/ask-question` |
@@ -17,7 +17,7 @@ Entries live in `decisions/`, one file per area. Read only the area your change 
 | Skill boundaries | `decisions/skills.md` | `SKL-` | `shared/skills` |
 | Reports | `decisions/reports.md` | `REP-` | `shared/skills/present` |
 | Backlog workflow | `decisions/backlog.md` | `BKL-` | `backlog/`, the tracker section of `shared/AGENTS.md`, `pi/agent/extensions/backlog-guard` |
-| Local model experiments | `decisions/local-models.md` | `LLM-` | `experiments/` |
+| Local models | `decisions/local-models.md` | `LLM-` | `local-models/` |
 | Instruction-behavior probes | `decisions/probes.md` | `PRB-` | `probes/` |
 
 ## Using this ledger

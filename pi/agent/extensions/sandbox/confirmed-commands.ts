@@ -9,7 +9,7 @@ const TERRAFORM_SUBCOMMANDS = new Set([
   "apply-all", "destroy-all", "output-all", "plan-all", "validate-all",
 ]);
 const TERRAFORM_STATE_CHANGING_SUBCOMMANDS = new Set([
-  "apply", "destroy", "force-unlock", "import", "init", "refresh", "taint", "test", "untaint",
+  "apply", "destroy", "force-unlock", "import", "refresh", "taint", "test", "untaint",
   "apply-all", "destroy-all",
 ]);
 const TERRAFORM_STATE_CHANGING_NESTED: Record<string, Set<string>> = {
@@ -36,6 +36,9 @@ const FIND_EXEC_FLAGS = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
 const RSYNC_REMOTE_OPERAND = /^(?:[^\s@/:]+@)?[^\s/:]+:(?!:)/;
 // Covers direct variables, `GIT_CONFIG_KEY_n=core.sshCommand`, `-c`, and `--config-env` settings.
 const GIT_SSH_SETTING = /^GIT_SSH(?:_COMMAND)?=|core\.sshCommand/i;
+const TF_CLI_ARGS = /TF_CLI_ARGS/;
+// A redirection word as the lexer keeps it, e.g. `2>/dev/null`, `>>log`, `2>&1`, `&>out`, or a bare `>`; group 1 is its target.
+const REDIRECTION = /^(?:\d+|&)?(?:<>|>>|>|<)&?(.*)$/;
 const EXPORTING_BUILTINS = new Set(["export", "declare", "typeset", "readonly", "local"]);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const WORD_BREAK = /[\s;&|<>()]/;
@@ -245,11 +248,11 @@ function usesRemoteRsync(args: string[]): boolean {
 }
 
 /** Returns the state-changing subcommand, such as `apply` or `state rm`, if any. */
-function terraformStateChangingSubcommand(args: string[]): string | undefined {
+function terraformStateChangingSubcommand(args: string[], cliArgsInjected: boolean): string | undefined {
   const index = args.findIndex((arg) => TERRAFORM_SUBCOMMANDS.has(arg));
   const subcommand = args[index];
   if (subcommand === undefined) return undefined;
-  if (subcommand === "init" && initSkipsBackend(args.slice(index + 1))) return undefined;
+  if (subcommand === "init") return initIsLocalOnly(args.slice(index + 1), cliArgsInjected) ? undefined : "init";
   if (TERRAFORM_STATE_CHANGING_SUBCOMMANDS.has(subcommand)) return subcommand;
 
   const nested = args.slice(index + 1).find((arg) => !arg.startsWith("-"));
@@ -258,10 +261,21 @@ function terraformStateChangingSubcommand(args: string[]): string | undefined {
     : undefined;
 }
 
-/** `init -backend=false` only installs providers and modules locally; the last `-backend` flag wins, as in Terraform. */
-function initSkipsBackend(args: string[]): boolean {
-  const backend = args.filter((arg) => /^--?backend=/.test(arg)).at(-1);
-  return backend !== undefined && /=false$/.test(backend);
+/**
+ * `init` copies state between backends only through `-migrate-state`, `-force-copy`, or an answered
+ * migration prompt. It is local-only when `-backend=false` is in effect, or when `-input=false` is in
+ * effect, neither migration flag is, and no `TF_CLI_ARGS*` variable can append flags Terraform would
+ * honour. The last occurrence of each flag wins, as in Terraform.
+ */
+function initIsLocalOnly(args: string[], cliArgsInjected: boolean): boolean {
+  const lastValue = (flag: string) => args.filter((arg) => new RegExp(`^--?${flag}(?:=|$)`).test(arg)).at(-1);
+  const isFalse = (value: string | undefined) => value !== undefined && /=(?:false|0)$/i.test(value);
+  if (isFalse(lastValue("backend"))) return true;
+  const migrates = ["migrate-state", "force-copy"].some((flag) => {
+    const value = lastValue(flag);
+    return value !== undefined && !isFalse(value);
+  });
+  return !cliArgsInjected && !migrates && isFalse(lastValue("input"));
 }
 
 /** Index of the wrapped command word after a wrapper's options, assignments, and operands. */
@@ -306,23 +320,36 @@ function envSplitString(args: string[]): string | undefined {
  * Lexical only: programs started from scripts, aliases, variables, or Git's default transport are not detected.
  */
 export function confirmedCommand(source: string): ConfirmedCommand | undefined {
+  // Any mention counts: assignments, `export`, `env`, and nested shells can all reach Terraform's environment.
+  return confirmedIn(source, TF_CLI_ARGS.test(source));
+}
+
+function confirmedIn(source: string, cliArgsInjected: boolean): ConfirmedCommand | undefined {
   for (const tokens of simpleCommands(source)) {
-    const match = confirmedSimpleCommand(tokens);
+    const match = confirmedSimpleCommand(tokens, cliArgsInjected);
     if (match) return match;
   }
   return undefined;
 }
 
-function confirmedSimpleCommand(tokens: string[]): ConfirmedCommand | undefined {
+function confirmedSimpleCommand(tokens: string[], cliArgsInjected: boolean): ConfirmedCommand | undefined {
   let index = 0;
-  while (index < tokens.length && (ASSIGNMENT.test(tokens[index]!) || SHELL_KEYWORDS.has(tokens[index]!))) {
-    if (GIT_SSH_SETTING.test(tokens[index]!)) return CUSTOM_GIT_SSH;
+  while (index < tokens.length) {
+    const token = tokens[index]!;
+    const redirection = REDIRECTION.exec(token);
+    if (redirection) {
+      // A bare operator such as `>` takes its target from the next word.
+      index += redirection[1] ? 1 : 2;
+      continue;
+    }
+    if (!ASSIGNMENT.test(token) && !SHELL_KEYWORDS.has(token)) break;
+    if (GIT_SSH_SETTING.test(token)) return CUSTOM_GIT_SSH;
     index += 1;
   }
-  return confirmedInvocation(tokens, index);
+  return confirmedInvocation(tokens, index, cliArgsInjected);
 }
 
-function confirmedInvocation(tokens: string[], index: number): ConfirmedCommand | undefined {
+function confirmedInvocation(tokens: string[], index: number, cliArgsInjected: boolean): ConfirmedCommand | undefined {
   const word = commandWord(tokens[index] ?? "");
   const args = tokens.slice(index + 1);
 
@@ -333,14 +360,14 @@ function confirmedInvocation(tokens: string[], index: number): ConfirmedCommand 
     if (word === "env") {
       if (wrapperArgs.some((arg) => GIT_SSH_SETTING.test(arg))) return CUSTOM_GIT_SSH;
       const splitString = envSplitString(tokens.slice(index + 1));
-      if (splitString !== undefined) return confirmedCommand(splitString);
+      if (splitString !== undefined) return confirmedIn(splitString, cliArgsInjected);
     }
-    return confirmedInvocation(tokens, wrappedIndex);
+    return confirmedInvocation(tokens, wrappedIndex, cliArgsInjected);
   }
-  if (word === "eval") return confirmedCommand(args.join(" "));
+  if (word === "eval") return confirmedIn(args.join(" "), cliArgsInjected);
   if (SHELL_PROGRAMS.has(word)) {
     const scriptFlag = args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
-    return scriptFlag === -1 ? undefined : confirmedCommand(args[scriptFlag + 1] ?? "");
+    return scriptFlag === -1 ? undefined : confirmedIn(args[scriptFlag + 1] ?? "", cliArgsInjected);
   }
   if ((EXPORTING_BUILTINS.has(word) || word === "git") && args.some((arg) => GIT_SSH_SETTING.test(arg))) {
     return CUSTOM_GIT_SSH;
@@ -348,12 +375,12 @@ function confirmedInvocation(tokens: string[], index: number): ConfirmedCommand 
   if (REMOTE_SHELL_PROGRAMS.has(word)) return { category: "SSH-family", program: word };
   if (word === "rsync" && usesRemoteRsync(args)) return { category: "SSH-family", program: "rsync" };
   if (TERRAFORM_PROGRAMS.has(word)) {
-    const subcommand = terraformStateChangingSubcommand(args);
+    const subcommand = terraformStateChangingSubcommand(args, cliArgsInjected);
     return subcommand ? { category: "state-changing Terraform", program: `${word} ${subcommand}` } : undefined;
   }
   if (word === "find") {
     for (const [offset, arg] of args.entries()) {
-      const match = FIND_EXEC_FLAGS.has(arg) ? confirmedInvocation(args, offset + 1) : undefined;
+      const match = FIND_EXEC_FLAGS.has(arg) ? confirmedInvocation(args, offset + 1, cliArgsInjected) : undefined;
       if (match) return match;
     }
   }

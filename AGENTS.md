@@ -17,8 +17,10 @@ pi/agent/
 claude/                           Claude-only runtime resources
 paseo/config.json                 Paseo daemon configuration, linked to ~/.paseo/config.json
 paseo/pi-diagnostic.sh            temporary opt-in Pi launcher for diagnosing Pi deaths under Paseo
+paseo/box/                        isolated Paseo + Pi container on Colima; see paseo/box/README.md
 paseo.json                        Paseo project config: worktree setup symlinks backlog/
 probes/                           manual instruction-behavior evaluation; see probes/AGENTS.md
+local-models/                      local-model playgrounds (Bonsai, Gemma); decisions in decisions/local-models.md
 link.sh                           deployment topology, Pi package installation, hooks path
 .agent/verify.sh                  offline repository verifier (no model calls)
 .githooks/pre-commit              runs scripts/pi-load-check.ts for Pi runtime changes
@@ -34,8 +36,9 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - `pi/agent/` owns Pi-only instructions, agents, extensions, prompts, MCP configuration, and the package manifest.
 - Keep test files out of `pi/agent/extensions/` root. Pi auto-loads every root `*.ts`; colocate tests inside extension subdirectories, where only `index.ts` is auto-discovered.
 - `claude/` owns Claude-only agents, hooks, settings, statusline, and themes.
-- `paseo/` owns Paseo's `config.json` and the temporary `pi-diagnostic.sh` launcher. Paseo writes to it through the link, so check its diff for `daemon.auth.password` or provider `env` secrets before committing.
+- `paseo/` owns Paseo's `config.json`, the temporary `pi-diagnostic.sh` launcher, and the `box/` container. Keep the box's mount, credential, and network policy in `paseo/box/README.md` in step with its `compose.yaml`, `entrypoint.sh`, and `firewall.sh`. Paseo writes to it through the link, so check its diff for `daemon.auth.password` or provider `env` secrets before committing.
 - `probes/` owns isolated instruction comparisons and whole-Pi-harness behavior scenarios. Runs make paid model calls, so keep the suite manual and out of automatic verification; keep `probes/results/` local and untracked.
+- `local-models/` owns local-model launchers, setup notes, and measurements. For any local-model question or setup, read `decisions/local-models.md` and the existing playground READMEs first; Pi provider configuration for them stays in the untracked `~/.pi/agent/models.json`.
 - Root `AGENTS.md` applies only in this repository. Preserve its generated Backlog instruction block.
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.
 - `link.sh` defines link topology, Pi package installation, and this checkout's `core.hooksPath`. Preserve its refusal and backup behavior for existing targets.
