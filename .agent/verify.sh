@@ -11,3 +11,4 @@ bash claude/hooks/test/verify-turn-run.sh
 bun test probes/lib probes/test
 bun test ./scripts/
 python3 -m unittest discover -s shared/skills/cleanse/tests
+python3 -m unittest discover -s shared/skills/check-packages/tests
