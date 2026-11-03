@@ -79,6 +79,10 @@
               { "id": "medium", "label": "Medium", "isDefault": true },
               { "id": "high", "label": "High" }
             ]
+          },
+          {
+            "id": "local/gemma-4-12b",
+            "label": "Gemma (local)"
           }
         ]
       },
