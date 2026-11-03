@@ -16,7 +16,7 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Explicit user requirement — the project boundary is not a reason to expose secrets.
 **Revisit if:** An equally strong centrally enforced mechanism replaces it.
 **Evidence:** "We should always deny .env etc. also inside current cwd."
-**Exception (2026-10-22, `01a1624d`):** A regular file named exactly `.env.example` inside the session root that the session's Git repository tracks is exempt for reads, edits, and Bash. Untracked or ignored copies, symlinks, files tracked only by a nested repository, and other template names (`.env.sample`, `.env.template`) stay denied. The tracking check runs `git ls-files` from the session root with `core.fsmonitor` and bare-repository discovery disabled, so an attacker-controlled repository's config cannot run commands during a path check. A Paseo session hit the block four times documenting a config key and began probing for workarounds. User: "exempt ONLY the file named EXACTLY .env.example, and only if tracked by git".
+**Exception (2026-10-22, `01a1624d`):** A regular file named exactly `.env.example` inside the session root that the session's Git repository tracks is exempt for reads, edits, and Bash. Untracked or ignored copies, symlinks, files tracked only by a nested repository, and other template names (`.env.sample`, `.env.template`) stay denied. Narrowed again by SBX-30. The tracking check runs `git ls-files` from the session root with `core.fsmonitor` and bare-repository discovery disabled, so an attacker-controlled repository's config cannot run commands during a path check. A Paseo session hit the block four times documenting a config key and began probing for workarounds. User: "exempt ONLY the file named EXACTLY .env.example, and only if tracked by git".
 
 ### SBX-03 · Bash gets denial only, never the read prompt
 `accepted` · 2026-08-24 · `01a03286`
@@ -192,4 +192,18 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** Bash may name the Volta package root (installed Pi docs and code) only when every command in the line is a listed inspection program without writing options, substitutions, environment assignments, or output redirection other than to `/dev/null` or another descriptor. Any other command naming that root stays blocked.
 **Why:** The system prompt sends agents to the Pi docs, but `grep` over them was blocked eight times in the analysed sessions. The read tools already had this access (SBX-06's read-only trust model), and the root holds executable harness code, so Bash gets inspection only.
 **Revisit if:** Agents need other tools there, or the allowlist is shown to permit a write.
+
+### SBX-30 · Bash may mention `.env*` names it does not open
+`accepted` · 2026-11-03 · `01a1a06f`
+**Decision:** Relative `.env*` paths (no `..`, `~`, absolute path, or expansion, and no other protected name) are not secret blocks when they are operands of `ls`, unary `test`/`[`/`[[` file tests, `git check-ignore`, or `find -name`/`-path` patterns, provided that command is not piped or substituted and `find` has no `-exec`, `-delete`, or file-writing action; or when they appear inside quoted text given to `backlog`, `git -m`/`--message`, or `gh` title/body options. Reading contents (`cat`, `source`, interpreter code), redirecting into them, `echo`/`printf` text, and data heredocs stay blocked. Considered: existence probes only, or keeping SBX-02 fully strict.
+**Why:** In the 55 sessions after PI-112, about 15 of 91 blocks were existence checks or task-plan and commit text mentioning `.env`; agents then renamed fixtures to `vars.txt` to work around the guard. None of the exempted forms opens the file. A pipeline or substitution could turn probe output or printed text into a reader's operands, so those stay checked; a two-step indirection through a temporary file remains possible, as SBX-13 already accepts for the lexical guard.
+**Revisit if:** An agent reads `.env` contents through one of the exempted forms, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Checks + quoted text".
+
+### SBX-31 · Sibling repositories stay outside Bash
+`rejected` · 2026-11-03 · `01a1a06f`
+**Decision:** Do not give Bash read-only inspection of `~/projects/*` siblings in the style of SBX-29. The read tool keeps its approval prompt (SBX-01) and Bash keeps denial (SBX-03).
+**Why:** The about 12 recent blocks all came from one repository-migration week, when content moved from `nlp-claims` and `call-transcription-and-summarization` into `nlp-ai-pocs`. Cross-repository work can start Pi in the common parent instead.
+**Revisit if:** Sibling-repository blocks recur outside one-off migrations.
+**Evidence:** The user chose "Keep blocked".
 

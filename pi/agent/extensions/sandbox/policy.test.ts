@@ -15,6 +15,7 @@ import {
   isTrustedSharedSkillHelper,
   isProtectedSecretPath,
   isProtectedSecretTarget,
+  namesMissingRootEntry,
   playwrightBrowsersRoot,
   permitsRootVerifierScriptBashReference,
   requestResearchVaultConfirmation,
@@ -458,6 +459,95 @@ test("only a Git-tracked file named exactly .env.example is exempt from secret p
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("absolute text whose top-level entry is missing names no host file", () => {
+  for (const text of ["/subscriptions/abc/resourceGroups/rg", "/app/backend/seed", "/%s/%s", "/len", "/Users\\|^Use"]) {
+    assert.equal(namesMissingRootEntry(text), true, text);
+  }
+  for (const path of ["/", "/etc/hosts", "/tmp/x", "/Users/example", "relative/path", "~/x"]) {
+    assert.equal(namesMissingRootEntry(path), false, path);
+  }
+  assert.equal(namesMissingRootEntry("/*/example/file"), false, "a glob may expand to an existing entry");
+  assert.equal(namesMissingRootEntry("/{Users,tmp}/x"), false, "brace expansion");
+  assert.equal(namesMissingRootEntry("/$ROOT/x"), false, "variable expansion");
+  assert.equal(namesMissingRootEntry("/Use\\rs/example"), false, "a backslash may escape an existing name");
+});
+
+test("uv run interpreter heredocs are masked like direct interpreter heredocs", () => {
+  assert.deepEqual(shellPathCandidates("uv run python - \"$M\" <<'EOF'\nprint(len(x)/len(y))\nEOF"), []);
+  assert.deepEqual(shellPathCandidates("uv run bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("uv run --with python bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+});
+
+test("the rm check stops at a newline", () => {
+  const project = "/Users/example/project";
+  assert.equal(deniedBashCommandReason("rm -f $C\ncurl -o /dev/null https://example.com", project, "/Users/example"), undefined);
+  assert.equal(deniedBashCommandReason("rmdir build\nmkdir -p ../infra/docs", project, "/Users/example"), undefined);
+  assert.ok(deniedBashCommandReason("rm -f x\nrm -rf /etc", project, "/Users/example"));
+});
+
+test("project instruction copies in the session workspace are not control-plane paths", () => {
+  const project = "/Users/example/projects/app";
+  const temp = "/private/var/folders/example/T/pi-agent-501/session";
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/AGENTS.md`, harness, plugins, temp), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/CLAUDE.md`, harness, plugins, temp), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/.pi/extensions/x.ts`, harness, plugins, temp), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/.git/hooks/pre-commit`, harness, plugins, temp), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/AGENTS.md`, harness, plugins), true);
+});
+
+test("key and certificate protection requires a file-name stem", () => {
+  for (const path of [
+    "server.key", "certs/dev.pem", ".server.key", "*.key", "${DIR}.key", "/etc/ssl/private/site.key",
+    "keys/My Cert.pem", "backup(1).pem", "Zertifikat-für.pem", "id~.key",
+  ]) {
+    assert.equal(isProtectedSecretPath(path), true, path);
+  }
+  for (const text of [".key", "\\(.key", "to_entries[]|\\(.value)\\t\\(.key", ".items[].key", "keyfile.json"]) {
+    assert.equal(isProtectedSecretPath(text), false, text);
+  }
+  assert.deepEqual(shellPathCandidates("jq -r 'to_entries[] | \"\\(.value)\\t\\(.key)\"' f.json"), []);
+});
+
+test("dot-env existence probes and stored prose do not expose contents", () => {
+  const project = "/Users/example/project";
+  const denied = (command: string) => deniedBashCommandReason(command, project, "/Users/example");
+  for (const command of [
+    "ls .env 2>&1",
+    "ls -la backend/.env",
+    "test -e backend/.env && echo yes",
+    "[ -f .env ] || echo missing",
+    "if [[ -f .env ]]; then echo ok; fi",
+    "git check-ignore -v backend/.env infra/.terraform",
+    "git -C . check-ignore .env",
+    "find . -name .env -type f",
+    'backlog task edit X --plan "copy .env.example to .env and fill it in"',
+    'backlog task edit X --plan "see ../notes and backend/.env"',
+    'git commit -m "Ignore backend/.env"',
+  ]) assert.equal(denied(command), undefined, command);
+  for (const command of [
+    "cat .env",
+    "source backend/.env",
+    "ls .env | xargs cat",
+    "cat $(ls .env)",
+    "find . -name .env -exec cat {} \\;",
+    "ls .env; cat .env",
+    "test -e .env && cat .env",
+    "ls ../.env",
+    "ls ~/.env",
+    "ls backend/.ssh/.env",
+    "ls x > .env",
+    'echo ".env" | xargs cat',
+    'echo "see backend/.env for keys"',
+    'git commit -m "see ~/.ssh/id_rsa"',
+  ]) assert.ok(denied(command), command);
+});
+
+test("printed prose feeding a pipeline or substitution stays inspected", () => {
+  assert.deepEqual(shellPathCandidates('echo "x /etc/hosts" | xargs cat'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('cat $(printf "a /etc/hosts b")'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('echo "POST /api/health then retry"; ls'), []);
 });
 
 test("Bash path inspection still catches explicit and protected paths", () => {

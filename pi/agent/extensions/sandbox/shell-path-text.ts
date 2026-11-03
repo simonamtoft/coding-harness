@@ -10,6 +10,14 @@ const PROSE_ARGUMENTS: Record<string, Set<string> | undefined> = {
   git: new Set(["-m", "--message"]),
   gh: new Set(["-t", "--title", "-b", "--body"]),
 };
+/** Prose commands that store their text instead of printing it, so no pipeline can turn the text into file operands. */
+const STORED_PROSE = new Set(["backlog", "git", "gh"]);
+/** Unary `test` operators that only check whether a file exists or its type and permissions. */
+const FILE_TEST_OPERATORS = new Set(["-e", "-f", "-d", "-s", "-r", "-w", "-x", "-L", "-h"]);
+const FIND_PATTERN_OPTIONS = new Set(["-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"]);
+const FIND_FILE_ACTIONS = /^-(?:exec|execdir|ok|okdir|delete|fprint0?|fprintf|fls)$/;
+const GIT_VALUE_OPTIONS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
+const LITERAL_PIECE = /[^\s'"`()[\]{},;=]+/g;
 const LEADING_KEYWORDS = new Set(["if", "elif", "while", "until", "do", "then", "else", "!", "{"]);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const PATH_LIKE_START = /^(?:~|\/|\.{1,2}(?:\/|$))/;
@@ -24,22 +32,29 @@ const SAFE_SED_STEP = new RegExp(String.raw`^\s*(?:${SED_ADDRESS}(?:\s*,\s*(?:${
 // awk programs that can redirect output, pipe, run commands, or open files named in code through ARGV/ARGC.
 const AWK_SIDE_EFFECT = /system|getline|close|ARGV|ARGC|[|>]/;
 
-type Word = { start: number; end: number; value: string; quotes: Array<{ start: number; end: number; content: string }> };
+type Quote = { start: number; end: number; content: string };
+type Word = { start: number; end: number; value: string; quotes: Quote[] };
+type Blank = (start: number, end: number, capture?: boolean) => void;
 
 /**
  * Masks shell text that names no file the shell itself opens, so lexical path extraction does not mistake it for
  * a path: quoted-delimiter heredoc bodies fed to interpreters or copied by `cat`/`tee`, side-effect-free `sed`/`awk` programs, and quoted
  * prose given to commands that only print or store text. Masked text is returned as `literals` so callers still
- * check it for protected secret paths. Commands whose quoting this scanner cannot follow (ANSI-C `$'…'` strings,
- * or substitutions inside double quotes, which may nest further quotes) are returned unchanged.
+ * check it for protected secret paths. Operands accepted by `isProbeName` are masked without becoming literals when
+ * an existence or ignore probe names them outside a pipeline or substitution, or when stored prose mentions them.
+ * Commands whose quoting this scanner cannot follow (ANSI-C `$'…'` strings, or substitutions inside double quotes,
+ * which may nest further quotes) are returned unchanged.
  */
-export function maskNonPathText(command: string): { command: string; literals: string[] } {
+export function maskNonPathText(
+  command: string,
+  isProbeName: (value: string) => boolean = () => false,
+): { command: string; literals: string[] } {
   const unchanged = { command, literals: [] };
   if (command.includes("$'")) return unchanged;
   const masked = command.split("");
   const literals: string[] = [];
-  const blank = (start: number, end: number) => {
-    literals.push(command.slice(start, end));
+  const blank: Blank = (start, end, capture = true) => {
+    if (capture) literals.push(masked.slice(start, end).join(""));
     for (let index = start; index < end; index += 1) if (masked[index] !== "\n") masked[index] = " ";
   };
   const pendingHeredocs: Array<{ delimiter: string; stripTabs: boolean; code: boolean }> = [];
@@ -51,9 +66,9 @@ export function maskNonPathText(command: string): { command: string; literals: s
     if (word) words.push({ ...word, end: index });
     word = undefined;
   };
-  const endCommand = () => {
+  const endCommand = (terminator = "") => {
     endWord();
-    maskCommand(words, blank);
+    maskCommand(words, blank, isProbeName, terminator);
     words = [];
   };
   const startWord = () => {
@@ -81,12 +96,12 @@ export function maskNonPathText(command: string): { command: string; literals: s
   while (index < command.length) {
     const char = command[index]!;
     if (char === "\n") {
-      endCommand();
+      endCommand(char);
       index += 1;
       readHeredocBodies();
     } else if (";&|()".includes(char)) {
-      endCommand();
-      index += 1;
+      endCommand(command.startsWith("||", index) ? "||" : char);
+      index += command.startsWith("||", index) ? 2 : 1;
     } else if (/\s/.test(char)) {
       endWord();
       index += 1;
@@ -109,7 +124,7 @@ export function maskNonPathText(command: string): { command: string; literals: s
         index += 1;
       }
       // Unquoted bodies still expand `$(…)` and backticks in the shell before the interpreter runs.
-      const name = commandName(words);
+      const name = heredocProgram(words);
       pendingHeredocs.push({ delimiter, stripTabs, code: quoted && (INTERPRETERS.has(name) || DATA_SINKS.has(name)) });
     } else if (char === "\\") {
       startWord().value += command[index + 1] ?? "";
@@ -161,6 +176,14 @@ function commandIndex(words: Word[]): number {
 
 function commandName(words: Word[]): string {
   return words[commandIndex(words)]?.value.split("/").at(-1) ?? "";
+}
+
+/** The program reading a heredoc: the command, or the interpreter named directly after `uv run`. */
+function heredocProgram(words: Word[]): string {
+  const index = commandIndex(words);
+  const name = commandName(words);
+  if (name !== "uv" || words[index + 1]?.value !== "run") return name;
+  return words[index + 2]?.value.split("/").at(-1) ?? "";
 }
 
 /** Whether a `sed` script only prints, deletes, or substitutes: no `w`, `r`, `e`, or `W` commands. */
@@ -244,7 +267,37 @@ function isQuotedProse(content: string): boolean {
     && !PARENT_SEGMENT.test(content) && !CONTROL_PATH_TEXT.test(content);
 }
 
-function maskCommand(words: Word[], blank: (start: number, end: number) => void): void {
+/**
+ * Word indexes that `ls`, `test`/`[`/`[[` file tests, `git check-ignore`, or `find` name patterns only probe for
+ * existence or ignore status. `find` with an action that runs commands, deletes, or writes files probes nothing.
+ */
+function probeOperandIndexes(name: string, words: Word[], start: number): number[] {
+  const after = words.map((_, index) => index).filter((index) => index > start && !isRedirectTarget(words, index));
+  const isOption = (index: number) => words[index]!.value.startsWith("-");
+  if (name === "ls") return after.filter((index) => !isOption(index));
+  if (["test", "[", "[["].includes(name)) return after.filter((index) => FILE_TEST_OPERATORS.has(words[index - 1]!.value));
+  if (name === "find") {
+    if (after.some((index) => FIND_FILE_ACTIONS.test(words[index]!.value))) return [];
+    return after.filter((index) => FIND_PATTERN_OPTIONS.has(words[index - 1]!.value));
+  }
+  if (name !== "git") return [];
+  let subcommand = start + 1;
+  while (subcommand < words.length && isOption(subcommand)) {
+    subcommand += GIT_VALUE_OPTIONS.has(words[subcommand]!.value) ? 2 : 1;
+  }
+  if (words[subcommand]?.value !== "check-ignore") return [];
+  return after.filter((index) => index > subcommand && !isOption(index));
+}
+
+/** Masks probe names inside stored prose, such as a dot-env file mentioned in a task plan. */
+function blankProbePieces(quote: Quote, blank: Blank, isProbeName: (value: string) => boolean): void {
+  for (const piece of quote.content.matchAll(LITERAL_PIECE)) {
+    const start = quote.start + 1 + piece.index!;
+    if (isProbeName(piece[0])) blank(start, start + piece[0].length, false);
+  }
+}
+
+function maskCommand(words: Word[], blank: Blank, isProbeName: (value: string) => boolean, terminator: string): void {
   const start = commandIndex(words);
   const name = commandName(words);
   if (PROGRAM_COMMANDS.has(name)) {
@@ -254,12 +307,23 @@ function maskCommand(words: Word[], blank: (start: number, end: number) => void)
     }
     return;
   }
-  if (!Object.hasOwn(PROSE_ARGUMENTS, name)) return;
+  // A pipeline or substitution could turn a probe's or printed prose's output into another command's file operands.
+  const feedsAnotherCommand = ["|", ")"].includes(terminator);
+  if (!feedsAnotherCommand) {
+    for (const index of probeOperandIndexes(name, words, start)) {
+      const word = words[index]!;
+      if (isProbeName(word.value)) blank(word.start, word.end, false);
+    }
+  }
+  if (!Object.hasOwn(PROSE_ARGUMENTS, name) || (feedsAnotherCommand && !STORED_PROSE.has(name))) return;
   const options = PROSE_ARGUMENTS[name];
   for (let index = start + 1; index < words.length; index += 1) {
     const word = words[index]!;
     const option = word.value.match(/^(--?[\w-]+)=/)?.[1] ?? words[index - 1]!.value;
     if ((options && !options.has(option)) || isRedirectTarget(words, index)) continue;
-    for (const quote of word.quotes) if (isQuotedProse(quote.content)) blank(quote.start, quote.end);
+    for (const quote of word.quotes) {
+      if (STORED_PROSE.has(name)) blankProbePieces(quote, blank, isProbeName);
+      if (isQuotedProse(quote.content)) blank(quote.start, quote.end);
+    }
   }
 }

@@ -18,6 +18,7 @@ import {
   permitsRootVerifierScriptBashReference,
   isReadOnlyInspectionCommand,
   isWithin,
+  namesMissingRootEntry,
   playwrightBrowsersRoot,
   requestResearchVaultConfirmation,
   researchVaultBashOperation,
@@ -175,7 +176,7 @@ export function createSandboxGuard(
         const inspection = inspectPath(root, input.path);
         const isWrite = !READ_TOOLS.has(event.toolName);
         if (isWrite && inspection.resolved
-          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT, getSessionTempDirectory())) {
           return block(`${input.path}: agent control-plane writes require a coding-harness session`);
         }
         if (inspection.reason && !inspection.outside) return block(`${input.path}: ${inspection.reason}`);
@@ -276,6 +277,7 @@ export function createSandboxGuard(
       const readOnlyInspection = isReadOnlyInspectionCommand(event.input.command);
       for (const candidate of shellPathCandidates(event.input.command, directoryContext)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
+        if (namesMissingRootEntry(path.replace(/^@/, ""))) continue;
         const inspection = inspectPath(root, path);
         if (inspection.resolved === historyHelper) {
           return block("session-history helper requires the documented read-only command from the coding-harness root");
@@ -288,7 +290,7 @@ export function createSandboxGuard(
           return block(`${candidate}: Bash execution of repository verifier scripts is blocked`);
         }
         if (inspection.resolved
-          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT, sessionTempDirectory)) {
           return block(`${candidate}: Bash access to the agent control plane requires a coding-harness session`);
         }
         const permittedOutsidePath = inspection.outside && inspection.resolved

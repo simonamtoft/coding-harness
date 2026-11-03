@@ -8,13 +8,16 @@ import { isSideEffectFreeSedProgram, literalSecretCandidates, maskNonPathText } 
 
 const POSIX_NULL_DEVICE = "/dev/null";
 
+const DOT_ENV_PATTERN = /(^|\/)\.env(?:[./]|$)/;
 const SECRET_PATTERNS = [
-  /(^|\/)(?:\.env(?:[./]|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.gnupg(?:\/|$)|\.azure(?:\/|$)|\.kube(?:\/|$)|\.gcloud(?:\/|$))/,
+  DOT_ENV_PATTERN,
+  /(^|\/)(?:\.ssh|\.aws|\.gnupg|\.azure|\.kube|\.gcloud)(?:\/|$)/,
   /(^|\/)(?:credentials\.json|service-account[^/]*\.json|id_rsa|id_ed25519|\.netrc|\.npmrc|\.pypirc)$/,
   /(^|\/)\.config\/gcloud(?:\/|$)/,
   /(^|\/)Library\/Keychains(?:\/|$)/,
   /(^|\/)\.docker\/config\.json$/,
-  /\.(?:pem|key)$/,
+  // A non-empty stem not ending in jq or shell syntax, so `.key` and `\(.key` accessors are not key files.
+  /(^|\/)[^/]*[^/(|[\]\\"'`]\.(?:pem|key)$/,
 ];
 
 export function isWithin(root: string, path: string): boolean {
@@ -146,6 +149,35 @@ export function hasPluginWorkspaceAccess(
 export function isProtectedSecretPath(path: string): boolean {
   const normalized = normalize(path);
   return SECRET_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * SBX-30: shell text naming only dot-env files below the working directory, which an existence or ignore probe or
+ * stored message text may mention without exposing contents. Other protected names, absolute or home paths, parent
+ * segments, and expansions do not qualify.
+ */
+function isDotEnvProbeOperand(value: string): boolean {
+  if (/^[~/]/.test(value) || /(?:^|\/)\.\.(?:\/|$)/.test(value) || /[$`]/.test(value)) return false;
+  return DOT_ENV_PATTERN.test(value)
+    && SECRET_PATTERNS.every((pattern) => pattern === DOT_ENV_PATTERN || !pattern.test(value));
+}
+
+/**
+ * Whether an absolute path's top-level entry is missing. A user process can neither read nor create entries directly
+ * under `/`, so such text (an Azure resource ID, a container path, a format string) names no host file. A first
+ * segment with glob or expansion characters may expand to a real entry, and a backslash may escape one.
+ */
+export function namesMissingRootEntry(path: string): boolean {
+  const top = /^\/([^/]+)/.exec(path)?.[1];
+  if (!top || /[*?[{$`]/.test(top)) return false;
+  return [top, top.replace(/\\(.)/g, "$1")].every((name) => {
+    try {
+      lstatSync(join("/", name));
+      return false;
+    } catch {
+      return true;
+    }
+  });
 }
 
 const ENV_TEMPLATE_NAME = ".env.example";
@@ -312,8 +344,11 @@ export function isControlPlaneWriteBlocked(
   targetPath: string,
   codingHarnessRoot: string,
   pluginWorkspaceRoot: string,
+  sessionTempDirectory?: string,
 ): boolean {
   if (isWithin(codingHarnessRoot, sessionRoot)) return false;
+  // Staged copies of project instructions in the private session workspace, as in the session root.
+  if (sessionTempDirectory && isProjectInstructionPath(targetPath) && isWithin(sessionTempDirectory, targetPath)) return false;
   if (isWithin(pluginWorkspaceRoot, sessionRoot) && isWithin(pluginWorkspaceRoot, targetPath)) return false;
   if (isWithin(pluginWorkspaceRoot, targetPath)) return true;
   if (isProjectInstructionPath(targetPath) && isWithin(sessionRoot, targetPath)) return false;
@@ -425,7 +460,7 @@ function searchFileOptionValues(tokens: string[]): string[] {
  * variables are included; without one, relative candidates are returned as written.
  */
 export function shellPathCandidates(command: string, context?: ShellDirectoryContext): string[] {
-  const { command: pathText, literals } = maskNonPathText(stripInlineEvalBodies(command));
+  const { command: pathText, literals } = maskNonPathText(stripInlineEvalBodies(command), isDotEnvProbeOperand);
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
     if (unprefixed === POSIX_NULL_DEVICE) return false;
@@ -486,7 +521,7 @@ function isWithinDirectory(root: string, target: string): boolean {
 
 function removesOutsideWorkspace(command: string, cwd: string, home: string, sessionTempDirectory?: string): boolean {
   const masked = maskSingleQuotedStrings(command);
-  const matches = masked.matchAll(/(?:^|[^A-Za-z0-9_-])(?:\/[\w./-]+\/)?(?:rm|rmdir)\s+([^;|&]*)/g);
+  const matches = masked.matchAll(/(?:^|[^A-Za-z0-9_-])(?:\/[\w./-]+\/)?(?:rm|rmdir)\s+([^;|&\n]*)/g);
 
   for (const match of matches) {
     for (const token of match[1].trim().split(/\s+/)) {

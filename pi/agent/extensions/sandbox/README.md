@@ -70,7 +70,8 @@ host-side boundary to model tool calls:
   this does not grant sibling home-directory access.
 - `write` and `edit` are blocked everywhere else outside the session directory,
   resolving existing symlinks and existing parent directories before checking.
-- Project-local `AGENTS.md`/`CLAUDE.md` instruction files and the active
+- Project-local `AGENTS.md`/`CLAUDE.md` instruction files (including copies
+  staged in the session temp directory) and the active
   repository's root `.agent/verify.sh` and `.agent/diagnostics.sh` remain
   writable. The verifier scripts are the established cross-harness project
   contract, and Pi's verifier trust gate asks before executing changed content.
@@ -85,11 +86,19 @@ host-side boundary to model tool calls:
   the lexical-boundary limitation below.
 - `.env*`, SSH/cloud credentials, private-key names, credential JSON names,
   keychains, `*.pem`, and `*.key` are hard-denied everywhere, including inside
-  the project. The one exception is a regular file named exactly
+  the project. The key suffixes need a file-name stem, so a jq `.key` accessor
+  is not a key file. The one exception is a regular file named exactly
   `.env.example` inside the session directory that its Git repository tracks
   (`git ls-files` from the session root, with `core.fsmonitor` and bare-repository
   discovery disabled); untracked or ignored copies, symlinks, files tracked only
   by a nested repository, and other names such as `.env.sample` stay denied.
+  Bash may also mention relative `.env*` paths (no `..`, `~`, absolute path, or
+  expansion) without opening them: as operands of `ls`, unary `test`/`[`/`[[`
+  file tests, `git check-ignore`, or `find -name`/`-path` patterns, when that
+  command is not piped or substituted and `find` has no `-exec`, `-delete`, or
+  file-writing action; and inside quoted text given to `backlog`, `git -m`, or
+  `gh` title/body options, which store it. `echo` and `printf` text stays
+  checked because a pipeline can turn it into file operands.
 - Bash hard-denies the cross-harness command-safety contract in
   `shared/command-safety.tsv`: privilege escalation, pipe-to-shell execution,
   Git author-identity queries, `Co-Authored-By:`/`Claude-Session:` trailers or
@@ -111,7 +120,11 @@ host-side boundary to model tool calls:
   directory seen. A `cd` to an unknown target, such as another variable, leaves
   the tracked directory unchanged. Heredoc bodies are inspected but cannot move
   the shell. `rg` and `grep` search patterns and glob values are not filesystem
-  paths, while their explicit file operands remain inspected.
+  paths, while their explicit file operands remain inspected. Absolute text
+  whose top-level entry does not exist under `/` (an Azure resource ID such as
+  `/subscriptions/…`, a container path, a format string) names no host file and
+  is skipped, unless that first segment contains glob or expansion characters
+  or names an existing entry once backslash escapes are removed.
   The research-vault and session-history exceptions are limited to their
   documented commands.
   The exact POSIX null device path is exempt so commands can safely discard output
@@ -300,7 +313,8 @@ The same masking, with the same secret check, applies to three other kinds of
 text:
 
 - closed heredoc bodies with a quoted delimiter fed to those interpreters
-  (`python3 - <<'EOF'`) or copied as data by `cat` or `tee`
+  (`python3 - <<'EOF'`, or `uv run python - <<'EOF'` with the interpreter
+  directly after `uv run`) or copied as data by `cat` or `tee`
   (`cat > notes.md <<'EOF'`); unquoted bodies still expand substitutions and
   stay inspected;
 - `sed` programs made only of `p`, `d`, `P`, `=`, and `s` commands with line or
@@ -312,7 +326,9 @@ text:
   `gh` title/body options: a quoted string containing whitespace that has no `$`,
   does not start like a path (`/`, `~`, `./`, `../`), contains no `..` segment,
   names no control path (`.pi`, `.agents`, `AGENTS.md`, `CLAUDE.md`,
-  `.agent/verify.sh`, `.git/config`), and is not a redirect target.
+  `.agent/verify.sh`, `.git/config`), and is not a redirect target. Prose from
+  `echo` or `printf` that feeds a pipeline or substitution stays inspected,
+  because `xargs` and similar commands can turn it into file operands.
 
 Commands
 containing ANSI-C `$'…'` strings or substitutions inside double quotes are
