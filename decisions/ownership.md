@@ -91,3 +91,9 @@ Decision ledger area. Entry ids use the `OWN-` prefix; see `../DECISIONS.md` for
 **Why:** The user observed agents following comments too closely and adding too many comments. The existing rules listed permitted comment purposes but set no default, and nothing addressed prompt injection or stale comments. The effect has not been measured (PRB-19).
 **Revisit if:** Sessions still show over-commenting or comment-driven scope creep, which would call for a probe scenario, or the no-comment default suppresses needed invariant comments.
 **Evidence:** "Sometimes I see that it sometimes follows comments too closely, and also adds too many comments."
+
+### OWN-15 · Named practices anchor rules; they do not replace them
+`accepted` · 2026-11-04 · `01a1a776-fa10`
+**Decision:** Added canonical practice names beside two existing `shared/AGENTS.md` rules ("parse, don't validate"; make illegal states unrepresentable) and a Goal-Driven Execution sentence asking for an end-to-end tracer bullet before widening a multi-layer change. Rejected replacing spelled-out rules with bare terms, and left "functional core, imperative shell" off the persistence-separation rule because it demands more purity than that rule asks.
+**Why:** A LinkedIn post (Matt Pocock, via The Pragmatic Programmer) reported that the term "tracer bullets" stopped agents from building one layer at a time. `to-tickets` already slices tasks as tracer bullets, but nothing guided ordering inside a single task. A name points the model at practice it already knows; the spelled-out rule stays checkable. OWN-11 found no evidence that compressing instructions keeps behaviour equivalent. The effect has not been measured (PRB-19).
+**Revisit if:** A probe shows the names change no behaviour or pull agents toward a meaning other than the rule's, or sessions still show layer-by-layer builds on multi-layer changes.
