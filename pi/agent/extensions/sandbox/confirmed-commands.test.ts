@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmedCommand, requestCommandConfirmation } from "./confirmed-commands.ts";
+import {
+  AZURE_SESSION_CHOICE,
+  azureCredentialProgram,
+  confirmedCommand,
+  requestAzureCredentials,
+  requestCommandConfirmation,
+} from "./confirmed-commands.ts";
 
 test("SSH-family invocations require confirmation", () => {
   const cases: Array<[string, string]> = [
@@ -170,4 +176,36 @@ test("confirmation shows the command and fails closed", async () => {
   assert.equal(await requestCommandConfirmation({ hasUI: true, ui: { select: async () => "Deny" } }, ssh, "ssh host"), false);
   assert.equal(await requestCommandConfirmation({ hasUI: true, ui: { select: async () => undefined } }, ssh, "ssh host"), false);
   assert.equal(await requestCommandConfirmation({ hasUI: false, ui: { select: async () => "Allow once" } }, ssh, "ssh host"), false);
+});
+
+test("Azure CLI and Terraform invocations need the Azure credentials", () => {
+  const cases: Array<[string, string]> = [
+    ["az account show", "az"],
+    ["/opt/homebrew/bin/az group list", "az"],
+    ["env AZURE_CORE_OUTPUT=json az vm list", "az"],
+    ["timeout 30 az login --use-device-code", "az"],
+    ["cd infra && terraform plan", "terraform"],
+    ["out=$(az account show)", "az"],
+    ["bash -c 'az storage account list'", "az"],
+    ["eval az version", "az"],
+    ["tofu init", "tofu"],
+  ];
+  for (const [command, program] of cases) assert.equal(azureCredentialProgram(command), program, command);
+  for (const command of ["echo az", "rg 'az account' docs", "lazygit", "git commit -m 'az fix'", "./scripts/deploy.sh"]) {
+    assert.equal(azureCredentialProgram(command), undefined, command);
+  }
+});
+
+test("Azure credential approval distinguishes once, session and denial, and fails closed", async () => {
+  const titles: string[] = [];
+  const ask = (answer: string | undefined) => ({
+    hasUI: true,
+    ui: { select: async (title: string) => { titles.push(title); return answer; } },
+  });
+  assert.equal(await requestAzureCredentials(ask("Allow once"), "az", "az account show"), "once");
+  assert.equal(await requestAzureCredentials(ask(AZURE_SESSION_CHOICE), "az", "az account show"), "session");
+  assert.equal(await requestAzureCredentials(ask("Deny"), "az", "az account show"), "denied");
+  assert.equal(await requestAzureCredentials(ask(undefined), "az", "az account show"), "denied");
+  assert.equal(await requestAzureCredentials({ hasUI: false, ui: { select: async () => "Allow once" } }, "az", "az"), "denied");
+  assert.match(titles[0] ?? "", /Command: az account show/);
 });

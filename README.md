@@ -189,8 +189,11 @@ everywhere. Agent control files and plugin source are write-protected unless Pi
 was started inside this canonical `coding-harness` checkout. Session transcripts
 and local Pi configuration are normalized to owner-only permissions at startup.
 Its Bash protections are lexical checks, so they catch explicit paths and known
-high-risk commands but do not constitute an OS-enforced sandbox; use a container
-or VM when that boundary is required. Quoted bodies passed to inline interpreter
+high-risk commands. On macOS each Bash and `!` command additionally runs under
+a kernel-enforced Seatbelt profile that denies home-directory reads outside the
+project, Pi credentials, writes outside the project and temp directories, and
+localhost connections (see the sandbox README); Pi's own tools and extensions
+are not kernel-confined, so use a container or VM when that boundary is required. Quoted bodies passed to inline interpreter
 evaluation are treated as code rather than path arguments, so they are not
 inspected for paths, though secret literals inside them are still denied.
 The `stay-awake` extension holds `caffeinate -i -s` on macOS during agent runs

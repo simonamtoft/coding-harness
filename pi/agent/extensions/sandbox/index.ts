@@ -2,8 +2,13 @@ import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, rea
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
-import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
-import { getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import type { BashSpawnContext, ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import {
+  createBashToolDefinition,
+  createLocalBashOperations,
+  getAgentDir,
+  isToolCallEventType,
+} from "@earendil-works/pi-coding-agent";
 import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
@@ -26,8 +31,21 @@ import {
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
-import { confirmedCommand, requestCommandConfirmation } from "./confirmed-commands.ts";
+import {
+  azureCredentialProgram,
+  confirmedCommand,
+  requestAzureCredentials,
+  requestCommandConfirmation,
+} from "./confirmed-commands.ts";
 import { registerRecentSessionsTool } from "./recent-sessions-tool.ts";
+import {
+  commandSandboxMode,
+  commandSandboxProfile,
+  commandSandboxScope,
+  confinedEnvironment,
+  confinedShellCommand,
+  DISABLE_VARIABLE,
+} from "./kernel-sandbox.ts";
 import { currentRepositoryRoot, isRepositorySessionTranscript, isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -44,6 +62,10 @@ const PI_PACKAGES_ROOT = resolve(
   "tools/image/packages",
 );
 const PLAYWRIGHT_BROWSERS_ROOT = playwrightBrowsersRoot();
+const configuredAzureConfigRoot = resolve(homedir(), ".azure");
+const AZURE_CONFIG_ROOT = existsSync(configuredAzureConfigRoot)
+  ? realpathSync.native(configuredAzureConfigRoot)
+  : configuredAzureConfigRoot;
 const configuredResearchVaultRoot = resolve(homedir(), "research");
 const RESEARCH_VAULT_ROOT = existsSync(configuredResearchVaultRoot)
   ? realpathSync.native(configuredResearchVaultRoot)
@@ -147,7 +169,9 @@ export function createSandboxGuard(
   cwd = process.cwd(),
   getSessionTempDirectory: () => string | undefined = () => undefined,
   researchVaultRoot = RESEARCH_VAULT_ROOT,
+  grantCommandRoots: (command: string, roots: string[]) => void = () => {},
 ) {
+  let azureApprovedForSession = false;
   const root = realpathSync.native(cwd);
   const repositoryRoot = currentRepositoryRoot(root);
   const resolvedResearchVaultRoot = realpathForCheck(researchVaultRoot);
@@ -255,6 +279,7 @@ export function createSandboxGuard(
         if (!await requestResearchVaultConfirmation(ctx, "Bash hash update", resolvedResearchVaultRoot)) {
           return block("research-vault Bash mutation denied by user");
         }
+        grantCommandRoots(event.input.command, [resolvedResearchVaultRoot]);
         return undefined;
       }
       if (vaultOperation === "read") return undefined;
@@ -315,16 +340,93 @@ export function createSandboxGuard(
           ? `${confirmation.program} command denied by user`
           : `${confirmation.program} commands require interactive approval`);
       }
+
+      // Without a UI the command still runs, confined without the credentials.
+      const azureProgram = azureCredentialProgram(event.input.command);
+      if (azureProgram && (azureApprovedForSession || ctx.hasUI)) {
+        const approval = azureApprovedForSession
+          ? "session"
+          : await requestAzureCredentials(ctx, azureProgram, event.input.command);
+        if (approval === "denied") return block(`${azureProgram} access to Azure credentials denied by user`);
+        if (approval === "session") azureApprovedForSession = true;
+        grantCommandRoots(event.input.command, [AZURE_CONFIG_ROOT]);
+      }
     }
 
     return undefined;
   };
 }
 
+/** `commandGrants` maps exact command texts to roots the user approved for that command's next run. */
+function registerCommandSandbox(
+  pi: ExtensionAPI,
+  getSessionTempDirectory: () => string | undefined,
+  commandGrants: Map<string, string[]>,
+): void {
+  const mode = commandSandboxMode();
+  if (mode.kind === "unconfined") {
+    if (mode.reason === "disabled") {
+      pi.on("session_start", (_event, ctx) => {
+        ctx.ui.notify(`Command sandbox disabled by ${DISABLE_VARIABLE}=off: Bash runs unconfined`, "warning");
+      });
+    }
+    return;
+  }
+
+  const root = realpathSync.native(process.cwd());
+  const home = realpathSync.native(homedir());
+  const confine = ({ command, cwd, env }: BashSpawnContext): BashSpawnContext => {
+    if (mode.kind === "unavailable") {
+      throw new Error(`Command sandbox unavailable (${mode.reason}); refusing to run unconfined. `
+        + `Start Pi with ${DISABLE_VARIABLE}=off to run commands without it.`);
+    }
+    const sessionTempDirectory = getSessionTempDirectory();
+    const grantedRoots = commandGrants.get(command) ?? [];
+    commandGrants.delete(command);
+    const profile = commandSandboxProfile(commandSandboxScope({
+      root,
+      home,
+      agentDirectory: realpathForCheck(getAgentDir()),
+      sessionTempDirectory,
+      sessionTempParent: TEMP_PARENT && realpathForCheck(TEMP_PARENT),
+      systemTempDirectory: TEMP_ROOT,
+      codingHarnessRoot: CODING_HARNESS_ROOT,
+      researchVaultRoot: RESEARCH_VAULT_ROOT,
+      approvedRoots: grantedRoots,
+    }));
+    return { command: confinedShellCommand(command, profile), cwd, env: confinedEnvironment(env, sessionTempDirectory) };
+  };
+
+  pi.registerTool(createBashToolDefinition(root, { spawnHook: confine }));
+  const local = createLocalBashOperations();
+  pi.on("user_bash", () => ({
+    operations: {
+      exec(command, cwd, options) {
+        // A command the user typed is their own approval for the Azure credentials.
+        if (azureCredentialProgram(command)) commandGrants.set(command, [AZURE_CONFIG_ROOT]);
+        const confined = confine({ command, cwd, env: options.env ?? process.env });
+        return local.exec(confined.command, confined.cwd, { ...options, env: confined.env });
+      },
+    },
+  }));
+  if (mode.kind === "unavailable") {
+    pi.on("session_start", (_event, ctx) => {
+      ctx.ui.notify(`Command sandbox unavailable (${mode.reason}): Bash commands will be refused`, "error");
+    });
+  }
+}
+
 export default function sandboxExtension(pi: ExtensionAPI) {
   registerRecentSessionsTool(pi, process.cwd());
   let sessionTempDirectory: string | undefined;
-  const guard = createSandboxGuard(process.cwd(), () => sessionTempDirectory);
+  const commandGrants = new Map<string, string[]>();
+  const guard = createSandboxGuard(
+    process.cwd(),
+    () => sessionTempDirectory,
+    RESEARCH_VAULT_ROOT,
+    (command, roots) => commandGrants.set(command, roots),
+  );
+  registerCommandSandbox(pi, () => sessionTempDirectory, commandGrants);
 
   pi.on("session_start", (_event, ctx) => {
     try {
