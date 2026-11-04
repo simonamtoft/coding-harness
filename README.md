@@ -206,7 +206,9 @@ harness friction (sandbox denials, unclear instructions, missing skills, tool or
 verifier problems) to the untracked `PAPERCUTS.md` at this checkout's root, from
 any project's Pi session. Review that file periodically, turn recurring entries
 into Backlog tasks or decisions, and delete handled entries.
-- `claude/`: Claude hooks, settings, agents, statusline, and themes.
+- `claude/`: Claude hooks, settings, agents, statusline, and themes. Parked
+  since November 2026: the files and links stay, and their tests still run in
+  the verifier, but new harness work targets Pi (OWN-16).
 - `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
   the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),
   and `box/`, the isolated Paseo and Pi container (not linked; started with
