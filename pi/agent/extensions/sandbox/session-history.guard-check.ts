@@ -13,6 +13,8 @@ if (!home || home !== process.env.HOME || !home.startsWith(join(tmpdir(), "pi-hi
 }
 mock.module("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => join(home, ".pi/agent"),
+  createBashToolDefinition: () => ({ name: "bash" }),
+  createLocalBashOperations: () => ({ exec: async () => ({ exitCode: 0 }) }),
   isToolCallEventType: (name: string, event: { toolName: string }) => event.toolName === name,
 }));
 try {
@@ -100,12 +102,12 @@ try {
   assert.match(registered?.description ?? "", /read tool/);
   assert.equal(registered?.parameters.properties.limit.maximum, 100);
   const tool = registered!;
-  let installedTool: RegisteredTool | undefined;
+  const installedTools: string[] = [];
   sandboxExtension({
-    registerTool: (candidate: RegisteredTool) => { installedTool = candidate; },
+    registerTool: (candidate: RegisteredTool) => { installedTools.push(candidate.name); },
     on: () => () => {},
   } as unknown as ExtensionAPI);
-  assert.equal(installedTool?.name, "recent_sessions");
+  assert.ok(installedTools.includes("recent_sessions"));
   const result = await tool.execute("test", { limit: 1 });
   assert.deepEqual(result.structuredContent.sessions.map((row: { id: string }) => row.id), ["local"]);
   assert.equal(JSON.parse(result.content[0].text).sessions[0].path, local);

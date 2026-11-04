@@ -301,9 +301,72 @@ expansion, extra flags, or command chaining are granted.
 Bun is required. After editing this extension, run `/reload` in Pi to activate
 the changed policy; editing the file alone does not update a running guard.
 
+## Kernel command sandbox (macOS)
+
+On macOS every model `bash` call and every user `!` command also runs under a
+Seatbelt profile (`/usr/bin/sandbox-exec`) generated per command by
+`kernel-sandbox.ts`. The extension overrides the `bash` tool with a spawn hook
+and handles `user_bash`, so terminal, Paseo (RPC) and subagent sessions are all
+covered without a launcher. The kernel enforces the profile on the command and
+every process it starts, so indirection the lexical guard cannot see (a Python
+script, a shell variable) is still contained.
+
+- Reads: everything under the home directory is denied except the checkout,
+  its Git directory and same-repository worktrees, tool caches, Git
+  configuration and signing files, `~/.ssh/known_hosts` and `config`, toolchain
+  prefixes found on `PATH` (for example `~/.volta`, `~/misc/brew`),
+  `coding-harness/shared`, `~/research`, and the session temp directory. Other
+  session temp directories, Pi's `auth.json` and `mcp-auth.json`, and the
+  lexical guard's secret names (dot-env files, credential directories such as
+  `.aws` or `.ssh`, private keys, `.netrc`, `.npmrc`) inside the project roots
+  stay denied; a tracked `.env.example` stays readable. Pi's `sessions`
+  directory is readable only from harness-maintenance sessions (SBX-16), so
+  ordinary projects use the `recent_sessions` tool rather than the Bash helper.
+- Writes: only the checkout, its Git directory except `config`, `hooks`,
+  `commondir`, `config.worktree` and worktree `gitdir` records (SBX-36), the
+  session temp directory, the system temp directory, `/tmp`, and tool caches.
+  Cache folders holding programs that unconfined tools run (`~/.npm/_npx`,
+  Playwright browsers, `~/.cache/pre-commit`) and uv's interpreters and tools
+  are read-only. Secret files cannot be renamed, linked or replaced, and `.git`,
+  the common Git directory and the system temp directory cannot be renamed, so
+  path rules cannot be sidestepped by moving things. An approved research-vault
+  hash update gets vault write access for that one command.
+- Azure: `~/.azure` stays denied unless a model command starting with `az` or
+  a Terraform program is approved (`Allow once`, or `Allow Azure for this
+  session`); only that command then reads and writes `~/.azure`. Denying
+  blocks the command; without a UI it runs without the credentials. Commands
+  you type with `!` get access without a prompt. Detection is lexical, so a
+  script that calls `az` internally runs without the credentials and fails.
+  Docker stays blocked: its socket gives full control of the host, so run
+  Docker commands yourself.
+- Network: connections to localhost (including `::1` and the host's own
+  addresses, measured) and to Unix sockets under home are denied; other egress
+  is open (a hostname allowlist is PI-124).
+- Launching: LaunchServices and Apple Events are denied, so `open` and
+  `osascript` cannot start programs outside the sandbox.
+- Environment: credential-like variables (names ending in `KEY`, `TOKEN`, `PAT`,
+  `AUTH`, `PASSWORD`, `CREDENTIALS`, or containing `SECRET`) and shell startup
+  hooks (`BASH_ENV`, `ENV`, exported functions) are removed, and `TMPDIR` points
+  at the session temp directory.
+
+When `sandbox-exec` is missing, Bash commands are refused, not run unconfined.
+Start Pi with `PI_COMMAND_SANDBOX=off` to run commands unconfined while tuning
+the profile; the session then shows a warning. A command that is already
+confined sets `PI_COMMAND_SANDBOX_ACTIVE=1`; a Pi started inside it does not
+wrap again, because macOS rejects applying a different profile inside a
+sandboxed process. The marker is trusted only after a probe confirms the process
+is really sandboxed, so setting it elsewhere does not disable confinement. Linux hosts (paseo-box) rely on their container boundary.
+
+The kernel profile covers commands only. Pi's own file tools, extensions and
+MCP servers still run unconfined behind the lexical guard below; PI-125 tracks
+confining the whole process. Commands can still write files in the checkout and
+caches that unconfined processes later run (Git hooks excepted), and a
+harness-maintenance session can edit the extension or Paseo configuration that
+sets the off switch; those are the same trust gaps as before (SBX-07).
+
 ## Boundary limitations
 
-This is a tool-call guard, not an OS sandbox. The command-safety policy uses
+The guard below is a tool-call guard, not an OS sandbox. The command-safety policy uses
 lexical inspection: shell syntax it cannot prove or programs that discover paths
 at runtime can bypass it. Quoted bodies given to an inline interpreter
 evaluation flag (`node`, `bun`, `deno`, `python`, `perl`, `ruby` with `-e`,
@@ -336,9 +399,10 @@ Commands
 containing ANSI-C `$'…'` strings or substitutions inside double quotes are
 inspected without this masking.
 Nested `sh`, `bash`, and `zsh` command strings remain denied outright. Bash commands using variables, redirections, or command
-substitution can likewise evade the filesystem check. Use a container, VM, or OS
-sandbox when a strong filesystem boundary is required. User-entered `!` commands
-and extensions also remain outside this guard.
+substitution can likewise evade the filesystem check. On macOS the kernel command
+sandbox above contains these commands; elsewhere, use a container or VM when a
+strong filesystem boundary is required. User-entered `!` commands and extensions
+remain outside the lexical guard.
 
 The session boundary is deliberately fixed to the Pi process's startup cwd.
 Trusted locations are derived from the extension checkout, `~/pi-plugins`,

@@ -387,6 +387,66 @@ function confirmedInvocation(tokens: string[], index: number, cliArgsInjected: b
   return undefined;
 }
 
+/** Programs that read and refresh the Azure CLI token cache; Terraform's azurerm provider and backend call `az`. */
+const AZURE_CREDENTIAL_PROGRAMS = new Set(["az", ...TERRAFORM_PROGRAMS]);
+
+/**
+ * Names the first program in a Bash command that needs the Azure CLI credentials, if any.
+ * Lexical like `confirmedCommand`: a script that calls `az` internally is not detected and runs without them.
+ */
+export function azureCredentialProgram(source: string): string | undefined {
+  for (const tokens of simpleCommands(source)) {
+    let index = 0;
+    while (index < tokens.length) {
+      const redirection = REDIRECTION.exec(tokens[index]!);
+      if (redirection) index += redirection[1] ? 1 : 2;
+      else if (ASSIGNMENT.test(tokens[index]!) || SHELL_KEYWORDS.has(tokens[index]!)) index += 1;
+      else break;
+    }
+    const program = azureInvocation(tokens, index);
+    if (program) return program;
+  }
+  return undefined;
+}
+
+function azureInvocation(tokens: string[], index: number): string | undefined {
+  const word = commandWord(tokens[index] ?? "");
+  const args = tokens.slice(index + 1);
+  if (WRAPPER_VALUE_OPTIONS[word]) {
+    if (word === "env") {
+      const splitString = envSplitString(args);
+      if (splitString !== undefined) return azureCredentialProgram(splitString);
+    }
+    return azureInvocation(tokens, wrappedCommandIndex(word, tokens, index + 1));
+  }
+  if (word === "eval") return azureCredentialProgram(args.join(" "));
+  if (SHELL_PROGRAMS.has(word)) {
+    const scriptFlag = args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
+    return scriptFlag === -1 ? undefined : azureCredentialProgram(args[scriptFlag + 1] ?? "");
+  }
+  return AZURE_CREDENTIAL_PROGRAMS.has(word) ? word : undefined;
+}
+
+export const AZURE_SESSION_CHOICE = "Allow Azure for this session";
+
+/**
+ * Asks whether one command may use the Azure CLI credentials. "Allow once" grants this command only; the session
+ * choice grants every later Azure command in this Pi session without asking again.
+ */
+export async function requestAzureCredentials(
+  ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } },
+  program: string,
+  command: string,
+): Promise<"once" | "session" | "denied"> {
+  if (!ctx.hasUI) return "denied";
+  const choice = await ctx.ui.select(
+    `Give this command access to your Azure CLI credentials (~/.azure)?\nProgram: ${program}\nCommand: ${command}`,
+    ["Allow once", AZURE_SESSION_CHOICE, "Deny"],
+  );
+  if (choice === "Allow once") return "once";
+  return choice === AZURE_SESSION_CHOICE ? "session" : "denied";
+}
+
 export async function requestCommandConfirmation(
   ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } },
   match: ConfirmedCommand,
