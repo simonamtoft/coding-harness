@@ -16,7 +16,7 @@ Turn the current working tree into one or more coherent commits. This is the com
 
 ## Procedure
 
-1. **Capture the private snapshot.** Resolve `scripts/capture_snapshot.sh` relative to this skill directory and invoke it once. **Pi:** pass `$PI_SESSION_TMPDIR` as its first argument. **Claude Code:** pass its private session workspace when available. Pass the user's stated commit scope as the optional second argument, quoted as one argument.
+1. **Capture the private snapshot.** Run `scripts/capture_snapshot.sh` once, by its absolute path under this skill directory, from the target repository. Never `cd` into the skill directory. **Pi:** pass `$PI_SESSION_TMPDIR` as its first argument. **Claude Code:** pass its private session workspace when available. Pass the user's stated commit scope as the optional second argument, quoted as one argument.
 
    The helper creates a mode-0700 snapshot directory, captures status exactly once, and returns either `EMPTY` or the absolute path of an evidence file. It includes staged and unstaged diffs, message-style evidence, and recursively enumerated nonignored untracked files. It marks unreadable, nonregular, and binary untracked paths as uncaptured. Do not recreate this capture logic in shell, inspect the evidence yourself, or print it into the parent context.
 

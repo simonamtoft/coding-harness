@@ -19,7 +19,7 @@ Read the documentation inside the scope completely. Read source files as far as 
 
 ## Scanning scripts
 
-The scripts do the mechanical part of checks 1 and 2. Each one needs only `python3` and takes the project root as an optional argument, defaulting to the current directory. Resolve the scripts relative to this skill directory and run them from the scope's project root:
+The scripts do the mechanical part of checks 1 and 2. Each one needs only `python3` and takes the project root as an optional argument, defaulting to the current directory. Run the scripts by absolute path under this skill directory, from the scope's project root; never `cd` into the skill directory:
 
 | Script | Finds | Limits |
 |---|---|---|

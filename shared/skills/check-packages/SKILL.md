@@ -11,7 +11,7 @@ Run the checker on every package you intend to add or upgrade, before installing
 python3 scripts/check_packages.py npm:chrono-node pypi:httpx@0.28.1 go:github.com/spf13/cobra
 ```
 
-Resolve `scripts/` relative to this skill's directory. Specs are `ECOSYSTEM:NAME[@VERSION]` with `npm`, `pypi`, `go`, `maven` (`group:artifact`), `cargo`, `nuget`, or `rubygems`. Without a version, the script checks the registry's default version. Take names from the project's documentation or the package's official docs, never from memory.
+Run `scripts/` by absolute path under this skill's directory; never `cd` into it. Specs are `ECOSYSTEM:NAME[@VERSION]` with `npm`, `pypi`, `go`, `maven` (`group:artifact`), `cargo`, `nuget`, or `rubygems`. Without a version, the script checks the registry's default version. Take names from the project's documentation or the package's official docs, never from memory.
 
 ## Reading the result
 
