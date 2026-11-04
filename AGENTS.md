@@ -25,6 +25,7 @@ link.sh                           deployment topology, Pi package installation, 
 .agent/verify.sh                  offline repository verifier (no model calls)
 .githooks/pre-commit              runs scripts/pi-load-check.ts for Pi runtime changes
 README.md                         human-facing setup and architecture guide
+PAPERCUTS.md                      untracked harness-friction log written by the report_papercut Pi tool
 DECISIONS.md + decisions/         durable decision ledger
 ```
 

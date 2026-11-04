@@ -198,6 +198,11 @@ and automatic verification, including repair turns. It releases the assertion
 when each run or verifier finishes, so an idle session waiting for input does not
 keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
+The `papercuts` extension gives agents a `report_papercut` tool that appends
+harness friction (sandbox denials, unclear instructions, missing skills, tool or
+verifier problems) to the untracked `PAPERCUTS.md` at this checkout's root, from
+any project's Pi session. Review that file periodically, turn recurring entries
+into Backlog tasks or decisions, and delete handled entries.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
 - `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
   the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),

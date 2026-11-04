@@ -10,6 +10,9 @@
 /probes/results/artifacts/
 /probes/results/reader-compare/
 
+# Local papercut log written by the report_papercut Pi tool; entries name local and client projects
+/PAPERCUTS.md
+
 # No trailing slash: Paseo worktrees hold backlog as a symlink, which `backlog/` does not match
 /backlog
 .agent-report*/
