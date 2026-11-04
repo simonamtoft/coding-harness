@@ -67,7 +67,7 @@ Nothing generated or secret is tracked. The launcher keeps its state in `~/.conf
    docker --context colima exec -it --user paseo paseo-box pi
    ```
 
-   Run `/login`, then quit Pi.
+   Run `/login`, choose Anthropic and then **Copy code login (headless)**. Open the printed URL on the Mac and paste the code back into Pi, then quit Pi. The browser login does not work, because its callback to `localhost` on the Mac cannot reach Pi in the box.
 
 5. In Paseo, open **Settings → Add host → Direct connection** and enter `127.0.0.1:6768`. The password is in `~/.config/paseo-box/daemon-pass`.
 
@@ -94,12 +94,13 @@ The launcher needs a main checkout. It refuses a linked worktree, whose Git data
 | --- | --- |
 | Mounted checkout | Working tree read-write; `.git` read-only. |
 | `coding-harness` | Read-only. Agents cannot change their own instructions, extensions or `link.sh`. |
-| Home directory | Reset as root on every start from the image's copy, so files an agent plants there (Pi's agent directory, `~/.agents/skills`, shell startup files) do not reach later sessions. Only the Pi sign-in, Pi sessions and Paseo's state persist, in the `paseo-box_paseo-box-state` volume. |
+| Home directory | Reset as root on every start from the image's copy, so files an agent plants there (Pi's agent directory, `~/.agents/skills`, shell startup files) do not reach later sessions. Only the Pi sign-in, Pi sessions and Paseo's state persist, in the `paseo-box_paseo-box-state` volume. `/tmp` is a 2 GB in-memory tmpfs that is emptied on every restart. |
 | Mac Pi files | Read-only copies of `models.json` and `settings.json`. `settings.json` is copied to a writable file at each start; `models.json` stays read-only. `auth.json`, `trust.json` and sessions are not copied. |
 | Credentials | The box's own Pi sign-in, `IM_GPT_API_KEY`, `HETZNER_API_KEY`, any literal keys in `models.json`, and the daemon password, which Paseo passes in the environment. No SSH keys, Git credentials, cloud CLI config, keychain or Docker socket. |
-| Network out | Docker's embedded DNS (outside resolvers are blocked), the box's own Docker network (which includes the Colima VM's gateway address), GitHub's published ranges, and the hosts in `firewall.sh` plus every non-loopback `baseUrl` host in `models.json`. Everything else is rejected; IPv6 is loopback only. |
+| Network out | Docker's embedded DNS (outside resolvers are blocked), GitHub's published ranges, and the hosts in `firewall.sh` plus every non-loopback `baseUrl` host in `models.json`. `pi.dev` is allowed for Pi's model catalogs; without it `/model` reports `Could not refresh anthropic` and Pi lacks models newer than its bundled list. Everything else is rejected; IPv6 is loopback only. |
+| Mac and Colima services | Blocked. Tested 2026-11-04: an unfirewalled container reached a server on the Mac's loopback (through `host.docker.internal`, 192.168.5.2), one on the Mac's LAN address, and a port another Colima container published (through the VM gateway and through 192.168.5.2). From the box all of these probes are rejected. The firewall accepts only incoming connections from the box's own Docker network, because outgoing ones would reach the VM gateway, where every container's published ports listen. |
 | Network in | Only Paseo's port, published on the Mac's loopback and protected by the daemon password. The password keeps other Mac processes out; agents in the box can read it and drive their own daemon, including answering their own question cards. Relay is off for the box. |
-| Privilege | Agents, Paseo terminals and workspace setup hooks all run inside the box as `paseo`, with no `sudo`. The firewall needs `NET_ADMIN`, which only root holds, and root hands over before agents start. |
+| Privilege | Agents, Paseo terminals and workspace setup hooks all run inside the box as `paseo`, with no `sudo`. The container drops all Linux capabilities except the seven that root's start-up needs: `NET_ADMIN` and `NET_RAW` for the firewall, `CHOWN`, `DAC_OVERRIDE` and `FOWNER` to reset the home directory, and `SETUID` and `SETGID` for `gosu`. Start-up fails without any one of them. Root hands over before agents start, so agent processes hold no capabilities, and `no-new-privileges` stops setuid binaries from regaining any. |
 
 Known limits:
 
@@ -110,7 +111,7 @@ Known limits:
 - Allowed hosts are resolved to IP addresses at start. A CDN that changes addresses later breaks until the next start; restart the box.
 - `.env` files in the checkout are readable by the agent.
 - Agents can still change files that you later run on the Mac, such as `Taskfile.yml`, `package.json` scripts or `.envrc`. Review the diff before running project commands on the Mac.
-- Providers whose `baseUrl` points at the Mac's loopback (`local`, `bonsai-local`) are unreachable from the box.
+- Providers whose `baseUrl` points at the Mac's loopback (`local`, `bonsai-local`) are unreachable from the box, as are all other Mac and Colima services. An allowed address opens all its ports, so the firewall refuses to start if an allowed host, a provider host or `PASEO_BOX_EXTRA_HOSTS` resolves to a private address (loopback, RFC 1918, link-local or 100.64.0.0/10). `host.docker.internal`, for example, would open every port on the Mac's loopback, including the host Paseo daemon. A provider on a private network therefore cannot be used from the box.
 
 ### Extending the allowlist
 

@@ -1,13 +1,16 @@
 #!/bin/bash
 # Default-deny egress for paseo-box. Runs as root at container start, before any agent process.
-# Allowed: loopback (which carries Docker's embedded DNS at 127.0.0.11), the container's own
-# network (Paseo's published port), replies to allowed traffic, GitHub's published ranges, and
-# the hosts below resolved at start. No port is open to arbitrary hosts, including 53.
+# Allowed out: loopback (which carries Docker's embedded DNS at 127.0.0.11), replies to allowed
+# traffic, GitHub's published ranges, and the hosts below resolved at start. No port is open to
+# arbitrary hosts, including 53. Allowed in: the container's own network, which carries
+# connections to Paseo's published port. New outbound connections to that network stay blocked,
+# because its gateway is the Colima VM, where every container's published ports listen.
 set -euo pipefail
 
 host_pi=/home/paseo/.config/paseo-box-host
 fixed_hosts=(
   api.anthropic.com claude.ai platform.claude.com console.anthropic.com  # Pi's Anthropic provider and sign-in
+  pi.dev                                                                 # Pi's model catalogs
   registry.npmjs.org                                                     # Pi packages, npm installs
   pypi.org files.pythonhosted.org                                        # uv
   imcg.ghe.com                                                           # Implement GitHub Enterprise
@@ -43,6 +46,8 @@ github_meta=$(curl -fsS --max-time 15 https://api.github.com/meta)
 jq -r '(.web + .api + .git)[] | select(test(":") | not)' <<<"$github_meta" | aggregate -q \
   | while read -r cidr; do ipset add -exist paseo-box-allowed "$cidr"; done
 
+# Loopback, RFC 1918, link-local and carrier-grade NAT (100.64.0.0/10).
+private_ipv4='^(0\.|10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)'
 # shellcheck disable=SC2207 # host names contain no whitespace
 extra_hosts=($(model_hosts) ${PASEO_BOX_EXTRA_HOSTS:-})
 for host in "${fixed_hosts[@]}" "${extra_hosts[@]}"; do
@@ -51,7 +56,15 @@ for host in "${fixed_hosts[@]}" "${extra_hosts[@]}"; do
     echo "paseo-box firewall: cannot resolve $host" >&2
     exit 1
   fi
-  for address in $addresses; do ipset add -exist paseo-box-allowed "$address"; done
+  # An allowed address opens every port on it, so a host resolving to the Mac (host.docker.internal),
+  # the VM gateway or anything else private would undo the Mac and Colima block.
+  for address in $addresses; do
+    if [[ "$address" =~ $private_ipv4 ]]; then
+      echo "paseo-box firewall: refusing $host, which resolves to private address $address" >&2
+      exit 1
+    fi
+    ipset add -exist paseo-box-allowed "$address"
+  done
   echo "paseo-box firewall: allowing $host"
 done
 
@@ -61,7 +74,6 @@ iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -s "$own_network" -j ACCEPT
-iptables -A OUTPUT -d "$own_network" -j ACCEPT
 iptables -A OUTPUT -m set --match-set paseo-box-allowed dst -j ACCEPT
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 iptables -P INPUT DROP
