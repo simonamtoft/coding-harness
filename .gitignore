@@ -18,8 +18,12 @@
 .agent-report*/
 
 __pycache__/
+node_modules/
 
 .DS_Store
 # Implement-internal skills (proprietary slides, photos, brand guidance); installed locally, never published
 /shared/skills/implement-powerpoint/
 /shared/skills/implement-brand-web/
+
+# Present skill dependencies, installed by link.sh --packages
+/shared/skills/present/node_modules/

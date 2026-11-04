@@ -38,9 +38,14 @@ export function isTrustedSharedSkillHelper(targetPath: string, codingHarnessShar
   const relativePath = relative(codingHarnessSharedRoot, targetPath).split(sep);
   if (relativePath.length !== 4 || relativePath[0] !== "skills" || relativePath[2] !== "scripts") return false;
   if (relativePath[3]!.endsWith(".sh")) return true;
-  return relativePath[1] === "visual-verification"
-    && ["capture-pages.mjs", "capture-scenario.mjs"].includes(relativePath[3]!);
+  return TRUSTED_NODE_HELPERS.get(relativePath[1]!)?.includes(relativePath[3]!) ?? false;
 }
+
+/** SBX-17, SBX-40: Node helpers that restrict their own indirect filesystem inputs. */
+const TRUSTED_NODE_HELPERS = new Map<string, readonly string[]>([
+  ["visual-verification", ["capture-pages.mjs", "capture-scenario.mjs"]],
+  ["present", ["build-report.mjs", "validate-report.mjs", "render-report.mjs"]],
+]);
 
 export function hasSessionHistoryReadAccess(
   toolName: string,
