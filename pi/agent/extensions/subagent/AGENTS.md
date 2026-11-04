@@ -1,6 +1,6 @@
 # Subagent extension
 
-This extension owns Pi's `subagent` and `review_changes` runtime behavior: agent discovery, frontmatter validation, capability restrictions, project-agent trust, isolated subprocess execution, swarm support, and review dispatch.
+This extension owns Pi's `subagent` tool, including its review mode,: agent discovery, frontmatter validation, capability restrictions, project-agent trust, isolated subprocess execution, swarm support, and review dispatch.
 
 ## Change rules
 
