@@ -33,7 +33,7 @@ Turn the current working tree into one or more coherent commits. This is the com
    - If the user chooses manual hunk staging, remove the snapshot directory in a separate cleanup command, tell them to use `git add -p -- <path>` with their normal index-isolation workflow, and stop without mutation.
    - For any other answer or requested revision, re-dispatch the planner with the answer and same evidence. Repeat only for an independent unresolved issue.
 
-4. **Commit or confirm the ready plan.** If the plan's warnings section reads exactly `Warnings: none`, go straight to step 5: the user's request to commit is the authorization, and the report shows the plan. Otherwise write the plan in the assistant response, then call `ask_user_question` exactly once to ask whether to commit the plan shown above. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
+4. **Commit or confirm the ready plan.** If the plan's warnings section reads exactly `Warnings: none`, go straight to step 5: the user's request to commit is the authorization, and the report shows the plan. Otherwise write the plan as visible text in the assistant response, then call `ask_user_question` exactly once. The user sees neither your reasoning nor the planner's output, so a call without that text leaves them nothing to approve. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
 
    ```text
    1. [message]
@@ -42,7 +42,7 @@ Turn the current working tree into one or more coherent commits. This is the com
       ← docs/readme.md
    ```
 
-   Include all warnings in the response: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**, each with a one-line description. A positive confirmation covers the entire plan.
+   Include all warnings in the response: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Make the question self-contained: name the commit count and each message (for example `Commit 2 commits: "feat: x", "fix: y"?`) rather than pointing at "the plan above". Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**, each with a one-line description. A positive confirmation covers the entire plan.
 
 5. **Commit the accepted groups.** Remove the snapshot directory in a separate cleanup command using the resolved parent directory of the evidence file. For each full-file group, in order, run:
 
