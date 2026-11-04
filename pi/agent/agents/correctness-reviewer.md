@@ -1,7 +1,7 @@
 ---
 name: correctness-reviewer
 description: Independent review of changed code for concrete correctness and maintainability defects
-model: anthropic/claude-sonnet-5-5
+model: PrivateGPT/gpt-6.1-sol
 thinking: medium
 tools: read, grep, find, ls
 ---

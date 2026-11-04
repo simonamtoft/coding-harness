@@ -92,6 +92,7 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Custom `PrivateGPT` is machine-wired and must not be a portable canonical dependency. Separating OpenAI Codex implementation from Anthropic review also gives correctness and security review an independent provider perspective.
 **Revisit if:** Built-in provider availability, model quality, cost policy, or the desired implementation/review diversity changes.
 **Evidence:** "I wanted to use default provider, as in openai-codex or anthropic, and not [PrivateGPT]"
+**Superseded by:** SUB-26 for the correctness-reviewer pin.
 
 ### SUB-15 · Bulk-read hooks redirect; the parent frames extraction
 `accepted` · 2026-09-12 · `01a0950d`
@@ -143,6 +144,7 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** The team routes OpenAI-family traffic through the private provider. A neutral alias avoids committing the internal provider name, but it is not a security control. Each machine must define a `PrivateGPT` provider in its untracked `models.json`; otherwise dispatch fails clearly (SUB-16) and a local `subagents.json` override is needed. Reviewers stay on Anthropic to keep their independence from the implementer.
 **Revisit if:** Another machine needs a different provider name, the alias hides a real misconfiguration, or `PrivateGPT` gains Claude models.
 **Evidence:** "We need to swap everything to [PrivateGPT] instead of openai-codex"; user chose a committed neutral alias and to keep Anthropic where it is.
+**Superseded by:** SUB-26 for the correctness-reviewer pin.
 
 ### SUB-22 · No routed write delegation for small boilerplate
 `rejected` · 2026-10-12 · `01a12f05`
@@ -170,3 +172,10 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Under Paseo, `subagent` and `review_changes` showed only a spinner, and the user asked for visibility into child runs. Paseo 0.13's `pi-subagents` adapter already matches single-agent `subagent` calls and renders a reported `sessionFile` after completion, but it does not map parallel/chain calls or `review_changes`, and RPC clients render only partial text, not the TUI's details view. The temp workspace keeps SUB-10's concern bounded: transcripts stay private (mode 0700), out of session listings and audits, and expire with the operating system's temp cleanup.
 **Revisit if:** Paseo adds live following for completed-on-return tools or adapters for parallel calls and `review_changes`, transcript volume in the temp workspace becomes a problem, or child transcripts are needed beyond temp cleanup.
 **Evidence:** The user chose "Progress + transcripts".
+
+### SUB-26 · Reviewers get the intent, attest coverage, and correctness review runs on Sol
+`accepted` · 2026-11-04 · `01a1a761`
+**Decision:** `review_changes` requires an `intent` (requested outcome and acceptance criteria) and passes it to every reviewer as an author's claim to check. Deferral preserves it, but intent is not part of the identity that matches a released review. The correctness and security briefs add an intent check, adversarial steps, a test of the strongest defect hypothesis before a clean verdict, an `Unverified concerns` section, and a mandatory `Review coverage` section even when there are no findings; the verifier-change brief requires the same section. The parent must report each finding as fixed or dismissed with evidence; an unverified concern may also stay unresolved, with the check that would settle it. A verifier-change `CLEAR` lists the checks it compared, and a removed test counts as legitimate only when the behavior it guarded is deleted or still covered by a named test. `correctness-reviewer` moves from `anthropic/claude-sonnet-5-5` to `PrivateGPT/gpt-6.1-sol`. `security-reviewer` stays on `anthropic/claude-opus-5-5`, and `verifier-change-reviewer` stays on Sonnet. Not done: giving reviewers command execution, or adding a seeded-bug evaluation of reviewer catch rate.
+**Why:** Analysis found the pipeline biased toward approval. With no intent, reviewers could only check whether a diff was consistent with itself. Skepticism applied only to findings, so a clean verdict needed no evidence. The authoring parent could dismiss findings silently. The testing rules gave a reason to delete still-relevant tests. Sonnet 5.5 reviewed work by the usual Opus 5.5 parent, so the reviewer was weaker and from the same vendor. Sol 6.1 gives correctness review a different vendor from the usual parent; security keeps one reviewer per vendor. Anthropic's harness-design write-up reports that out-of-the-box Claude QA "finds real issues then talks itself into approving anyway".
+**Revisit if:** A seeded-bug evaluation shows the coverage section is boilerplate rather than evidence; the usual parent model moves to the OpenAI family; or required intent proves a recurring burden for explicit `/review` audits.
+**Evidence:** "Go ahead and do 1-5 + 7"; for the models, the user chose "Sol 6.1" for correctness and "Keep Opus" for security.

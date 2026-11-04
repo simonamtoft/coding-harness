@@ -1,4 +1,5 @@
 export interface ReviewRequest {
+	intent: string;
 	base?: string;
 	focus?: string[];
 	security?: boolean;
@@ -35,6 +36,7 @@ export function setAutomaticVerifierAvailable(available: boolean): void {
 	state().automaticVerifierAvailable = available;
 }
 
+/** Intent is excluded: the released call may restate it, and the review scope is base, focus, and security. */
 function sameRequest(left: ReviewRequest, right: ReviewRequest): boolean {
 	return (
 		left.base === right.base &&

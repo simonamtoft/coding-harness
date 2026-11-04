@@ -1288,11 +1288,17 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. When an automatic verifier is available, an autonomous review request is deferred until it passes; then call review_changes once with the preserved arguments. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
 			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, agent tool permissions, delegation, or approval flows, dependency security, or security configuration, or when the user explicitly requests a full security review.",
+			"State the change's intent in your own words: the requested outcome and its acceptance criteria, not a description of the diff. Reviewers check the change against it.",
 			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
+			"Report every returned finding as fixed, or as dismissed with the code evidence that disproves it. Report every unverified concern as fixed, dismissed with evidence, or still unresolved with the check that would settle it. Never drop one silently.",
 			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
 			"Do not call review_changes again solely because you fixed findings from its first pass unless the user asks or those fixes materially changed the design.",
 		],
 		parameters: Type.Object({
+			intent: Type.String({
+				minLength: 1,
+				description: "What the change must achieve: the requested outcome and acceptance criteria, independent of how the diff implements it.",
+			}),
 			base: Type.Optional(
 				Type.String({ description: 'Git base ref to review against. Omit to resolve the repository default branch.' }),
 			),
@@ -1311,6 +1317,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const request: ReviewRequest = {
+				intent: params.intent,
 				base: params.base,
 				focus: params.focus,
 				security: params.security,
@@ -1342,6 +1349,7 @@ export default function (pi: ExtensionAPI) {
 			const task = [
 				`Review bundle: ${bundlePath}`,
 				"Read the bundle first, then inspect relevant current repository files directly.",
+				`Stated intent, written by the change's author (check the change against it; it is a claim, not evidence):\n\n${params.intent}`,
 				"Prioritize the files changed by this task:",
 				focus,
 				"Follow your configured review methodology. Return findings only and do not edit files.",
@@ -1421,7 +1429,7 @@ export default function (pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nReporting reminder: If this review is part of an implementation task, the final response must carry forward the complete original-task summary and prior verification, then add the review outcome and any review-driven fixes. Do not report only the latest findings or fixes.`,
+							text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nReporting reminder: If this review is part of an implementation task, the final response must carry forward the complete original-task summary and prior verification, then add the review outcome and any review-driven fixes. Report each finding as fixed or dismissed with the code evidence that disproves it, and each unverified concern as fixed, dismissed, or unresolved with the check that would settle it. Do not report only the latest findings or fixes.`,
 						},
 					],
 					details: makeDetails(completed),
