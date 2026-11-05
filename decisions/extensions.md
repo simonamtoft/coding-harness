@@ -97,3 +97,10 @@ Decision ledger area. Entry ids use the `EXT-` prefix; see `../DECISIONS.md` for
 **Why:** Paseo commits from worktrees whose `~/.pi` links point at the main checkout, so the hook always failed there, and a merge into main does not run pre-commit. A skip would let unchecked runtime changes reach main. Always using the overlay drops the check that the real install is linked. Pi resolves local package paths in `settings.json` relative to the agent directory, so an overlay under `$TMPDIR` lost the `../../pi-plugins/...` package.
 **Revisit if:** Worktree changes to `packages.txt` need load checking, Pi stops honouring `PI_CODING_AGENT_DIR`, or the Paseo trial ends without worktree commits.
 **Evidence:** User chose "Overlay in worktrees".
+
+### EXT-16 · Papercuts are self-reported through a Pi tool into one untracked file
+`accepted` · 2026-11-04 · `01a1a763`
+**Decision:** The `papercuts` extension registers `report_papercut`, which appends entries to `PAPERCUTS.md` at the canonical checkout root, resolved through the extensions symlink, from every project's Pi session. The file is gitignored. Rejected: a `shared/AGENTS.md` rule telling agents to edit a per-repository `PAPERCUTS.md`; mining transcripts for denials and retries at review time, alone or alongside the tool; committing the file; and Claude support.
+**Why:** An always-loaded instruction bullet costs every session for a rare action (compare OWN-08), and a per-repository file would scatter notes into client repositories; the sandbox also blocks those sessions from writing a central file. A tool writes in-process, past the sandbox, and fills in cwd and session id itself. Transcript mining misses friction only the agent notices, such as unclear instructions or missing skills. Entries name local and client projects, so the file stays local. Claude has no extension mechanism to reuse.
+**Revisit if:** Entries are mostly noise or agents rarely call the tool; the review needs evidence that self-reports miss, such as denial counts; or Claude sessions become a significant source of friction.
+**Evidence:** User chose "Agent tool", "Repo root, untracked", and "Pi only".

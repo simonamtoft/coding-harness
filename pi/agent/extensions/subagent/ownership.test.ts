@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 /**
  * Enforces the subagent ownership contract: every role belongs to one owning
@@ -23,6 +23,8 @@ const BACKTICKED_TOKEN = /`([a-z0-9]+(?:-[a-z0-9]+)+)`/g;
 function markdownFilesIn(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true, recursive: true })
 		.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+		// Installed skill dependencies are third-party docs, not skill content.
+		.filter((entry) => !entry.parentPath.split(sep).includes("node_modules"))
 		.map((entry) => join(entry.parentPath, entry.name));
 }
 
@@ -57,7 +59,7 @@ describe("subagent ownership", () => {
 		expect(Object.fromEntries(piAgents.map((agent) => [agent.name, agent.model]))).toEqual({
 		"bulk-reader": "PrivateGPT/gpt-6-luna",
 		"commit-planner": "PrivateGPT/gpt-6-luna",
-		"correctness-reviewer": "anthropic/claude-sonnet-5-5",
+		"correctness-reviewer": "PrivateGPT/gpt-6.1-sol",
 		"implementation-worker": "PrivateGPT/gpt-6.1-sol",
 		presenter: "PrivateGPT/gpt-6-luna",
 		"repository-scout": "PrivateGPT/gpt-6-luna",

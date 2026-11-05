@@ -13,8 +13,8 @@ Independent, findings-only review of a prepared change set. The review itself ne
 
 The `correctness-reviewer` role owns this brief.
 
-- **Pi:** `review_changes` prepares the bundle with `scripts/prepare-review.sh` and dispatches `correctness-reviewer`, which reads the same brief. Do not dispatch it by hand for a change already covered by that flow.
-- **Claude Code:** review directly against the brief, or invoke `Task` with a read-only subagent type and a prompt naming the bundle path and this brief.
+- **Pi:** `subagent` review mode prepares the bundle with `scripts/prepare-review.sh` and dispatches `correctness-reviewer`, which reads the same brief. Do not dispatch it by hand for a change already covered by that flow.
+- **Claude Code:** review directly against the brief, or invoke `Task` with a read-only subagent type and a prompt naming the bundle path, the change's intent, and this brief.
 
 ## Verifier changes
 

@@ -20,7 +20,8 @@ different hooks path or active hooks in the hooks directory unless --force.
 Those hooks would stop running; --force does not back them up.
 
 --packages also installs the Pi packages listed in pi/agent/packages.txt,
-which writes to the local ~/.pi/agent/settings.json.
+which writes to the local ~/.pi/agent/settings.json, and the present skill's
+Playwright, mermaid, and Chromium.
 USAGE
 }
 
@@ -143,3 +144,11 @@ while IFS= read -r spec || [[ -n "$spec" ]]; do
   fi
   pi install "$spec"
 done <"$packages_manifest"
+
+present_dir="$repo_dir/shared/skills/present"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "Cannot install present skill dependencies: bun is not on PATH" >&2
+  exit 1
+fi
+(cd "$present_dir" && bun install --frozen-lockfile)
+"$present_dir/node_modules/.bin/playwright" install chromium

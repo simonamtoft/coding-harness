@@ -14,8 +14,9 @@ Give the isolated presenter a focused, source-of-truth brief containing:
 
 - report type: implementation, investigation, review, or plan
 - requested outcome and actual conclusion
-- key changes, findings, decisions, and non-file-based rationale
-- relevant paths and trustworthy captures or source-derived evidence
+- the changes a reader must see, each with its before and after: paths, the commit or base revision to diff, and changed call orders, workflows, or dependencies
+- screenshots or exact output captured before and after the change, with absolute paths, and how to serve the app if a capture is still needed
+- decisions and rationale that are not in the files
 - verification commands or probes, with passed, failed, or unavailable status; counts only when material
 - limitations, unverified behavior, and follow-ups
 - Backlog tickets or dependencies only when needed to understand the work
@@ -29,7 +30,7 @@ Dispatch exactly one user-level `presenter` subagent; do not build the report in
 - **Pi:** `agent: presenter`, a task containing the delivery brief, `cwd` set to the active repository, and `agentScope: user`.
 - **Claude Code:** `subagent_type: presenter`, a prompt containing the delivery brief and intended working directory.
 
-The presenter owns report IDs, assembly, validation, optional rendering and inspection, and final link formatting. It may inspect the repository to enrich supplied evidence. Do not edit this skill, its presenter instructions, templates, or scripts during ordinary report generation.
+The presenter owns report IDs, the report spec, captures it can take itself, building, validation, visual inspection, and final link formatting. The report is mostly visual, with at most one short line of text per change. It may inspect the repository to enrich supplied evidence. Do not edit this skill, its presenter instructions, templates, or scripts during ordinary report generation.
 
 ## Deliver
 

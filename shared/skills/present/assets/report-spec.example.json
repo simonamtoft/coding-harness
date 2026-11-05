@@ -1,0 +1,17 @@
+{
+  "out": "/absolute/session/tmp/agent-final-<report-id>.html",
+  "ref": "abc1234",
+  "meta": "abc1234 · 3 files",
+  "title": "One-line outcome",
+  "summary": "Optional single sentence.",
+  "checks": [{ "name": "unit tests", "status": "pass" }],
+  "caveats": ["Mobile layout not checked"],
+  "changes": [
+    { "kind": "diff", "title": "Parser rejects empty ids", "file": "src/parse.ts", "hunks": [2], "note": "Optional one-line explainer." },
+    { "kind": "image", "title": "Settings page", "before": "/abs/session/tmp/before.png", "after": "/abs/session/tmp/after.png" },
+    { "kind": "terminal", "title": "CLI error", "before": "Error: undefined", "after": "Error: id must not be empty" },
+    { "kind": "steps", "title": "Release checklist", "before": ["Build", "Publish"], "after": ["Build", { "text": "Smoke test", "new": true }, "Publish"] },
+    { "kind": "diagram", "title": "Request flow", "before": "sequenceDiagram\n  A->>B: call", "after": "sequenceDiagram\n  A->>C: validate\n  C->>B: call" },
+    { "kind": "diagram", "title": "Ticket order", "after": "flowchart LR\n  T1[T-1 Schema] --> T2[T-2 API]:::added" }
+  ]
+}

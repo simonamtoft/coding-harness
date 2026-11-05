@@ -16,7 +16,7 @@ Start from the supplied diff, commit range, files, or symbols. If the change und
 This workflow is distinct from routine correctness and security review:
 
 - Use blast-radius analysis only for an explicit downstream-impact request.
-- Use the harness's existing findings-only review mechanism (`review_changes` when available) when an independent review is also requested or required.
+- Use the harness's existing findings-only review mechanism (the Pi `subagent` tool's review mode when available) when an independent review is also requested or required.
 - Keep reviewer findings separate and unmodified. Do not ask a reviewer to produce this report, relabel blast-radius uncertainty as a review finding, or treat this workflow as a replacement for correctness or security review.
 
 ## Evidence levels

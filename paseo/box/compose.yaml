@@ -5,7 +5,16 @@ services:
     build: .
     image: paseo-box:local
     container_name: paseo-box
-    cap_add: [NET_ADMIN, NET_RAW]  # for the firewall, applied by root before agents start
+    # Only root's start-up needs capabilities: the firewall (NET_ADMIN, NET_RAW), resetting the
+    # paseo user's home (CHOWN, DAC_OVERRIDE, FOWNER) and gosu (SETUID, SETGID). Agents run as
+    # paseo and hold none.
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW, CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    # Resets on every restart, not only on recreate. Docker's tmpfs default is noexec; /tmp stays
+    # executable like an ordinary Linux /tmp.
+    tmpfs:
+      - /tmp:exec,nosuid,nodev,size=2g,mode=1777
     ports:
       # 6767 is the host Paseo daemon's port.
       - "127.0.0.1:${PASEO_BOX_PORT:-6768}:6767"

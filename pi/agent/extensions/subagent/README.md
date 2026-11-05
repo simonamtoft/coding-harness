@@ -12,8 +12,8 @@ Bundled roles and their owners:
 
 - `presenter` — final HTML reports; owned by `present`. Its write tools are limited to report work
 - `commit-planner` — commit grouping and messages from a supplied working-tree snapshot; owned by `quick-commit`
-- `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `review_changes`
-- `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `review_changes`
+- `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `subagent` review mode
+- `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `subagent` review mode
 - `verifier-change-reviewer` — judges whether an agent's verifier edit weakens the checks; owned by `code-review`, dispatched by this extension when `verify-turn` requests it (see `../verify-turn/README.md`)
 - `test-log-analyst` — diagnosis of an oversized test or build log artifact; owned by `diagnose-failure`
 - `bulk-reader` — question-directed extraction from explicit large reference files; owned by `bulk-read`
@@ -58,7 +58,7 @@ Child processes include `--no-extensions`. This prevents global parent lifecycle
 
 ## Child transcripts and progress
 
-Each child writes its transcript to a private directory under the parent's session temp workspace (`$PI_SESSION_TMPDIR/subagent-runs/`), never to the session store, and each result reports it as `sessionFile` (SUB-25). Paseo's built-in `pi-subagents` adapter shows that transcript for single-agent `subagent` calls after the child finishes. Without a session temp workspace, children run with `--no-session`. While children run, the partial tool text has one status line per child (agent, elapsed time, turn, current tool or `waiting for model`). The TUI renders from details; RPC clients such as Paseo show only this text.
+Each child writes its transcript to a private directory under the parent's session temp workspace (`$PI_SESSION_TMPDIR/subagent-runs/`), never to the session store, and each result reports it as `sessionFile` (SUB-25). Every completed `subagent` result, in any mode, also carries `details.status: "batch"` and one `details.children` entry per child (`paseo-batch.ts`). Paseo 0.15.0 and later maps that shape through its edxeth/pi-subagents adapter to one sub-agent row per child with its transcript; Paseo shows any tool it does not recognise by name as raw JSON, which is why review is a `subagent` mode rather than its own tool (SUB-27). Without a session temp workspace, children run with `--no-session`. While children run, the partial tool text has one status line per child (agent, elapsed time, turn, current tool or `waiting for model`). The TUI renders from details; RPC clients such as Paseo show only this text.
 
 ## Swarm workflow
 
@@ -66,9 +66,9 @@ Invoke the shared `/skill:swarm` workflow. It requires an explicit frame, done p
 
 ## Review workflows
 
-The extension also exposes `review_changes`, which prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, and removes it afterward. It runs the correctness reviewer by default; passing `security: true` adds the security reviewer in parallel. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
+The `subagent` tool's review mode (`review: {intent, base?, focus?, security?, defer?}`) prepares a temporary Git bundle inside the session directory, excludes that file from its own snapshot, and removes it afterward. Every review must state the change's `intent` (requested outcome and acceptance criteria), which reviewers check the change against; deferral preserves it. It runs the correctness reviewer by default; passing `review.security: true` adds the security reviewer in parallel. The briefs require every reviewer output, including a clean one, to end with a coverage section, and the parent must report each finding as fixed or dismissed with evidence. Keeping the bundle inside the session directory lets the headless reviewers read it through the sandbox guard.
 
-- The main agent is instructed to call `review_changes` once, at its discretion, after non-trivial implementation work. When `verify-turn` discovers an automatic verifier, an autonomous call is deferred and reissued once only after that verifier passes. Review-driven fixes verify normally but do not schedule another review. Backlog/task-management-only, documentation-only, formatting-only, generated-only, and obviously trivial changes are excluded.
+- The main agent is instructed to request a review once, at its discretion, after non-trivial implementation work. When `verify-turn` discovers an automatic verifier, an autonomous call is deferred and reissued once only after that verifier passes. Review-driven fixes verify normally but do not schedule another review. Backlog/task-management-only, documentation-only, formatting-only, generated-only, and obviously trivial changes are excluded.
 - Security review is reserved for changes affecting security-sensitive trust boundaries or explicit user requests.
 - Invoke `/review [base-ref]` for an explicit findings-only correctness and security audit. It bypasses automatic deferral, reports findings, and asks before applying fixes.
 

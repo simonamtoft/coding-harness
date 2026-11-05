@@ -5,6 +5,42 @@ user-authored resources together while leaving credentials, sessions, caches,
 installed packages, and other runtime state in their native harness
 directories.
 
+## Supported setups
+
+Two ways of running Pi are kept working. A change made for one must not
+break the other:
+
+| Setup | How Pi runs | What it adds |
+| --- | --- | --- |
+| Pi in the CLI | `pi` in a terminal (TUI) | The baseline: all of `~/.pi/agent` with no other tools needed. |
+| Pi inside [Paseo](https://paseo.sh/) | Paseo runs `pi --mode rpc` | Paseo's desktop/mobile UI, worktrees, and the isolated [paseo-box](paseo/box/README.md). See [Paseo trial](#paseo-trial). |
+
+The two load the same instructions, skills, extensions and prompts. Where they
+differ is how things are shown: extensions such as `ask-question`,
+`verify-turn` and `subagent` render in the TUI and also send output in a shape
+Paseo can display. The automatic checks cover both only in part:
+`bun scripts/pi-load-check.ts` starts Pi in RPC mode, and the extension tests
+cover the TUI and RPC code paths separately. Try a change in both after it
+alters what an extension shows.
+
+### Claude Code: frozen
+
+The Claude Code harness has been frozen since November 2026 (OWN-16). It was
+last in regular use in August 2026. `link.sh` still links `~/.claude`, so it
+still loads the following, with these limits:
+
+- **Shared skills and `shared/AGENTS.md`:** usable, and still edited for Pi.
+  Since August 2026 they have been checked only in Pi, so Claude variants
+  (such as `Task` calls in place of `subagent`) may be out of date.
+- **Sandbox, hooks, settings and agents in `claude/`:** not updated. Pi's
+  later protections are not in Claude: the kernel command sandbox (SBX-37),
+  `.env` denial (SBX-02) and its exceptions, and the SSH confirmation
+  (SBX-22). The hook test suites still run in `.agent/verify.sh`, so
+  existing behaviour cannot regress unnoticed.
+
+Before using Claude Code again, review `claude/hooks/README.md` against
+`decisions/sandbox.md`.
+
 ## Install links
 
 ```sh
@@ -57,6 +93,10 @@ Install them with:
 
 This runs `pi install` per entry, which writes the `packages` array in the
 local `~/.pi/agent/settings.json`. Entries already installed are skipped.
+It also installs the `present` skill's pinned Playwright and mermaid from
+`shared/skills/present/bun.lock` into its gitignored `node_modules`, plus
+Playwright's Chromium. Reports therefore render in any repository, whether
+or not the project itself has Playwright.
 
 When developing one of the plugins, point its settings entry at the local
 checkout instead (for example `../../projects/pi-status-footer`, relative to
@@ -189,8 +229,11 @@ everywhere. Agent control files and plugin source are write-protected unless Pi
 was started inside this canonical `coding-harness` checkout. Session transcripts
 and local Pi configuration are normalized to owner-only permissions at startup.
 Its Bash protections are lexical checks, so they catch explicit paths and known
-high-risk commands but do not constitute an OS-enforced sandbox; use a container
-or VM when that boundary is required. Quoted bodies passed to inline interpreter
+high-risk commands. On macOS each Bash and `!` command additionally runs under
+a kernel-enforced Seatbelt profile that denies home-directory reads outside the
+project, Pi credentials, writes outside the project and temp directories, and
+localhost connections (see the sandbox README); Pi's own tools and extensions
+are not kernel-confined, so use a container or VM when that boundary is required. Quoted bodies passed to inline interpreter
 evaluation are treated as code rather than path arguments, so they are not
 inspected for paths, though secret literals inside them are still denied.
 The `stay-awake` extension holds `caffeinate -i -s` on macOS during agent runs
@@ -198,7 +241,14 @@ and automatic verification, including repair turns. It releases the assertion
 when each run or verifier finishes, so an idle session waiting for input does not
 keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
-- `claude/`: Claude hooks, settings, agents, statusline, and themes.
+The `papercuts` extension gives agents a `report_papercut` tool that appends
+harness friction (sandbox denials, unclear instructions, missing skills, tool or
+verifier problems) to the untracked `PAPERCUTS.md` at this checkout's root, from
+any project's Pi session. Review that file periodically, turn recurring entries
+into Backlog tasks or decisions, and delete handled entries.
+- `claude/`: Claude hooks, settings, agents, statusline, and themes. Parked
+  since November 2026: the files and links stay, and their tests still run in
+  the verifier, but new harness work targets Pi (OWN-16).
 - `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
   the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),
   and `box/`, the isolated Paseo and Pi container (not linked; started with
@@ -218,8 +268,8 @@ format or capability:
 
 | Resource | Why it is not shared |
 | --- | --- |
-| `pi/agent/prompts/` | Pi reads `prompts/`; Claude Code reads `commands/`. `review.md` also calls `review_changes`, a Pi extension tool. |
-| `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `review_changes` drives them. |
+| `pi/agent/prompts/` | Pi reads `prompts/`; Claude Code reads `commands/`. `review.md` also calls the Pi `subagent` tool's review mode. |
+| `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `subagent` review mode drives them. |
 | `claude/agents/` | Claude-shaped stubs for `bulk-reader`, `commit-planner`, `presenter`, and `test-log-analyst`, each pointing at its brief in the owning shared skill. Claude enforces each stub's `tools` allowlist, and `claude/settings.json` adds `~/.claude/skills` to `additionalDirectories` so subagents can read their briefs without a prompt. |
 
 The `present` and `swarm` skills stay shared: their workflows are

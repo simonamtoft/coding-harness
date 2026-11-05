@@ -59,7 +59,10 @@ test("symlinked shared skill helpers retain narrowly-scoped Bash access", () => 
     const resolvedScenarioHelper = realpathSync(join(installedSkills, "visual-verification", "scripts", "capture-scenario.mjs"));
     assert.equal(isTrustedSharedSkillHelper(resolvedHelper, canonicalShared), true);
     assert.equal(isTrustedSharedSkillHelper(resolvedScenarioHelper, canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "build-report.mjs"), canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "build-report.test.mjs"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "assemble-report.mjs"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", "build-report.mjs"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "SKILL.md"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", ".env.sh"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(root, "outside.sh"), canonicalShared), false);

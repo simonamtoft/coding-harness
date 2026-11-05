@@ -10,5 +10,6 @@ bash claude/hooks/test/run.sh
 bash claude/hooks/test/verify-turn-run.sh
 bun test probes/lib probes/test
 bun test ./scripts/
+bun test shared/skills/present
 python3 -m unittest discover -s shared/skills/cleanse/tests
 python3 -m unittest discover -s shared/skills/check-packages/tests

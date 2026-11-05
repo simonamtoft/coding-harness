@@ -1,43 +1,63 @@
----
-name: present
-description: Present substantive completed work as a self-contained HTML report. Use for final reports after implementations, investigations, reviews, or plans with enough content to benefit from a structured visual summary. Do not use for quick answers, clarifying questions, progress updates, or trivial changes.
----
+# Present completed work as a before/after report
 
-# Present completed work
+You turn a delivery brief into one static HTML page that shows what changed, mostly as visuals. You write a JSON spec; `scripts/build-report.mjs` owns all HTML, styling, diffs, and diagram rendering. Never hand-write report HTML or CSS.
 
-Follow the active repository's `CLAUDE.md` or `AGENTS.md`, especially **Present Clearly**. Use the smallest self-contained report that makes the outcome, evidence, and limitations easy to scan.
+Run every script by its absolute path under the skill directory, from the active repository. Never `cd` into the skill directory.
 
-## Build
+## 1. Choose what to show
 
-1. Generate one collision-resistant report ID. Use it for all temporary artifacts and write the report to `${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}/agent-final-<report-id>.html`. Never use unsuffixed `agent-final.html` or `agent-final-captures` paths.
-2. Assemble the page with `scripts/assemble-report.mjs`; do not hand-author the full page or read, copy, or rewrite `assets/report-template.html` unless modifying or debugging the skill.
-   - Use a **simple report** only when prose explains the result as well as any source-grounded capture, flow, state transition, comparison, dependency, or structured evidence. Use [assets/simple-report-manifest.example.json](assets/simple-report-manifest.example.json).
-   - Otherwise use a **custom visual report**: read only relevant `assets/sections/` snippets and conditional assets, then provide report-specific navigation and sections using [assets/report-manifest.example.json](assets/report-manifest.example.json).
-   - Set `outputFile` to the ID-scoped path and overwrite only artifacts carrying that ID.
-3. Read [references/report-data.md](references/report-data.md) only when evidence mixes command, test, and probe units, or when tickets need scheduling. Normalize only the fields needed by the report; do not create duplicate scratch JSON unless a script consumes it.
+List the few changes a reader must see to trust the outcome, usually two to six. Each becomes one numbered change, showing before and after side by side. Pick the kind that shows the change most directly:
 
-## Compose
+| Kind | Use for | Source of truth |
+| --- | --- | --- |
+| `diff` | Code or configuration whose exact lines matter | Git, via spec `ref` (a commit) or `base` (working tree against a revision). Pick the hunks that matter with `hunks: [n, …]` |
+| `image` | Anything user-visible: pages, components, rendered output | Screenshots you or the parent captured |
+| `terminal` | CLI output, error messages, logs | Exact command output, trimmed to the lines that changed |
+| `steps` | Procedures, checklists, instruction or method changes | The source documents; mark added items `{ "text": …, "new": true }` |
+| `diagram` | Call order (`sequenceDiagram`), workflows, architecture, dependencies, ticket maps (`flowchart`) | Code paths and docs you read; Mermaid source in `before` and `after` |
 
-Include only outcome, key changes/findings/decisions, verification, and limitations or follow-ups that advance the reader's understanding. Do not add sections, labels, captions, metrics, or cards that restate the conclusion, describe report writing, record inaction, or inflate a single fact.
+Omit `before` when something is new or when the report is not a comparison (an investigation finding, a plan); that change then renders as a single panel. In flowcharts, tag nodes `:::added` (green) or `:::removed` (red, dashed). In sequence diagrams, wrap new steps in `rect rgb(236,253,243) … end`. Keep both sides of a diagram in the same layout direction and node names so the difference is easy to spot.
 
-- **Verification:** name checks and state passed, failed, or unavailable. Omit test-case totals and ratios unless they materially support the conclusion.
-- **Evidence:** use a capture, comparison, short source-derived code or configuration excerpt, diagram, coverage matrix, compact table, or exact output only when it explains evidence or a relationship faster than concise prose. Code excerpts must show essential logic, API, or configuration; cite the file and omit boilerplate. Do not invent visual details, data, or behavior.
-- **Structure:** show lifecycle, lineage, ownership, routing, dependencies, or invalidation when that structure matters; for example, show a version transition or which mutations retain assurance. For user-visible work, place a faithful screenshot or rendered output near the outcome; otherwise use an exact fixture or source-derived capture, or disclose that no trustworthy capture was practical. Do not substitute an architecture diagram for evidence of a UI or TUI.
-- **Reading path:** use a one-column hero (label, title, summary). Later content must substantiate, qualify, or operationalize it. Give each section one dominant idea, use one primary surface and at most one supporting surface unless comparing, and group related details rather than creating cards for each fact. Omit generic section context, repeated labels, and dashboard treatment of absence.
-- **Markup:** keep the index synchronized with major sections. Use existing template primitives: `.grid`, `.card`, `.span-*`, `.prose`, `.visual-example`, `.screen-frame`, `.terminal`, `figcaption`, `.metric`, `.status-list`, `.data-table`, `.concept-diff`, inline-SVG `.graph`, `.chart`, `.bar-row`, `.decision`, `.callout`, and badges. Keep all assets inline, add no network dependencies, and keep the report readable without navigation.
+For multiple tickets with dependencies, follow [references/backlog-dependency-map.md](references/backlog-dependency-map.md).
 
-## Backlog
+Every visual must be faithful to its source. Do not invent UI, output, or behaviour. If you cannot get a trustworthy capture, leave the change out and add a caveat instead.
 
-For one completed, dependency-free ticket, mention its ID and status in the hero subtitle or relevant prose. Do not add a Backlog section, completion visual, or acceptance-criteria count. For multiple tickets, dependencies, or scheduling, read and follow [references/backlog-dependency-map.md](references/backlog-dependency-map.md).
+## 2. Capture screenshots for user-visible work
 
-## Validate
+- **After:** capture the running app with the `visual-verification` skill's `capture-pages.mjs` or `capture-scenario.mjs` at `deviceScaleFactor` 1, written under the session temporary directory.
+- **Before:** use captures the brief supplies. Otherwise, if the app is cheap to serve, export the base revision with `git archive <base> | tar -x -C "$PI_SESSION_TMPDIR/agent-final-<report-id>-base"`, start it on a free port, and capture the same routes and viewport. If that is impractical, omit `before` and add the caveat `No before capture`.
+- Crop to the region that changed when the page is long. Prefer JPEG for photographic content; the build warns above 1.5 MB per image.
 
-1. Run `scripts/validate-report.mjs` on the completed report and fix placeholders, duplicate or missing local targets, unsynchronized index items, and external runtime dependencies.
-2. If the active repository provides Playwright, run `scripts/render-report.mjs <report-path> ${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}/agent-final-<report-id>-captures` from the repository. Do not install browser dependencies. Use `--all` only for prose-only layout inspection.
-3. Inspect captures before delivery for hierarchy, legibility, navigation, arrows, wrapping, contrast, first-viewport clarity, and clipping. If browser tooling is unavailable, disclose it in the report.
-4. Read the HTML as a reader. Remove repeated, unsupported, weak, or decorative content. Compare every visual and code excerpt with its capture or source; replace or omit anything unfaithful.
+## 3. Write the spec
 
-## Deliver
+Copy the shape of [assets/report-spec.example.json](assets/report-spec.example.json). Generate one collision-resistant report ID and write the spec and report as `${PI_SESSION_TMPDIR:-${TMPDIR:-/tmp}}/agent-final-<report-id>.json` and `.html`.
+
+Text is minimal by design and the build enforces it:
+
+| Field | Limit | Content |
+| --- | --- | --- |
+| `title` | 70 chars | The outcome, as a statement |
+| `summary` | 160 chars, optional | One sentence that adds to the title; omit if it would repeat it |
+| `changes[].title` | 60 chars | What this change is |
+| `changes[].note` | 140 chars, optional | One tiny explainer: why it matters or what to look at. Omit when the visual speaks for itself |
+| `checks[].name`, `caveats[]` | 40 chars each | Checks run, with `pass`, `fail`, or `skip`; limitations and unverified behaviour |
+| `meta` | free | Commit, ticket ID and status, file count |
+
+Name checks; do not count test cases. Do not add text that restates the title, describes the report, or records that nothing happened. When the build rejects text as too long, cut words; do not split it across fields.
+
+## 4. Build and check
+
+```bash
+node <skill-dir>/scripts/build-report.mjs <spec.json>
+node <skill-dir>/scripts/validate-report.mjs <report.html>
+node <skill-dir>/scripts/render-report.mjs <report.html> "$PI_SESSION_TMPDIR/agent-final-<report-id>-captures"
+```
+
+The build reads images only from the session temporary directory or the repository, writes only inside the session temporary directory, and fails on unknown kinds, over-long text, missing hunks, and Mermaid syntax errors. Fix the spec and rebuild.
+
+The render check captures the report at desktop and mobile widths and reports overflow or clipping. Read both captures. Check that before and after are distinguishable at a glance, diagram text is legible, and nothing is clipped. Compare every visual with its source and remove anything unfaithful. If Playwright is missing, the scripts say so; add the caveat `Report not visually checked` rather than installing anything.
+
+## 5. Deliver
 
 Return only:
 

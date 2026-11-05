@@ -241,3 +241,38 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Git on the Mac executes what `.git` says, and the checkout is the one host path agents can write.
 **Revisit if:** Agents in the box need to commit routinely, or Paseo supports worktrees whose Git data stays outside the Mac checkout.
 **Evidence:** The user chose to "use current checkout / branch we work on", then "A: read-only .git" after the review.
+
+### SBX-37 · Kernel-confine each Pi command, not the whole Pi process
+`accepted` · 2026-11-04 · `01a1a759-7e9c-728e-8edb-03e25618abf1`
+**Decision:** On macOS the sandbox extension runs every model `bash` call and user `!` command under a Seatbelt profile it generates and passes to `/usr/bin/sandbox-exec`: home reads denied except an allowlist, Pi's `auth.json` and secret file names denied, writes limited to the checkout, temp and cache directories, localhost, LaunchServices and Apple Events denied, renames that would sidestep path rules denied, and credential-like environment variables and shell startup hooks removed. It refuses to run commands when `sandbox-exec` is missing; `PI_COMMAND_SANDBOX=off` is the explicit opt-out. Refused: nono and Anthropic's sandbox-runtime (both wrap Seatbelt; a dependency for about 200 lines of profile code, and nono confines the whole process); a whole-process sandbox first (a confined process cannot apply a different profile, measured as `sandbox_apply: Operation not permitted`, so commands would inherit Pi's read access to `auth.json`); an allow-by-default read policy (leaves sibling projects readable).
+**Why:** The lexical guard is not isolation (SBX-13); kernel confinement of commands closes subprocess and shell-indirection reads (PI-106) and SSH private-key reads (SBX-22) while keeping Pi's credentials out of reach and needing no launcher, so it applies to terminal, Paseo and subagent sessions automatically. Pi's own tools, extensions and MCP servers remain behind the lexical guard only.
+**Revisit if:** PI-125 adds a whole-process sandbox with a command broker, macOS removes `sandbox-exec`, or the allowlist breaks routine commands often enough that tuning outweighs the protection.
+**Evidence:** The user chose "Bash-only first", "Build our own", "Files now, proxy next" and "Deny by default".
+
+### SBX-38 · Azure CLI credentials only for approved commands
+`accepted` · 2026-11-04 · `01a1a759-7e9c-728e-8edb-03e25618abf1`
+**Decision:** The kernel command profile denies `~/.azure`. A model command whose command word is `az` or a Terraform program asks the user, with `Allow once`, `Allow Azure for this session` and `Deny`; an approval adds `~/.azure` read and write to that one command's profile. User `!` commands get it without a prompt. Refused: always allowing `~/.azure` (every command, including package install scripts, could read Azure refresh tokens while egress is open); a per-project opt-in (same exposure inside opted-in projects, plus configuration).
+**Why:** Azure tokens reach further than any other credential on the machine, and approval on visible commands matches SBX-22 and SBX-23. Scripts that call `az` internally run without the credentials and fail closed.
+**Revisit if:** PI-124 restricts egress enough that a leaked token cannot leave, or approval prompts for `terraform plan` become a burden.
+**Evidence:** The user asked to "do the az allow".
+
+### SBX-39 · Docker stays outside the command sandbox
+`accepted` · 2026-11-04 · `01a1a759-7e9c-728e-8edb-03e25618abf1`
+**Decision:** Sandboxed commands cannot reach `~/.docker`, the Colima socket or `/var/run/docker.sock`; the user runs Docker commands manually. Refused: approval-gated socket access, because an approved command can mount the home directory into a container and so is unconfined in practice.
+**Why:** Access to the Docker socket gives control of the host, so any socket grant voids the profile for that command.
+**Revisit if:** agents routinely need containers (for example test databases), in which case use paseo-box or an approval that states the command runs with full host access.
+**Evidence:** The user chose to "do the docker stuff manually".
+
+### SBX-40 · Allowlist the present report scripts as Node helpers
+`accepted` · 2026-11-04 · `01a1a7db-c13e-773a-940d-0554c9462f20`
+**Decision:** Extend SBX-17's allowlist with `present`'s `build-report.mjs`, `validate-report.mjs`, and `render-report.mjs`. Each restricts its own indirect inputs. `build-report.mjs` embeds only real image files (checked by signature) from the session temporary directory or the current repository. It runs Git only on the repository it was started in, for repository-relative, non-secret paths at plain revisions, and writes only inside the session temporary directory. `render-report.mjs` reads and writes only inside the session temporary directory, and both browser pages abort network requests. Refused: leaving `present` unusable outside coding-harness sessions.
+**Why:** The presenter runs in project sessions, and SBX-17's revisit condition is a Node helper that has a project-session need and restricts its indirect filesystem inputs safely. Regression tests in `build-report.test.mjs` cover each restriction.
+**Revisit if:** The spec gains a field that reads other files, or the scripts need to read outside these roots.
+**Evidence:** The user chose "Allowlist, restricted".
+
+### SBX-41 · Model commands reach the network only through an in-process hostname allowlist proxy
+`accepted` · 2026-11-04 · `01a1a87a-36ee-7452-a1db-ef508ab8ca47`
+**Decision:** The sandbox extension runs an HTTP CONNECT proxy inside the unconfined Pi process on an ephemeral loopback port, and a model command's Seatbelt profile denies every outbound IP connection except that port and the local service ports 3000, 4173, 5173, 8000 and 8080. The proxy tunnels only to allowlisted hostnames: HTTPS hosts of the model providers Pi has credentials for, the npm and PyPI registries, and GitHub (also `github.com:22` for Git over SSH). It refuses everything else, including IP literals, plain HTTP (also inside a port-443 tunnel) and names resolving to special-purpose addresses. A command approved for Azure credentials (SBX-38) also gets Azure and HashiCorp hosts through a proxy token revoked when that Bash call returns. User `!` commands keep open egress; a Pi started from one refuses its model's Bash commands because it cannot restrict their egress. DNS stays open. Refused: prompting for unlisted hosts (the acceptance criteria require refusal; a code change or an unconfined terminal covers the long tail); allowlisting `!` commands; blocking the mDNSResponder socket (tools that resolve before proxying would break); allowing port 5000 (macOS AirPlay Receiver listens there); a third-party proxy or srt (one dependency for about 250 lines, and srt confines whole processes, see SBX-37).
+**Why:** Seatbelt filters only by IP and port and rejects hostnames in network rules (measured: "host must be * or localhost"), so hostname control needs a proxy that commands cannot bypass. Running it in Pi's process means no launcher, and it ends with the session.
+**Revisit if:** PI-125 confines the whole Pi process (the proxy must then run outside it), refusals of legitimate hosts become frequent enough to justify a prompt or configuration, or DNS exfiltration becomes a practical concern.
+**Evidence:** The user chose "Open egress for !", "Refuse only" with a localhost port list, "Add for approved cmds", "Keep DNS, document gap", "Add to PI-124" and "Same without 5000".

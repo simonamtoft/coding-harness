@@ -4,10 +4,11 @@
  * Spawns a separate `pi` process for each subagent invocation,
  * giving it an isolated context window.
  *
- * Supports three modes:
+ * Supports four modes:
  *   - Single: { agent: "name", task: "..." }
  *   - Parallel: { tasks: [{ agent: "name", task: "..." }, ...] }
  *   - Chain: { chain: [{ agent: "name", task: "... {previous} ..." }, ...] }
+ *   - Review: { review: { intent: "...", base?, focus?, security?, defer? } }
  *
  * Uses JSON mode to capture structured output from subagents.
  */
@@ -22,12 +23,14 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
 	type ExtensionAPI,
+	type ExtensionContext,
 	getAgentDir,
 	getMarkdownTheme,
+	type Theme,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { type Component, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { type Static, Type } from "typebox";
 import {
 	type AgentConfig,
 	type AgentScope,
@@ -39,6 +42,7 @@ import {
 	validateReviewerAgents,
 	validateWriteWorkerCwds,
 } from "./agents.ts";
+import { paseoBatch, type PaseoBatch } from "./paseo-batch.ts";
 import {
 	releaseReviewAfterVerification,
 	requestReview,
@@ -188,11 +192,22 @@ interface SingleResult {
 	sessionFile?: string;
 }
 
-interface SubagentDetails {
-	mode: "single" | "parallel" | "chain";
+interface SubagentDetails extends Partial<PaseoBatch> {
+	mode: "single" | "parallel" | "chain" | "review";
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+}
+
+function withPaseoBatch(toolCallId: string, details: SubagentDetails): SubagentDetails {
+	const runs = details.results.map((result) => ({
+		agent: result.agent,
+		task: result.task,
+		status:
+			result.exitCode === -1 ? ("started" as const) : isFailedResult(result) ? ("failed" as const) : ("completed" as const),
+		sessionFile: result.sessionFile,
+	}));
+	return { ...details, ...paseoBatch(toolCallId, runs) };
 }
 
 function getFinalOutput(messages: Message[]): string {
@@ -553,6 +568,33 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 	default: "user",
 });
 
+const ReviewParams = Type.Object(
+	{
+		intent: Type.String({
+			minLength: 1,
+			description: "What the change must achieve: the requested outcome and acceptance criteria, independent of how the diff implements it.",
+		}),
+		base: Type.Optional(
+			Type.String({ description: "Git base ref to review against. Omit to resolve the repository default branch." }),
+		),
+		focus: Type.Optional(
+			Type.Array(Type.String(), {
+				description: "Files changed by the current task. Reviewers prioritize these paths while retaining the full patch as context.",
+			}),
+		),
+		security: Type.Optional(
+			Type.Boolean({ description: "Also run the security reviewer in parallel with correctness. Defaults to false." }),
+		),
+		defer: Type.Optional(
+			Type.Boolean({ description: "Defer an autonomous implementation review until automatic verification passes. Defaults to true." }),
+		),
+	},
+	{
+		description:
+			"Review mode: independent read-only review of the current Git changes by correctness-reviewer, plus security-reviewer when security is true. Uses user-scope reviewers; agentScope, confirmProjectAgents, and cwd do not apply.",
+	},
+);
+
 const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
@@ -563,6 +605,7 @@ const SubagentParams = Type.Object({
 		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
 	),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+	review: Type.Optional(ReviewParams),
 });
 
 async function prepareReviewBundle(
@@ -639,6 +682,244 @@ async function runVerifierChangeReview(
 	}
 }
 
+const REVIEW_GUIDELINES = [
+	"Use subagent review mode (review: {intent, focus, ...}) once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. When an automatic verifier is available, an autonomous review request is deferred until it passes; then call subagent review mode once with the preserved arguments. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
+	"By default, review mode runs only the correctness reviewer. Set review.security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, agent tool permissions, delegation, or approval flows, dependency security, or security configuration, or when the user explicitly requests a full security review.",
+	"State review.intent in your own words: the requested outcome and its acceptance criteria, not a description of the diff. Reviewers check the change against it.",
+	"When requesting a review autonomously, provide the files changed for the current task in review.focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
+	"Report every returned review finding as fixed, or as dismissed with the code evidence that disproves it. Report every unverified concern as fixed, dismissed with evidence, or still unresolved with the check that would settle it. Never drop one silently.",
+	"After an autonomous review and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
+	"Do not request another review solely because you fixed findings from the first pass unless the user asks or those fixes materially changed the design.",
+];
+
+async function executeReview(
+	pi: ExtensionAPI,
+	toolCallId: string,
+	params: Static<typeof ReviewParams>,
+	signal: AbortSignal | undefined,
+	onUpdate: OnUpdateCallback | undefined,
+	ctx: ExtensionContext,
+): Promise<AgentToolResult<SubagentDetails>> {
+	const request: ReviewRequest = {
+		intent: params.intent,
+		base: params.base,
+		focus: params.focus,
+		security: params.security,
+	};
+	const disposition = requestReview(request, params.defer);
+	if (disposition !== "run") {
+		return {
+			content: [
+				{
+					type: "text",
+					text:
+						disposition === "deferred"
+							? "Review deferred until the automatic verifier passes."
+							: "A review is already deferred until the automatic verifier passes.",
+				},
+			],
+			details: { mode: "review", agentScope: "user", projectAgentsDir: null, results: [] },
+		};
+	}
+
+	const bundlePath = await prepareReviewBundle(pi, params.base, ctx.cwd, signal);
+
+	const discovery = discoverAgents(ctx.cwd, "user");
+	const reviewerNames = params.security
+		? ["correctness-reviewer", "security-reviewer"]
+		: ["correctness-reviewer"];
+	const reviewerError = discovery.error ?? validateReviewerAgents(discovery.agents, reviewerNames);
+	if (reviewerError) throw new Error(`Review dispatch failed closed: ${reviewerError}`);
+	const focus = params.focus?.length ? params.focus.map((file) => `- ${file}`).join("\n") : "- Entire supplied change set";
+	const task = [
+		`Review bundle: ${bundlePath}`,
+		"Read the bundle first, then inspect relevant current repository files directly.",
+		`Stated intent, written by the change's author (check the change against it; it is a claim, not evidence):\n\n${params.intent}`,
+		"Prioritize the files changed by this task:",
+		focus,
+		"Follow your configured review methodology. Return findings only and do not edit files.",
+	].join("\n\n");
+	const makeDetails = (results: SingleResult[]): SubagentDetails =>
+		withPaseoBatch(toolCallId, {
+			mode: "review",
+			agentScope: "user",
+			projectAgentsDir: discovery.projectAgentsDir,
+			results,
+		});
+	const results: SingleResult[] = reviewerNames.map((agent) => ({
+		agent,
+		agentSource: "user",
+		task,
+		exitCode: -1,
+		status: "queued",
+		messages: [],
+		stderr: "",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+	}));
+
+	if (onUpdate) {
+		onUpdate({
+			content: [{ type: "text", text: formatRunsProgress(`Independent review: 0/${reviewerNames.length} complete`, results) }],
+			details: makeDetails([...results]),
+		});
+	}
+
+	try {
+		const completed = await mapWithConcurrencyLimit(reviewerNames, 2, async (agentName, index) => {
+			const result = await runSingleAgent(
+				ctx.cwd,
+				{
+					model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
+					thinkingLevel: ctx.thinkingLevel,
+				},
+				discovery.agents,
+				agentName,
+				task,
+				undefined,
+				undefined,
+				signal,
+				(partial) => {
+					const current = partial.details?.results[0];
+					if (!current || !onUpdate) return;
+					results[index] = current;
+					const complete = results.filter((reviewer) =>
+						reviewer.status === "completed" || reviewer.status === "failed",
+					).length;
+					onUpdate({
+						content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
+						details: makeDetails([...results]),
+					});
+				},
+				makeDetails,
+			);
+			results[index] = result;
+			if (onUpdate) {
+				const complete = results.filter((reviewer) =>
+					reviewer.status === "completed" || reviewer.status === "failed",
+				).length;
+				onUpdate({
+					content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
+					details: makeDetails([...results]),
+				});
+			}
+			return result;
+		});
+
+		const sections = completed.map((result) => {
+			const status = isFailedResult(result) ? "failed" : "completed";
+			return `### [${result.agent}] ${status}\n\n${truncateParallelOutput(getResultOutput(result))}`;
+		});
+		const successCount = completed.filter((result) => !isFailedResult(result)).length;
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nReporting reminder: If this review is part of an implementation task, the final response must carry forward the complete original-task summary and prior verification, then add the review outcome and any review-driven fixes. Report each finding as fixed or dismissed with the code evidence that disproves it, and each unverified concern as fixed, dismissed, or unresolved with the check that would settle it. Do not report only the latest findings or fixes.`,
+				},
+			],
+			details: makeDetails(completed),
+		};
+	} finally {
+		await fs.promises.rm(bundlePath, { force: true });
+	}
+}
+
+function renderReviewCall(args: Static<typeof ReviewParams>, theme: Theme): Text {
+	let text = theme.fg("toolTitle", theme.bold("subagent ")) + theme.fg("accent", "review");
+	if (args.security) text += `\n${theme.fg("dim", "correctness + security")}`;
+	if (args.focus?.length) {
+		text += `\n${theme.fg("dim", `${args.focus.length} focused file${args.focus.length === 1 ? "" : "s"}`)}`;
+	}
+	return new Text(text, 0, 0);
+}
+
+function renderReviewResult(result: AgentToolResult<unknown>, expanded: boolean, theme: Theme): Component {
+	const details = result.details as SubagentDetails | undefined;
+	if (!details?.results?.length) {
+		const content = result.content[0];
+		return new Text(content?.type === "text" ? content.text : "(no output)", 0, 0);
+	}
+
+	const completed = details.results.filter((reviewer) =>
+		reviewer.status === "completed" || reviewer.status === "failed",
+	).length;
+	const failed = details.results.filter((reviewer) => reviewer.status === "failed").length;
+	const isRunning = completed < details.results.length;
+	const headerIcon = isRunning
+		? theme.fg("warning", "⏳")
+		: failed > 0
+			? theme.fg("warning", "◐")
+			: theme.fg("success", "✓");
+	const container = new Container();
+	container.addChild(
+		new Text(
+			`${headerIcon} ${theme.fg("toolTitle", theme.bold("Independent review "))}${theme.fg("accent", `${completed}/${details.results.length} complete`)}`,
+			0,
+			0,
+		),
+	);
+
+	for (const reviewer of details.results) {
+		const status = reviewer.status ?? (reviewer.exitCode === -1 ? "running" : isFailedResult(reviewer) ? "failed" : "completed");
+		const statusIcon =
+			status === "queued"
+				? theme.fg("muted", "○")
+				: status === "running"
+					? theme.fg("warning", "⏳")
+					: status === "failed"
+						? theme.fg("error", "✗")
+						: theme.fg("success", "✓");
+		const elapsed = formatElapsed(reviewer);
+		const statusText = elapsed ? `${status} · ${elapsed}` : status;
+		container.addChild(new Spacer(1));
+		container.addChild(
+			new Text(
+				`${statusIcon} ${theme.fg("accent", theme.bold(reviewer.agent))} ${theme.fg("muted", statusText)}`,
+				0,
+				0,
+			),
+		);
+
+		const displayItems = getDisplayItems(reviewer.messages);
+		const toolCalls = displayItems.filter((item): item is Extract<DisplayItem, { type: "toolCall" }> =>
+			item.type === "toolCall",
+		);
+		const callsToShow = expanded ? toolCalls.slice(-COLLAPSED_ITEM_COUNT) : toolCalls.slice(-1);
+		for (const call of callsToShow) {
+			container.addChild(
+				new Text(
+					theme.fg("muted", "  → ") + formatToolCall(call.name, call.args, theme.fg.bind(theme)),
+					0,
+					0,
+				),
+			);
+		}
+
+		if (status === "queued") {
+			container.addChild(new Text(theme.fg("dim", "  Waiting to start"), 0, 0));
+		} else if (status === "running" && toolCalls.length === 0) {
+			container.addChild(new Text(theme.fg("dim", "  Starting reviewer…"), 0, 0));
+		} else if (status === "failed") {
+			container.addChild(new Text(theme.fg("error", `  ${getResultOutput(reviewer)}`), 0, 0));
+		}
+
+		if (expanded && status === "completed") {
+			const output = getFinalOutput(reviewer.messages);
+			if (output) {
+				container.addChild(new Spacer(1));
+				container.addChild(new Markdown(output.trim(), 0, 0, getMarkdownTheme()));
+			}
+		}
+	}
+
+	if (!expanded) {
+		container.addChild(new Spacer(1));
+		container.addChild(new Text(theme.fg("muted", "Ctrl+O to inspect reviewer activity and findings"), 0, 0));
+	}
+	return container;
+}
+
 export default function (pi: ExtensionAPI) {
 	registerVerifierChangeReviewer((request) => runVerifierChangeReview(pi, request));
 
@@ -650,7 +931,7 @@ export default function (pi: ExtensionAPI) {
 			{
 				customType: "deferred-review",
 				content:
-					`Automatic verification passed. Run review_changes exactly once now with these preserved arguments: ${args}. ` +
+					`Automatic verification passed. Run subagent exactly once now with review set to these preserved arguments: ${args}. ` +
 					"This is the deferred review; do not schedule another review after any review-driven fixes.",
 				display: true,
 			},
@@ -663,13 +944,15 @@ export default function (pi: ExtensionAPI) {
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
-			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder), review (independent read-only review of the current Git changes).",
 			`Default agent scope is "user" (from ${path.join(getAgentDir(), "agents")}).`,
 			`To enable project-local agents in ${CONFIG_DIR_NAME}/agents, set agentScope: "both" (or "project").`,
 		].join(" "),
+		promptSnippet: "Delegate isolated tasks to subagents, or run independent review (review mode) for a completed non-trivial change",
+		promptGuidelines: REVIEW_GUIDELINES,
 		parameters: SubagentParams,
 
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const dispatchDefaults: DispatchDefaults = {
 				model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
@@ -687,16 +970,22 @@ export default function (pi: ExtensionAPI) {
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
-			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle);
+			const hasReview = params.review !== undefined;
+			const modeCount = Number(hasChain) + Number(hasTasks) + Number(hasSingle) + Number(hasReview);
+
+			if (params.review && modeCount === 1) {
+				return executeReview(pi, toolCallId, params.review, signal, onUpdate, ctx);
+			}
 
 			const makeDetails =
 				(mode: "single" | "parallel" | "chain") =>
-				(results: SingleResult[]): SubagentDetails => ({
-					mode,
-					agentScope,
-					projectAgentsDir: discovery.projectAgentsDir,
-					results,
-				});
+				(results: SingleResult[]): SubagentDetails =>
+					withPaseoBatch(toolCallId, {
+						mode,
+						agentScope,
+						projectAgentsDir: discovery.projectAgentsDir,
+						results,
+					});
 
 			if (discovery.error) {
 				return {
@@ -964,6 +1253,7 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme, _context) {
+			if (args.review) return renderReviewCall(args.review, theme);
 			const scope: AgentScope = args.agentScope ?? "user";
 			if (args.chain && args.chain.length > 0) {
 				let text =
@@ -1009,7 +1299,8 @@ export default function (pi: ExtensionAPI) {
 
 		renderResult(result, { expanded }, theme, _context) {
 			const details = result.details as SubagentDetails | undefined;
-			if (!details || details.results.length === 0) {
+			if (details?.mode === "review") return renderReviewResult(result, expanded, theme);
+			if (!details?.results?.length) {
 				const text = result.content[0];
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
@@ -1276,254 +1567,6 @@ export default function (pi: ExtensionAPI) {
 
 			const text = result.content[0];
 			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
-		},
-	});
-
-	pi.registerTool({
-		name: "review_changes",
-		label: "Review Changes",
-		description:
-			"Run an independent correctness review over the current Git changes, optionally adding a parallel security review. The reviewers are read-only and use isolated Pi contexts.",
-		promptSnippet: "Run independent review for a completed non-trivial change",
-		promptGuidelines: [
-			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. When an automatic verifier is available, an autonomous review request is deferred until it passes; then call review_changes once with the preserved arguments. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
-			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, agent tool permissions, delegation, or approval flows, dependency security, or security configuration, or when the user explicitly requests a full security review.",
-			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
-			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
-			"Do not call review_changes again solely because you fixed findings from its first pass unless the user asks or those fixes materially changed the design.",
-		],
-		parameters: Type.Object({
-			base: Type.Optional(
-				Type.String({ description: 'Git base ref to review against. Omit to resolve the repository default branch.' }),
-			),
-			focus: Type.Optional(
-				Type.Array(Type.String(), {
-					description: "Files changed by the current task. Reviewers prioritize these paths while retaining the full patch as context.",
-				}),
-			),
-			security: Type.Optional(
-				Type.Boolean({ description: "Also run the security reviewer in parallel with correctness. Defaults to false." }),
-			),
-			defer: Type.Optional(
-				Type.Boolean({ description: "Defer an autonomous implementation review until automatic verification passes. Defaults to true." }),
-			),
-		}),
-
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			const request: ReviewRequest = {
-				base: params.base,
-				focus: params.focus,
-				security: params.security,
-			};
-			const disposition = requestReview(request, params.defer);
-			if (disposition !== "run") {
-				return {
-					content: [
-						{
-							text:
-								disposition === "deferred"
-									? "Review deferred until the automatic verifier passes."
-									: "A review is already deferred until the automatic verifier passes.",
-							},
-					],
-					details: { deferred: true, request },
-				};
-			}
-
-			const bundlePath = await prepareReviewBundle(pi, params.base, ctx.cwd, signal);
-
-			const discovery = discoverAgents(ctx.cwd, "user");
-			const reviewerNames = params.security
-				? ["correctness-reviewer", "security-reviewer"]
-				: ["correctness-reviewer"];
-			const reviewerError = discovery.error ?? validateReviewerAgents(discovery.agents, reviewerNames);
-			if (reviewerError) throw new Error(`Review dispatch failed closed: ${reviewerError}`);
-			const focus = params.focus?.length ? params.focus.map((file) => `- ${file}`).join("\n") : "- Entire supplied change set";
-			const task = [
-				`Review bundle: ${bundlePath}`,
-				"Read the bundle first, then inspect relevant current repository files directly.",
-				"Prioritize the files changed by this task:",
-				focus,
-				"Follow your configured review methodology. Return findings only and do not edit files.",
-			].join("\n\n");
-			const makeDetails = (results: SingleResult[]): SubagentDetails => ({
-				mode: reviewerNames.length > 1 ? "parallel" : "single",
-				agentScope: "user",
-				projectAgentsDir: discovery.projectAgentsDir,
-				results,
-			});
-			const results: SingleResult[] = reviewerNames.map((agent) => ({
-				agent,
-				agentSource: "user",
-				task,
-				exitCode: -1,
-				status: "queued",
-				messages: [],
-				stderr: "",
-				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-			}));
-
-			if (onUpdate) {
-				onUpdate({
-					content: [{ type: "text", text: formatRunsProgress(`Independent review: 0/${reviewerNames.length} complete`, results) }],
-					details: makeDetails([...results]),
-				});
-			}
-
-			try {
-				const completed = await mapWithConcurrencyLimit(reviewerNames, 2, async (agentName, index) => {
-					const result = await runSingleAgent(
-						ctx.cwd,
-						{
-							model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
-							thinkingLevel: ctx.thinkingLevel,
-						},
-						discovery.agents,
-						agentName,
-						task,
-						undefined,
-						undefined,
-						signal,
-						(partial) => {
-							const current = partial.details?.results[0];
-							if (!current || !onUpdate) return;
-							results[index] = current;
-							const complete = results.filter((reviewer) =>
-								reviewer.status === "completed" || reviewer.status === "failed",
-							).length;
-							onUpdate({
-								content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
-								details: makeDetails([...results]),
-							});
-						},
-						makeDetails,
-					);
-					results[index] = result;
-					if (onUpdate) {
-						const complete = results.filter((reviewer) =>
-							reviewer.status === "completed" || reviewer.status === "failed",
-						).length;
-						onUpdate({
-							content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
-							details: makeDetails([...results]),
-						});
-					}
-					return result;
-				});
-
-				const sections = completed.map((result) => {
-					const status = isFailedResult(result) ? "failed" : "completed";
-					return `### [${result.agent}] ${status}\n\n${truncateParallelOutput(getResultOutput(result))}`;
-				});
-				const successCount = completed.filter((result) => !isFailedResult(result)).length;
-
-				return {
-					content: [
-						{
-							type: "text",
-							text: `Independent review: ${successCount}/${completed.length} reviewers succeeded\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nReporting reminder: If this review is part of an implementation task, the final response must carry forward the complete original-task summary and prior verification, then add the review outcome and any review-driven fixes. Do not report only the latest findings or fixes.`,
-						},
-					],
-					details: makeDetails(completed),
-				};
-			} finally {
-				await fs.promises.rm(bundlePath, { force: true });
-			}
-		},
-
-		renderCall(args, theme) {
-			let text = theme.fg("toolTitle", theme.bold("review_changes"));
-			if (args.security) text += `\n${theme.fg("dim", "correctness + security")}`;
-			if (args.focus?.length) {
-				text += `\n${theme.fg("dim", `${args.focus.length} focused file${args.focus.length === 1 ? "" : "s"}`)}`;
-			}
-			return new Text(text, 0, 0);
-		},
-
-		renderResult(result, { expanded }, theme) {
-			const details = result.details as SubagentDetails | undefined;
-			if (!details?.results?.length) {
-				const content = result.content[0];
-				return new Text(content?.type === "text" ? content.text : "(no output)", 0, 0);
-			}
-
-			const completed = details.results.filter((reviewer) =>
-				reviewer.status === "completed" || reviewer.status === "failed",
-			).length;
-			const failed = details.results.filter((reviewer) => reviewer.status === "failed").length;
-			const isRunning = completed < details.results.length;
-			const headerIcon = isRunning
-				? theme.fg("warning", "⏳")
-				: failed > 0
-					? theme.fg("warning", "◐")
-					: theme.fg("success", "✓");
-			const container = new Container();
-			container.addChild(
-				new Text(
-					`${headerIcon} ${theme.fg("toolTitle", theme.bold("Independent review "))}${theme.fg("accent", `${completed}/${details.results.length} complete`)}`,
-					0,
-					0,
-				),
-			);
-
-			for (const reviewer of details.results) {
-				const status = reviewer.status ?? (reviewer.exitCode === -1 ? "running" : isFailedResult(reviewer) ? "failed" : "completed");
-				const statusIcon =
-					status === "queued"
-						? theme.fg("muted", "○")
-						: status === "running"
-							? theme.fg("warning", "⏳")
-							: status === "failed"
-								? theme.fg("error", "✗")
-								: theme.fg("success", "✓");
-				const elapsed = formatElapsed(reviewer);
-				const statusText = elapsed ? `${status} · ${elapsed}` : status;
-				container.addChild(new Spacer(1));
-				container.addChild(
-					new Text(
-						`${statusIcon} ${theme.fg("accent", theme.bold(reviewer.agent))} ${theme.fg("muted", statusText)}`,
-						0,
-						0,
-					),
-				);
-
-				const displayItems = getDisplayItems(reviewer.messages);
-				const toolCalls = displayItems.filter((item): item is Extract<DisplayItem, { type: "toolCall" }> =>
-					item.type === "toolCall",
-				);
-				const callsToShow = expanded ? toolCalls.slice(-COLLAPSED_ITEM_COUNT) : toolCalls.slice(-1);
-				for (const call of callsToShow) {
-					container.addChild(
-						new Text(
-							theme.fg("muted", "  → ") + formatToolCall(call.name, call.args, theme.fg.bind(theme)),
-							0,
-							0,
-						),
-					);
-				}
-
-				if (status === "queued") {
-					container.addChild(new Text(theme.fg("dim", "  Waiting to start"), 0, 0));
-				} else if (status === "running" && toolCalls.length === 0) {
-					container.addChild(new Text(theme.fg("dim", "  Starting reviewer…"), 0, 0));
-				} else if (status === "failed") {
-					container.addChild(new Text(theme.fg("error", `  ${getResultOutput(reviewer)}`), 0, 0));
-				}
-
-				if (expanded && status === "completed") {
-					const output = getFinalOutput(reviewer.messages);
-					if (output) {
-						container.addChild(new Spacer(1));
-						container.addChild(new Markdown(output.trim(), 0, 0, getMarkdownTheme()));
-					}
-				}
-			}
-
-			if (!expanded) {
-				container.addChild(new Spacer(1));
-				container.addChild(new Text(theme.fg("muted", "Ctrl+O to inspect reviewer activity and findings"), 0, 0));
-			}
-			return container;
 		},
 	});
 }

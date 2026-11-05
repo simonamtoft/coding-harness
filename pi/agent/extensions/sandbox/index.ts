@@ -2,8 +2,13 @@ import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, rea
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
-import type { ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
-import { getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import type { BashSpawnContext, ExtensionAPI, ToolCallEvent } from "@earendil-works/pi-coding-agent";
+import {
+  createBashToolDefinition,
+  createLocalBashOperations,
+  getAgentDir,
+  isToolCallEventType,
+} from "@earendil-works/pi-coding-agent";
 import {
   deniedBashCommandReason,
   hasPluginWorkspaceAccess,
@@ -26,8 +31,30 @@ import {
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
-import { confirmedCommand, requestCommandConfirmation } from "./confirmed-commands.ts";
+import {
+  azureCredentialProgram,
+  confirmedCommand,
+  requestAzureCredentials,
+  requestCommandConfirmation,
+} from "./confirmed-commands.ts";
 import { registerRecentSessionsTool } from "./recent-sessions-tool.ts";
+import {
+  commandSandboxMode,
+  commandSandboxProfile,
+  commandSandboxScope,
+  confinedEnvironment,
+  confinedShellCommand,
+  DISABLE_VARIABLE,
+} from "./kernel-sandbox.ts";
+import {
+  AZURE_EGRESS_HOSTS,
+  BASE_EGRESS_HOSTS,
+  type EgressProxy,
+  type HostRule,
+  providerHostRules,
+  proxyEnvironment,
+  startEgressProxy,
+} from "./egress-proxy.ts";
 import { currentRepositoryRoot, isRepositorySessionTranscript, isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
 
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -44,6 +71,17 @@ const PI_PACKAGES_ROOT = resolve(
   "tools/image/packages",
 );
 const PLAYWRIGHT_BROWSERS_ROOT = playwrightBrowsersRoot();
+const configuredAzureConfigRoot = resolve(homedir(), ".azure");
+const AZURE_CONFIG_ROOT = existsSync(configuredAzureConfigRoot)
+  ? realpathSync.native(configuredAzureConfigRoot)
+  : configuredAzureConfigRoot;
+
+/** Extra filesystem roots and egress hosts the user approved for one command's next run. */
+interface CommandGrant {
+  roots: string[];
+  hosts: readonly HostRule[];
+}
+const AZURE_GRANT: CommandGrant = { roots: [AZURE_CONFIG_ROOT], hosts: AZURE_EGRESS_HOSTS };
 const configuredResearchVaultRoot = resolve(homedir(), "research");
 const RESEARCH_VAULT_ROOT = existsSync(configuredResearchVaultRoot)
   ? realpathSync.native(configuredResearchVaultRoot)
@@ -147,7 +185,9 @@ export function createSandboxGuard(
   cwd = process.cwd(),
   getSessionTempDirectory: () => string | undefined = () => undefined,
   researchVaultRoot = RESEARCH_VAULT_ROOT,
+  grantCommand: (command: string, grant: CommandGrant) => void = () => {},
 ) {
+  let azureApprovedForSession = false;
   const root = realpathSync.native(cwd);
   const repositoryRoot = currentRepositoryRoot(root);
   const resolvedResearchVaultRoot = realpathForCheck(researchVaultRoot);
@@ -255,6 +295,7 @@ export function createSandboxGuard(
         if (!await requestResearchVaultConfirmation(ctx, "Bash hash update", resolvedResearchVaultRoot)) {
           return block("research-vault Bash mutation denied by user");
         }
+        grantCommand(event.input.command, { roots: [resolvedResearchVaultRoot], hosts: [] });
         return undefined;
       }
       if (vaultOperation === "read") return undefined;
@@ -315,16 +356,150 @@ export function createSandboxGuard(
           ? `${confirmation.program} command denied by user`
           : `${confirmation.program} commands require interactive approval`);
       }
+
+      // Without a UI the command still runs, confined without the credentials.
+      const azureProgram = azureCredentialProgram(event.input.command);
+      if (azureProgram && (azureApprovedForSession || ctx.hasUI)) {
+        const approval = azureApprovedForSession
+          ? "session"
+          : await requestAzureCredentials(ctx, azureProgram, event.input.command);
+        if (approval === "denied") return block(`${azureProgram} access to Azure credentials denied by user`);
+        if (approval === "session") azureApprovedForSession = true;
+        grantCommand(event.input.command, AZURE_GRANT);
+      }
     }
 
     return undefined;
   };
 }
 
+/**
+ * `commandGrants` maps exact command texts to what the user approved for that command's next run. Model commands
+ * reach the network only through the session's egress proxy; commands the user types keep open egress.
+ */
+function registerCommandSandbox(
+  pi: ExtensionAPI,
+  getSessionTempDirectory: () => string | undefined,
+  commandGrants: Map<string, CommandGrant>,
+): void {
+  const mode = commandSandboxMode();
+  if (mode.kind === "unconfined") {
+    if (mode.reason === "disabled") {
+      pi.on("session_start", (_event, ctx) => {
+        ctx.ui.notify(`Command sandbox disabled by ${DISABLE_VARIABLE}=off: Bash runs unconfined`, "warning");
+      });
+    }
+    // A Pi started from a user `!` command inherits its open egress and cannot restrict its own model commands.
+    if (mode.reason === "already-confined" && mode.inheritedEgress === "open") {
+      pi.registerTool(createBashToolDefinition(process.cwd(), {
+        spawnHook: () => {
+          throw new Error("This Pi runs inside a command sandbox with open network access (started from a ! command), "
+            + "so it cannot restrict its model's commands; refusing to run them. Start Pi from a terminal instead.");
+        },
+      }));
+    }
+    return;
+  }
+
+  const root = realpathSync.native(process.cwd());
+  const home = realpathSync.native(homedir());
+  let proxy: EgressProxy | undefined;
+  /** Proxy grant tokens per command text, oldest first, revoked when that Bash call returns. */
+  const grantTokens = new Map<string, string[]>();
+  const confine = ({ command, cwd, env }: BashSpawnContext, egress: "proxied" | "open"): BashSpawnContext => {
+    if (mode.kind === "unavailable") {
+      throw new Error(`Command sandbox unavailable (${mode.reason}); refusing to run unconfined. `
+        + `Start Pi with ${DISABLE_VARIABLE}=off to run commands without it.`);
+    }
+    if (egress === "proxied" && !proxy) {
+      throw new Error("Command egress proxy is not running; refusing to run with open network access. "
+        + `Start Pi with ${DISABLE_VARIABLE}=off to run commands without the sandbox.`);
+    }
+    const sessionTempDirectory = getSessionTempDirectory();
+    const grant = commandGrants.get(command);
+    commandGrants.delete(command);
+    const egressProxy = egress === "proxied" ? proxy : undefined;
+    let token: string | undefined;
+    if (egressProxy && grant?.hosts.length) {
+      token = egressProxy.grant(grant.hosts);
+      grantTokens.set(command, [...(grantTokens.get(command) ?? []), token]);
+    }
+    const proxyVariables = egressProxy ? proxyEnvironment(egressProxy.port, token) : {};
+    const profile = commandSandboxProfile(commandSandboxScope({
+      root,
+      home,
+      agentDirectory: realpathForCheck(getAgentDir()),
+      sessionTempDirectory,
+      sessionTempParent: TEMP_PARENT && realpathForCheck(TEMP_PARENT),
+      systemTempDirectory: TEMP_ROOT,
+      codingHarnessRoot: CODING_HARNESS_ROOT,
+      researchVaultRoot: RESEARCH_VAULT_ROOT,
+      approvedRoots: grant?.roots ?? [],
+      egressProxyPort: egressProxy?.port,
+    }));
+    return {
+      command: confinedShellCommand(command, profile),
+      cwd,
+      env: confinedEnvironment(env, sessionTempDirectory, egress, proxyVariables),
+    };
+  };
+
+  if (mode.kind === "confine") {
+    pi.on("session_start", async (_event, ctx) => {
+      try {
+        const providers = providerHostRules(ctx.modelRegistry.getAvailable().map((model) => model.baseUrl));
+        proxy = await startEgressProxy({ rules: [...BASE_EGRESS_HOSTS, ...providers] });
+      } catch (error) {
+        ctx.ui.notify(`Command egress proxy failed to start: ${error instanceof Error ? error.message : String(error)}. `
+          + "Model Bash commands will be refused.", "error");
+      }
+    });
+    pi.on("tool_result", (event) => {
+      if (event.toolName !== "bash" || typeof event.input.command !== "string") return undefined;
+      const tokens = grantTokens.get(event.input.command);
+      const token = tokens?.shift();
+      if (tokens?.length === 0) grantTokens.delete(event.input.command);
+      if (token) proxy?.revoke(token);
+      return undefined;
+    });
+    pi.on("session_shutdown", async () => {
+      const running = proxy;
+      proxy = undefined;
+      grantTokens.clear();
+      await running?.close();
+    });
+  }
+
+  pi.registerTool(createBashToolDefinition(root, { spawnHook: (context) => confine(context, "proxied") }));
+  const local = createLocalBashOperations();
+  pi.on("user_bash", () => ({
+    operations: {
+      exec(command, cwd, options) {
+        // A command the user typed is their own approval for the Azure credentials.
+        if (azureCredentialProgram(command)) commandGrants.set(command, AZURE_GRANT);
+        const confined = confine({ command, cwd, env: options.env ?? process.env }, "open");
+        return local.exec(confined.command, confined.cwd, { ...options, env: confined.env });
+      },
+    },
+  }));
+  if (mode.kind === "unavailable") {
+    pi.on("session_start", (_event, ctx) => {
+      ctx.ui.notify(`Command sandbox unavailable (${mode.reason}): Bash commands will be refused`, "error");
+    });
+  }
+}
+
 export default function sandboxExtension(pi: ExtensionAPI) {
   registerRecentSessionsTool(pi, process.cwd());
   let sessionTempDirectory: string | undefined;
-  const guard = createSandboxGuard(process.cwd(), () => sessionTempDirectory);
+  const commandGrants = new Map<string, CommandGrant>();
+  const guard = createSandboxGuard(
+    process.cwd(),
+    () => sessionTempDirectory,
+    RESEARCH_VAULT_ROOT,
+    (command, grant) => commandGrants.set(command, grant),
+  );
+  registerCommandSandbox(pi, () => sessionTempDirectory, commandGrants);
 
   pi.on("session_start", (_event, ctx) => {
     try {
