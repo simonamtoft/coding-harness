@@ -104,3 +104,10 @@ Decision ledger area. Entry ids use the `EXT-` prefix; see `../DECISIONS.md` for
 **Why:** An always-loaded instruction bullet costs every session for a rare action (compare OWN-08), and a per-repository file would scatter notes into client repositories; the sandbox also blocks those sessions from writing a central file. A tool writes in-process, past the sandbox, and fills in cwd and session id itself. Transcript mining misses friction only the agent notices, such as unclear instructions or missing skills. Entries name local and client projects, so the file stays local. Claude has no extension mechanism to reuse.
 **Revisit if:** Entries are mostly noise or agents rarely call the tool; the review needs evidence that self-reports miss, such as denial counts; or Claude sessions become a significant source of friction.
 **Evidence:** User chose "Agent tool", "Repo root, untracked", and "Pi only".
+
+### EXT-17 · Paseo adopted: the trial branch is merged into main
+`accepted` · 2026-11-05 · `01a1aad3`
+**Decision:** Paseo is adopted as the way to run Pi sessions. The `paseo-trial` branch is merged into `main` (`ba2dd74`), so EXT-12 to EXT-15 now apply on `main` rather than on the trial branch: Paseo owns worktrees, `pi-worktree-agents` stays out of `pi/agent/packages.txt`, and `paseo/config.json` is linked into `~/.paseo`. Rejected: dropping Paseo and rebuilding `main` without the Paseo commits.
+**Why:** The trial (PI-105) showed the harness working under Paseo, and the follow-up Paseo work (question form, subagent batches, paseo-box) was built on the branch. Merging it settles PI-108, which had held `main` back from being pushed until this decision was made.
+**Revisit if:** Paseo stops driving Pi over RPC, removes worktrees holding uncommitted work, or the per-worktree browser origin gap (PI-107) cannot be closed.
+**Evidence:** User merged the Paseo branch and asked to close PI-108.
