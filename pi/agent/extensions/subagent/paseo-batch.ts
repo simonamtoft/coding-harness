@@ -23,8 +23,18 @@ type PaseoChildStatus = "started" | "completed" | "failed";
 export interface PaseoChildRun {
 	agent: string;
 	task: string;
+	label?: string;
 	status: PaseoChildStatus;
 	sessionFile?: string;
+}
+
+// Paseo shows the child's `task` as the one-line row description under the agent name; the full task stays
+// visible as the first message of the child's transcript.
+const MAX_ROW_DESCRIPTION = 80;
+
+function rowDescription(text: string): string {
+	const firstLine = text.split("\n").find((line) => line.trim() !== "")?.trim().replace(/\s+/g, " ") ?? "";
+	return firstLine.length > MAX_ROW_DESCRIPTION ? `${firstLine.slice(0, MAX_ROW_DESCRIPTION - 1)}…` : firstLine;
 }
 
 /** Returns undefined for a call with no child runs, which the adapter's schema rejects. */
@@ -36,7 +46,7 @@ export function paseoBatch(toolCallId: string, runs: readonly PaseoChildRun[]): 
 			id: `${toolCallId}:${index}`,
 			name: run.agent,
 			agent: run.agent,
-			task: run.task,
+			task: rowDescription(run.label ?? run.task),
 			status: run.status,
 			...(run.sessionFile ? { sessionFile: run.sessionFile } : {}),
 		})),

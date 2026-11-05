@@ -186,3 +186,10 @@ Decision ledger area. Entry ids use the `SUB-` prefix; see `../DECISIONS.md` for
 **Why:** Paseo maps Pi tool calls through a hardcoded, name-keyed adapter registry and shows every other tool as Input/Output JSON of the whole `{content, details}` result, so review results and parallel or chain subagent results appeared as walls of collapsed JSON. Only the name `subagent` reaches an adapter that renders child rows; the edxeth/pi-subagents adapter (Paseo 0.15.0+) accepts the batch shape for any arguments and ignores extra keys. Costs accepted: one larger model-facing tool instead of a dedicated review tool, and dependence on a third-party adapter's schema.
 **Revisit if:** Paseo shows text content for unrecognised Pi tools or gains a plugin API for tool mapping; the edxeth adapter's Batch schema changes or is removed; or the merged tool measurably degrades when models choose to review.
 **Evidence:** The user chose "Mimic adapters", then asked "we don't need to keep its name? Unless an important reason for it?", then chose "Merge into subagent".
+
+### SUB-28 · Paseo rows show an optional model-written label, not the full task
+`accepted` · 2026-11-05 · `01a1aad3`
+**Decision:** `subagent` accepts an optional `label` (3–6 words) on single calls, parallel items, and chain steps. `paseo-batch.ts` puts the label into `children[].task`; without one it uses the review intent in review mode, or the task's first line, capped at 80 characters. The full task is unchanged in `results[].task` and in the child's transcript. Rejected: truncation only, which still leads rows with file paths; a required label, which would make existing call shapes fail validation.
+**Why:** Paseo's edxeth/pi-subagents adapter titles each row with `children[].agent` and uses `children[].task` as the row description, and has no other label field, so the full delegated prompt with its paths made rows hard to tell apart.
+**Revisit if:** Paseo adds a dedicated title or label field to its sub-agent rows, or models rarely supply `label`.
+**Evidence:** User chose "Optional label param".

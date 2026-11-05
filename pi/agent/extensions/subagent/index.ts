@@ -199,10 +199,12 @@ interface SubagentDetails extends Partial<PaseoBatch> {
 	results: SingleResult[];
 }
 
-function withPaseoBatch(toolCallId: string, details: SubagentDetails): SubagentDetails {
-	const runs = details.results.map((result) => ({
+/** `labels` are positional: label i belongs to result i (parallel task i, chain step i, or the single run). */
+function withPaseoBatch(toolCallId: string, details: SubagentDetails, labels: readonly (string | undefined)[]): SubagentDetails {
+	const runs = details.results.map((result, index) => ({
 		agent: result.agent,
 		task: result.task,
+		label: labels[index],
 		status:
 			result.exitCode === -1 ? ("started" as const) : isFailedResult(result) ? ("failed" as const) : ("completed" as const),
 		sessionFile: result.sessionFile,
@@ -551,15 +553,20 @@ async function runSingleAgent(
 	}
 }
 
+const LABEL_DESCRIPTION =
+	"Short title of 3-6 words for this run, shown in Paseo's sub-agent list (e.g. \"Find gate injection\"). Defaults to the start of the task.";
+
 const TaskItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task to delegate to the agent" }),
+	label: Type.Optional(Type.String({ description: LABEL_DESCRIPTION })),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
 	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
+	label: Type.Optional(Type.String({ description: LABEL_DESCRIPTION })),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
@@ -598,6 +605,7 @@ const ReviewParams = Type.Object(
 const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
+	label: Type.Optional(Type.String({ description: LABEL_DESCRIPTION })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
 	agentScope: Type.Optional(AgentScopeSchema),
@@ -745,7 +753,7 @@ async function executeReview(
 			agentScope: "user",
 			projectAgentsDir: discovery.projectAgentsDir,
 			results,
-		});
+		}, reviewerNames.map(() => params.intent));
 	const results: SingleResult[] = reviewerNames.map((agent) => ({
 		agent,
 		agentSource: "user",
@@ -985,7 +993,12 @@ export default function (pi: ExtensionAPI) {
 						agentScope,
 						projectAgentsDir: discovery.projectAgentsDir,
 						results,
-					});
+					}, runLabels(mode));
+			const runLabels = (mode: "single" | "parallel" | "chain"): (string | undefined)[] => {
+				if (mode === "chain") return (params.chain ?? []).map((step) => step.label);
+				if (mode === "parallel") return (params.tasks ?? []).map((task) => task.label);
+				return [params.label];
+			};
 
 			if (discovery.error) {
 				return {
