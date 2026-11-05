@@ -5,6 +5,42 @@ user-authored resources together while leaving credentials, sessions, caches,
 installed packages, and other runtime state in their native harness
 directories.
 
+## Supported setups
+
+Two ways of running Pi are kept working. A change made for one must not
+break the other:
+
+| Setup | How Pi runs | What it adds |
+| --- | --- | --- |
+| Pi in the CLI | `pi` in a terminal (TUI) | The baseline: all of `~/.pi/agent` with no other tools needed. |
+| Pi inside [Paseo](https://paseo.sh/) | Paseo runs `pi --mode rpc` | Paseo's desktop/mobile UI, worktrees, and the isolated [paseo-box](paseo/box/README.md). See [Paseo trial](#paseo-trial). |
+
+The two load the same instructions, skills, extensions and prompts. Where they
+differ is how things are shown: extensions such as `ask-question`,
+`verify-turn` and `subagent` render in the TUI and also send output in a shape
+Paseo can display. The automatic checks cover both only in part:
+`bun scripts/pi-load-check.ts` starts Pi in RPC mode, and the extension tests
+cover the TUI and RPC code paths separately. Try a change in both after it
+alters what an extension shows.
+
+### Claude Code: frozen
+
+The Claude Code harness has been frozen since November 2026 (OWN-16). It was
+last in regular use in August 2026. `link.sh` still links `~/.claude`, so it
+still loads the following, with these limits:
+
+- **Shared skills and `shared/AGENTS.md`:** usable, and still edited for Pi.
+  Since August 2026 they have been checked only in Pi, so Claude variants
+  (such as `Task` calls in place of `subagent`) may be out of date.
+- **Sandbox, hooks, settings and agents in `claude/`:** not updated. Pi's
+  later protections are not in Claude: the kernel command sandbox (SBX-37),
+  `.env` denial (SBX-02) and its exceptions, and the SSH confirmation
+  (SBX-22). The hook test suites still run in `.agent/verify.sh`, so
+  existing behaviour cannot regress unnoticed.
+
+Before using Claude Code again, review `claude/hooks/README.md` against
+`decisions/sandbox.md`.
+
 ## Install links
 
 ```sh
