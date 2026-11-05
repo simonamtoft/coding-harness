@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,8 +12,12 @@ import {
   confinedEnvironment,
   confinedShellCommand,
   DISABLE_VARIABLE,
+  EGRESS_VARIABLE,
   homeToolchainRoots,
+  LOCAL_SERVICE_PORTS,
+  type CommandSandboxScope,
 } from "./kernel-sandbox.ts";
+import { proxyEnvironment, startEgressProxy } from "./egress-proxy.ts";
 
 const base = realpathSync.native(mkdtempSync(join(tmpdir(), "kernel-sandbox-")));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
@@ -54,6 +58,7 @@ function fixture() {
     systemTempDirectory: join(base, "system-temp"),
     codingHarnessRoot: join(home, "coding-harness"),
     researchVaultRoot: join(home, "research"),
+    egressProxyPort: undefined,
   });
   return { home, root, sibling, agentDirectory, sessionTempDirectory, otherSession, profile: commandSandboxProfile(scope) };
 }
@@ -77,6 +82,7 @@ describe("commandSandboxProfile", () => {
       gitCommonDirectory: undefined,
       secretScanRoots: [],
       sessionDirectory: undefined,
+      egressProxyPort: undefined,
     });
     const order = ['(deny file-read-data\n  (subpath "/Users/u")', '(allow file-read-data\n  (subpath "/Users/u/project")',
       '(subpath "/Users/u/project/secret")', '(deny file-write*\n  (subpath "/")', '(allow file-write*',
@@ -89,9 +95,42 @@ describe("commandSandboxProfile", () => {
     const profile = commandSandboxProfile({
       home: "/h", unreadableRoots: ['/h/a"b\\c'], readable: [], writable: [], unreadable: [], unwritable: [],
       readableExceptions: [], unwritableLiterals: [], gitCommonDirectory: undefined,
-      secretScanRoots: [], sessionDirectory: undefined,
+      secretScanRoots: [], sessionDirectory: undefined, egressProxyPort: undefined,
     });
     expect(profile).toContain('(subpath "/h/a\\"b\\\\c")');
+  });
+});
+
+function networkOnlyScope(egressProxyPort: number | undefined): CommandSandboxScope {
+  return {
+    home: "/h", unreadableRoots: [], readable: [], writable: [], unreadable: [], unwritable: [],
+    readableExceptions: [], unwritableLiterals: [], gitCommonDirectory: undefined,
+    secretScanRoots: [], sessionDirectory: undefined, egressProxyPort,
+  };
+}
+
+describe("network rules", () => {
+  test("open egress denies localhost except the local service ports", () => {
+    const profile = commandSandboxProfile(networkOnlyScope(undefined));
+    expect(profile).toContain('(deny network-outbound\n  (remote ip "localhost:*")');
+    expect(profile).not.toContain('"*:*"');
+    for (const port of LOCAL_SERVICE_PORTS) expect(profile).toContain(`(remote ip "localhost:${port}")`);
+    expect(profile.indexOf("(deny network-outbound")).toBeLessThan(profile.indexOf("(allow network-outbound"));
+  });
+
+  test("proxied egress denies every outbound IP connection except the proxy and local service ports", () => {
+    const profile = commandSandboxProfile(networkOnlyScope(51234));
+    expect(profile).toContain('(deny network-outbound\n  (remote ip "*:*")');
+    expect(profile).toContain('(remote ip "localhost:51234")');
+    expect(profile.indexOf('"*:*"')).toBeLessThan(profile.indexOf('"localhost:51234"'));
+  });
+
+  // Inside a confined process a valid profile fails only at sandbox_apply, so this also runs in Pi sessions.
+  test.skipIf(process.platform !== "darwin").each([undefined, 51234])("Seatbelt compiles the profile (proxy port %p)", (port) => {
+    const result = spawnSync("/usr/bin/sandbox-exec", ["-p", commandSandboxProfile(networkOnlyScope(port)), "/usr/bin/true"], {
+      encoding: "utf8",
+    });
+    expect(result.status === 0 || result.stderr.includes("sandbox_apply")).toBe(true);
   });
 });
 
@@ -114,15 +153,34 @@ describe("confinedEnvironment", () => {
         BASH_ENV: "/h/project/startup.sh", ENV: "/h/x", "BASH_FUNC_exec%%": "() { :; }",
       },
       "/tmp/session",
+      "open",
     );
-    expect(env).toEqual({ PATH: "/bin", HOME: "/h", TMPDIR: "/tmp/session/", [ACTIVE_VARIABLE]: "1" });
+    expect(env).toEqual({
+      PATH: "/bin", HOME: "/h", TMPDIR: "/tmp/session/", [ACTIVE_VARIABLE]: "1", [EGRESS_VARIABLE]: "open",
+    });
+  });
+
+  test("points proxied commands at the egress proxy, overriding inherited proxy settings", () => {
+    const env = confinedEnvironment(
+      { HTTPS_PROXY: "http://corp:8080", NO_PROXY: "*" }, undefined, "proxied", proxyEnvironment(51234),
+    );
+    expect(env.HTTPS_PROXY).toBe("http://127.0.0.1:51234");
+    expect(env.NO_PROXY).toBe("localhost,127.0.0.1,::1");
+    expect(env.NODE_USE_ENV_PROXY).toBe("1");
   });
 });
 
 describe("commandSandboxMode", () => {
-  test("does not nest inside an already confined command", () => {
-    expect(commandSandboxMode({ [ACTIVE_VARIABLE]: "1" }, "darwin", () => true))
-      .toEqual({ kind: "unconfined", reason: "already-confined" });
+  test("does not nest inside an already confined command, and keeps its egress policy", () => {
+    expect(commandSandboxMode({ [ACTIVE_VARIABLE]: "1", [EGRESS_VARIABLE]: "proxied" }, "darwin", () => true))
+      .toEqual({ kind: "unconfined", reason: "already-confined", inheritedEgress: "proxied" });
+  });
+
+  test("treats an inherited profile without a proxied marker as open egress", () => {
+    for (const marker of [undefined, "open", "bogus"]) {
+      expect(commandSandboxMode({ [ACTIVE_VARIABLE]: "1", [EGRESS_VARIABLE]: marker }, "darwin", () => true))
+        .toEqual({ kind: "unconfined", reason: "already-confined", inheritedEgress: "open" });
+    }
   });
 
   test("ignores a forged confinement marker in an unconfined process", () => {
@@ -196,6 +254,66 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
     }
   });
 
+  test("proxied profile denies direct external connections but reaches the proxy and local service ports", async () => {
+    const servers: ReturnType<typeof createServer>[] = [];
+    const listen = async (port: number) => {
+      const server = createServer((socket) => socket.end("hello"));
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", resolve);
+      });
+      servers.push(server);
+      return (server.address() as { port: number }).port;
+    };
+    const proxyPort = await listen(0);
+    let servicePort: number | undefined;
+    for (const port of LOCAL_SERVICE_PORTS) {
+      servicePort = await listen(port).catch(() => undefined);
+      if (servicePort) break;
+    }
+    const profile = commandSandboxProfile(networkOnlyScope(proxyPort));
+    const connectTo = (host: string, port: number) =>
+      runConfined(`python3 -c 'import socket; socket.create_connection(("${host}", ${port}), timeout=3)'`, f.root, profile);
+    try {
+      const direct = connectTo("1.1.1.1", 443);
+      expect(direct.status).not.toBe(0);
+      expect(direct.output).toContain("PermissionError");
+      expect(connectTo("127.0.0.1", proxyPort).status).toBe(0);
+      if (servicePort) expect(connectTo("127.0.0.1", servicePort).status).toBe(0);
+    } finally {
+      for (const server of servers) server.close();
+    }
+  });
+
+  // The tunnel to the allowlisted host opens (CONNECT 200); the plaintext request inside it is then dropped.
+  test("curl through the egress proxy reaches allowlisted hosts and is refused others", async () => {
+    const upstream = createServer((socket) => socket.end("HTTP/1.1 204 No Content\r\n\r\n"));
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const upstreamPort = (upstream.address() as { port: number }).port;
+    const proxy = await startEgressProxy({
+      rules: [{ host: "allowed.test", ports: [443] }],
+      resolve: async () => ["93.184.216.34"],
+      connectUpstream: () => connect({ host: "127.0.0.1", port: upstreamPort }),
+    });
+    const profile = commandSandboxProfile(networkOnlyScope(proxy.port));
+    // Asynchronous, because the proxy runs on this process's event loop, which spawnSync would block.
+    const curl = (host: string) => new Promise<string>((resolve) => {
+      const command = `curl -s -o /dev/null -w '%{http_connect} %{http_code}' -p -x http://127.0.0.1:${proxy.port} http://${host}:443/`;
+      const child = spawn("/bin/bash", ["-c", confinedShellCommand(command, profile)], { cwd: f.root });
+      let output = "";
+      child.stdout.on("data", (chunk) => { output += chunk; });
+      child.on("close", () => resolve(output));
+    });
+    try {
+      expect(await curl("allowed.test")).toStartWith("200 ");
+      expect(await curl("allowed.test")).not.toBe("200 204");
+      expect(await curl("example.com")).toStartWith("403");
+    } finally {
+      await proxy.close();
+      upstream.close();
+    }
+  });
+
   test("opens an approved root for that command only", () => {
     const grantedRoot = join(f.home, "granted");
     mkdirSync(grantedRoot, { recursive: true });
@@ -205,6 +323,7 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
       sessionTempDirectory: f.sessionTempDirectory, sessionTempParent: join(f.sessionTempDirectory, ".."),
       systemTempDirectory: join(base, "system-temp"),
       codingHarnessRoot: join(f.home, "coding-harness"), researchVaultRoot: join(f.home, "research"), approvedRoots,
+      egressProxyPort: undefined,
     }));
     const command = `cat "${grantedRoot}/profile.json" && echo token > "${grantedRoot}/cache"`;
     expect(runConfined(command, f.root, scope([grantedRoot])).status).toBe(0);

@@ -13,6 +13,12 @@ export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 export const DISABLE_VARIABLE = "PI_COMMAND_SANDBOX";
 /** Marks commands, and any Pi started by them, as already confined; macOS rejects a nested profile. */
 export const ACTIVE_VARIABLE = "PI_COMMAND_SANDBOX_ACTIVE";
+/**
+ * Egress policy of the confining profile: `proxied` for model commands, `open` for user `!` commands. A Pi started
+ * inside a command inherits that profile, so its model commands are restricted only when this says `proxied`.
+ */
+export const EGRESS_VARIABLE = "PI_COMMAND_SANDBOX_EGRESS";
+export type CommandEgress = "proxied" | "open";
 
 export interface CommandSandboxScope {
   home: string;
@@ -33,7 +39,15 @@ export interface CommandSandboxScope {
   secretScanRoots: string[];
   /** Always writable, even below an `unwritable` root such as the shared session temp parent. */
   sessionDirectory: string | undefined;
+  /** Loopback port of the egress proxy; when set, every other outbound IP connection is denied. Unset leaves egress open. */
+  egressProxyPort: number | undefined;
 }
+
+/**
+ * Loopback ports commands may reach directly, for dev servers and browser tests. 5000 is left out because macOS
+ * AirPlay Receiver listens on it.
+ */
+export const LOCAL_SERVICE_PORTS = [3000, 4173, 5173, 8000, 8080];
 
 /**
  * Secret file names, mirroring the lexical guard's patterns. They are applied only below `secretScanRoots`:
@@ -104,9 +118,13 @@ export function commandSandboxProfile(scope: CommandSandboxScope): string {
       ...scope.secretScanRoots.map(secretNameRegex),
     ]),
     ...rule("deny", "network-outbound", [
-      '(remote ip "localhost:*")',
+      scope.egressProxyPort === undefined ? '(remote ip "localhost:*")' : '(remote ip "*:*")',
       `(remote unix-socket (subpath ${sbplString(scope.home)}))`,
     ]),
+    ...rule("allow", "network-outbound", [
+      ...LOCAL_SERVICE_PORTS,
+      ...(scope.egressProxyPort === undefined ? [] : [scope.egressProxyPort]),
+    ].map((port) => `(remote ip "localhost:${port}")`)),
     ...rule("deny", "mach-lookup", ESCAPE_SERVICES),
     "",
   ].join("\n");
@@ -121,19 +139,28 @@ export function confinedShellCommand(command: string, profile: string): string {
   return `exec ${SANDBOX_EXEC} -p ${shellQuote(profile)} /bin/bash -c ${shellQuote(command)}`;
 }
 
-export function confinedEnvironment(env: NodeJS.ProcessEnv, sessionTempDirectory: string | undefined): NodeJS.ProcessEnv {
+export function confinedEnvironment(
+  env: NodeJS.ProcessEnv,
+  sessionTempDirectory: string | undefined,
+  egress: CommandEgress,
+  proxyVariables: Record<string, string> = {},
+): NodeJS.ProcessEnv {
   const confined: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(env)) {
     if (!SECRET_ENVIRONMENT_NAME.test(name) && !SHELL_STARTUP_VARIABLE.test(name)) confined[name] = value;
   }
+  Object.assign(confined, proxyVariables);
   if (sessionTempDirectory) confined.TMPDIR = `${sessionTempDirectory}/`;
   confined[ACTIVE_VARIABLE] = "1";
+  confined[EGRESS_VARIABLE] = egress;
   return confined;
 }
 
 export type CommandSandboxMode =
   | { kind: "confine" }
-  | { kind: "unconfined"; reason: "disabled" | "already-confined" | "unsupported-platform" }
+  | { kind: "unconfined"; reason: "disabled" | "unsupported-platform" }
+  /** The inherited profile already limits egress; Pi cannot apply its own inside it. */
+  | { kind: "unconfined"; reason: "already-confined"; inheritedEgress: CommandEgress }
   | { kind: "unavailable"; reason: string };
 
 /**
@@ -154,7 +181,10 @@ export function commandSandboxMode(
   // shortcut: Linux sessions (paseo-box) rely on the container boundary; add Landlock if Pi runs on a bare Linux host.
   if (platform !== "darwin") return { kind: "unconfined", reason: "unsupported-platform" };
   if (!existsSync(SANDBOX_EXEC)) return { kind: "unavailable", reason: `${SANDBOX_EXEC} is missing` };
-  if (env[ACTIVE_VARIABLE] === "1" && isConfined()) return { kind: "unconfined", reason: "already-confined" };
+  if (env[ACTIVE_VARIABLE] === "1" && isConfined()) {
+    // Anything but an explicit `proxied` marker is treated as open egress, so a missing marker fails closed.
+    return { kind: "unconfined", reason: "already-confined", inheritedEgress: env[EGRESS_VARIABLE] === "proxied" ? "proxied" : "open" };
+  }
   return { kind: "confine" };
 }
 
@@ -233,6 +263,7 @@ export interface CommandSandboxContext {
   researchVaultRoot: string;
   /** Readable and writable for this command only, after the user approved it (vault hash update, Azure CLI). */
   approvedRoots?: string[];
+  egressProxyPort: number | undefined;
 }
 
 /** Derives the confinement scope from host facts: the checkout's Git layout, PATH, and Git signing config. */
@@ -283,5 +314,6 @@ export function commandSandboxScope(context: CommandSandboxContext): CommandSand
     // Replacing `.git` or the common directory, or renaming the temp directory, would redirect or expose them.
     unwritableLiterals: [join(root, ".git"), ...git, context.systemTempDirectory],
     gitCommonDirectory: commonDirectory,
+    egressProxyPort: context.egressProxyPort,
   };
 }

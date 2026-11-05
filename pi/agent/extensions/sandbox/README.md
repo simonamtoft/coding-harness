@@ -339,9 +339,9 @@ script, a shell variable) is still contained.
   script that calls `az` internally runs without the credentials and fails.
   Docker stays blocked: its socket gives full control of the host, so run
   Docker commands yourself.
-- Network: connections to localhost (including `::1` and the host's own
-  addresses, measured) and to Unix sockets under home are denied; other egress
-  is open (a hostname allowlist is PI-124).
+- Network: see [Command egress](#command-egress) below. In short, model
+  commands reach external hosts only through an allowlist proxy, `!` commands
+  keep open egress, and both reach localhost only on the local service ports.
 - Launching: LaunchServices and Apple Events are denied, so `open` and
   `osascript` cannot start programs outside the sandbox.
 - Environment: credential-like variables (names ending in `KEY`, `TOKEN`, `PAT`,
@@ -356,6 +356,90 @@ confined sets `PI_COMMAND_SANDBOX_ACTIVE=1`; a Pi started inside it does not
 wrap again, because macOS rejects applying a different profile inside a
 sandboxed process. The marker is trusted only after a probe confirms the process
 is really sandboxed, so setting it elsewhere does not disable confinement. Linux hosts (paseo-box) rely on their container boundary.
+
+### Command egress
+
+Seatbelt filters connections by IP and port only; it rejects hostnames in
+network rules. `egress-proxy.ts` therefore runs an HTTP `CONNECT` proxy inside
+the Pi process (which is not confined) on an ephemeral `127.0.0.1` port. The
+proxy starts at session start and stops at session shutdown (SBX-41).
+
+| | Model `bash` commands | User `!` commands |
+| --- | --- | --- |
+| External hosts | only allowlisted hosts, through the proxy | open |
+| Localhost | ports 3000, 4173, 5173, 8000, 8080 and the proxy port | ports 3000, 4173, 5173, 8000, 8080 |
+| Unix sockets under home | denied | denied |
+
+The allowlist covers port 443 on these hosts:
+
+- the HTTPS hosts of every model provider Pi has credentials for (from
+  `models.json` and signed-in providers, read once at session start);
+- `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org`;
+- `github.com` (also port 22), `api.github.com`, `codeload.github.com` and
+  `*.githubusercontent.com`.
+
+A command approved for Azure credentials also gets `login.microsoftonline.com`,
+`management.azure.com`, `graph.microsoft.com`, `*.blob.core.windows.net`,
+`registry.terraform.io`, `releases.hashicorp.com` and
+`checkpoint-api.hashicorp.com`. These hosts are tied to a random token in that
+command's proxy URL. The token is revoked, and its tunnels closed, when that
+Bash call returns, so background processes it left running lose those hosts.
+
+Tunnels to port 443 must start with a TLS handshake; plaintext inside the tunnel
+is dropped. Port 22 (`github.com`) carries SSH.
+
+Model commands get `HTTPS_PROXY`/`HTTP_PROXY` in both cases,
+`NODE_USE_ENV_PROXY=1` (needed for Node's built-in `fetch`),
+`NO_PROXY=localhost,127.0.0.1,::1`, and a `GIT_SSH_COMMAND` that tunnels SSH
+through the proxy with `nc -X connect`. These override any proxy settings
+inherited from Pi's environment.
+
+Failure modes:
+
+- **Plaintext HTTP inside a port-443 tunnel:** the proxy answers `200` to
+  `CONNECT`, then closes the tunnel at the first non-TLS byte.
+- **A Pi started from a `!` command:** it inherits that command's open egress
+  and cannot apply its own profile inside it, so it refuses its model's Bash
+  commands. A Pi started from a model command inherits the proxied profile and
+  runs normally. `PI_COMMAND_SANDBOX_EGRESS` records which policy applies.
+- **Unlisted host or port, IP literal, or plain-HTTP request:** the proxy
+  answers `403 Forbidden` with a `Pi command sandbox: …` body. curl shows
+  `CONNECT tunnel failed, response 403`; most other clients report a proxy or
+  tunnel error.
+- **An allowlisted name that resolves to a special-purpose address**
+  (loopback, private, link-local, carrier-grade NAT, benchmarking,
+  documentation, multicast, reserved, or an IPv6 translation prefix): `403`. The tunnel connects to the address the proxy
+  checked, so DNS rebinding cannot redirect it.
+- **DNS lookup or upstream connection failure:** `502 Bad Gateway`.
+- **A tool that ignores the proxy variables, or a direct connection:** the
+  kernel denies it (`Operation not permitted` or `PermissionError`). This
+  includes direct UDP DNS queries, for example `dig @8.8.8.8`.
+- **The proxy fails to start:** model Bash commands are refused, not run with
+  open egress, and the session shows an error. `!` commands still run.
+- **An upstream corporate proxy is not supported:** the proxy connects
+  directly.
+
+Residual gaps:
+
+- DNS through the system resolver stays open, so data can leak through
+  lookups of attacker-controlled names.
+- Allowlisted hosts can receive data: a gist, a GitHub issue, a package
+  publish with a token the command finds, or for Azure-approved commands any
+  Azure storage account.
+- While an Azure-approved command runs, another command that reads its
+  environment (for example with `ps -E`) or a file it wrote can use its grant
+  token until the approved command returns.
+- Inbound connections are not restricted: a command can start a listener that
+  other hosts on the network reach directly, bypassing the proxy (unverified;
+  depends on the macOS firewall).
+- Unconfined system daemons that fetch URLs on request (`nsurlsessiond`
+  background sessions, `trustd` certificate checks) may give a command indirect
+  egress (unverified).
+- The proxy checks the `CONNECT` hostname, not the TLS SNI or HTTP `Host`, so a
+  CDN that serves an allowlisted host and still allows domain fronting could
+  route to another site (unverified).
+- Any process listening on a local service port is reachable, not only one the
+  command started.
 
 The kernel profile covers commands only. Pi's own file tools, extensions and
 MCP servers still run unconfined behind the lexical guard below; PI-125 tracks
