@@ -276,3 +276,24 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Seatbelt filters only by IP and port and rejects hostnames in network rules (measured: "host must be * or localhost"), so hostname control needs a proxy that commands cannot bypass. Running it in Pi's process means no launcher, and it ends with the session.
 **Revisit if:** PI-125 confines the whole Pi process (the proxy must then run outside it), refusals of legitimate hosts become frequent enough to justify a prompt or configuration, or DNS exfiltration becomes a practical concern.
 **Evidence:** The user chose "Open egress for !", "Refuse only" with a localhost port list, "Add for approved cmds", "Keep DNS, document gap", "Add to PI-124" and "Same without 5000".
+
+### SBX-42 · Projects may write their own `verify-*` skills
+`accepted` · 2026-11-05 · `01a1ab54-8686-73a0-886b-fc93ca6cb7d0`
+**Decision:** Outside coding-harness sessions, file tools and Bash may write and run files in a `.agents/skills/verify-<app>/` directory at any depth inside the session root, unless the rest of the path has its own control segment (`.pi`, `.agents`, `.git/config`, `.git/hooks`). Existence probes that only mention a relative control path, such as a `find -path` pattern naming `.agents`, are no longer path candidates when the command has no pipe, substitution or redirection; stored prose still is, because `git checkout -m` takes a path. Refused: unlocking all of `.agents/skills` (wider persistence surface than the need); leaving the block and having the user copy a staged skill in (contradicts the `project-flow-verification` contract).
+**Why:** SBX-07 blocked the artifact location that `project-flow-verification` requires, so a health-claims verification run could not create its skill. The persistence risk equals that of project `AGENTS.md`, which is already writable.
+**Revisit if:** project-flow-verification moves its artifact, or project skills other than `verify-*` need agent authoring.
+**Evidence:** The user chose "verify-* only".
+
+### SBX-43 · Read-only access to certifi's CA bundle inside projects
+`accepted` · 2026-11-05 · `01a1ab54-8686-73a0-886b-fc93ca6cb7d0`
+**Decision:** The kernel profile lets commands read, but not write, any `certifi/cacert.pem` under the secret-scan roots, except below a credential directory; other `.pem` names stay denied. Creating or renaming any `certifi` directory there is denied, so an existing `cacert.pem` cannot be moved under the exception (installing certifi inside the sandbox already failed on the bundle write). Refused: setting `SSL_CERT_FILE`/`SSL_CERT_DIR` in project skills (the lexical guard blocks naming a `.pem` path, and a sandbox quirk would leak into project artifacts); allowing every `.pem` under dependency directories (libraries also ship test private keys).
+**Why:** httpx builds its SSL context from `certifi.where()` when an `httpx.Client` is constructed, so a backend inside the project crashed on startup even without network calls. The project's `.venv` sits inside the root, where SBX-02's `.pem` deny applies.
+**Revisit if:** another bundled trust store (botocore, grpc) blocks a real run.
+**Evidence:** The user chose "certifi only".
+
+### SBX-44 · Local service ports 5190 and 8020
+`accepted` · 2026-11-05 · `01a1ab54-8686-73a0-886b-fc93ca6cb7d0`
+**Decision:** Add 5190 and 8020 to the loopback ports confined commands may connect to. Refused: allowing every localhost port (reaches local daemons such as Paseo, Ollama and the egress proxy); moving the app onto already-allowed ports (may collide with a dev server already running there).
+**Why:** health-claims runs its verification instance on 8020 (uvicorn) and 5190 (Vite), and Seatbelt refused connections to 8020 in a measured check.
+**Revisit if:** per-project ports keep growing the list, which would justify a range or project configuration.
+**Evidence:** The user chose "Add both ports".

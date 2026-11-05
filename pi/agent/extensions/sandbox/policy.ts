@@ -167,6 +167,19 @@ function isDotEnvProbeOperand(value: string): boolean {
     && SECRET_PATTERNS.every((pattern) => pattern === DOT_ENV_PATTERN || !pattern.test(value));
 }
 
+/** Relative control-path text, such as a `find -path` pattern naming `.agents`, under the same probe-only conditions. */
+function isControlPathProbeOperand(value: string): boolean {
+  if (/^[~/]/.test(value) || /(?:^|\/)\.\.(?:\/|$)/.test(value) || /[$`]/.test(value)) return false;
+  return isProjectControlPath(value) && !isProtectedSecretPath(value);
+}
+
+const isProbeOnlyOperand = (value: string) => isDotEnvProbeOperand(value) || isControlPathProbeOperand(value);
+/**
+ * Probe output that reaches another command through any substitution, pipe or redirection could become its file
+ * operands. The kernel profile does not protect project control paths, so their probes then stay inspected.
+ */
+const MAY_FORWARD_PROBE_OUTPUT = /[`|<>]|\$\(/;
+
 /**
  * Whether an absolute path's top-level entry is missing. A user process can neither read nor create entries directly
  * under `/`, so such text (an Azure resource ID, a container path, a format string) names no host file. A first
@@ -315,11 +328,24 @@ function isProjectControlPath(path: string): boolean {
   if (isProjectInstructionPath(path)) return true;
   if (segments.includes(".pi") || segments.includes(".agents")) return true;
 
-  const agentIndex = segments.lastIndexOf(".agent");
-  if (agentIndex !== -1 && ["verify.sh", "diagnostics.sh"].includes(segments[agentIndex + 1] ?? "")) return true;
+  return segments.some((segment, index) => {
+    const next = segments[index + 1];
+    return (segment === ".agent" && (next === "verify.sh" || next === "diagnostics.sh"))
+      || (segment === ".git" && (next === "config" || next === "hooks"));
+  });
+}
 
-  const gitIndex = segments.lastIndexOf(".git");
-  return gitIndex !== -1 && (segments[gitIndex + 1] === "config" || segments[gitIndex + 1] === "hooks");
+/**
+ * A file inside a project's own `.agents/skills/verify-<app>/` artifact (project-flow-verification), at any depth in
+ * the session root. The path outside that artifact segment must not itself be a control path.
+ */
+function isProjectVerifySkillPath(sessionRoot: string, targetPath: string): boolean {
+  if (!isWithin(sessionRoot, targetPath)) return false;
+  const segments = relative(sessionRoot, targetPath).split(sep);
+  const index = segments.indexOf(".agents");
+  if (index === -1 || segments[index + 1] !== "skills" || !/^verify-./.test(segments[index + 2] ?? "")) return false;
+  const remainder = [...segments.slice(0, index), ...segments.slice(index + 3)];
+  return remainder.length === 0 || !isProjectControlPath(join(...remainder));
 }
 
 function isRootVerifierScript(sessionRoot: string, targetPath: string): boolean {
@@ -358,6 +384,7 @@ export function isControlPlaneWriteBlocked(
   if (isWithin(pluginWorkspaceRoot, targetPath)) return true;
   if (isProjectInstructionPath(targetPath) && isWithin(sessionRoot, targetPath)) return false;
   if (isRootVerifierScript(sessionRoot, targetPath)) return false;
+  if (isProjectVerifySkillPath(sessionRoot, targetPath)) return false;
   return isProjectControlPath(targetPath);
 }
 
@@ -465,7 +492,11 @@ function searchFileOptionValues(tokens: string[]): string[] {
  * variables are included; without one, relative candidates are returned as written.
  */
 export function shellPathCandidates(command: string, context?: ShellDirectoryContext): string[] {
-  const { command: pathText, literals } = maskNonPathText(stripInlineEvalBodies(command), isDotEnvProbeOperand);
+  const { command: pathText, literals } = maskNonPathText(
+    stripInlineEvalBodies(command),
+    MAY_FORWARD_PROBE_OUTPUT.test(command) ? isDotEnvProbeOperand : isProbeOnlyOperand,
+    isDotEnvProbeOperand,
+  );
   const looksLikePath = (token: string) => {
     const unprefixed = token.startsWith("@") ? token.slice(1) : token;
     if (unprefixed === POSIX_NULL_DEVICE) return false;

@@ -160,6 +160,38 @@ test("project-local instruction files remain writable", () => {
   assert.equal(isControlPlaneWriteBlocked(project, "/Users/example/projects/other/AGENTS.md", harness, plugins), true);
 });
 
+test("project verify skills are writable, while other agent resources stay protected", () => {
+  const project = "/Users/example/projects/app";
+  const blocked = (path: string) => isControlPlaneWriteBlocked(project, path, harness, plugins);
+
+  assert.equal(blocked(`${project}/.agents/skills/verify-app/SKILL.md`), false);
+  assert.equal(blocked(`${project}/.agents/skills/verify-app`), false);
+  assert.equal(blocked(`${project}/health-claims/.agents/skills/verify-health-claims/features/login.md`), false);
+  assert.equal(blocked(`${project}/.agents/skills/verify-app/run.sh`), false);
+  assert.equal(blocked(`${project}/.agents/skills/other/SKILL.md`), true);
+  assert.equal(blocked(`${project}/.agents/skills/verify-`), true);
+  assert.equal(blocked(`${project}/.agents/skills`), true);
+  assert.equal(blocked(`${project}/.agents/verify-app/SKILL.md`), true);
+  assert.equal(blocked(`${project}/.agents/skills/verify-app/.git/hooks/pre-commit`), true);
+  assert.equal(blocked(`${project}/.agents/skills/verify-app/.git/hooks/h/.git/objects/run.sh`), true);
+  assert.equal(blocked(`${project}/x/.git/hooks/h/.git/objects/run.sh`), true);
+  assert.equal(blocked(`${project}/.agents/skills/verify-app/.pi/extensions/x.ts`), true);
+  assert.equal(blocked(`${project}/.pi/x/.agents/skills/verify-app/SKILL.md`), true);
+  assert.equal(blocked("/Users/example/projects/other/.agents/skills/verify-app/SKILL.md"), true);
+});
+
+test("find patterns and existence probes naming control paths are not path candidates", () => {
+  assert.deepEqual(shellPathCandidates("find /tmp/x -path '*/.agents/skills/*' -type f"), ["/tmp/x"]);
+  assert.deepEqual(shellPathCandidates("test -d .pi/extensions && echo yes"), []);
+  assert.deepEqual(shellPathCandidates('git commit -m "Add .agents/skills/verify-app"'), [".agents/skills/verify-app"]);
+  assert.deepEqual(shellPathCandidates("git checkout -m '.pi/x.ts'"), [".pi/x.ts"]);
+  assert.deepEqual(shellPathCandidates("rm -rf $(ls -d .pi; true)"), [".pi"]);
+  assert.deepEqual(shellPathCandidates("find . -path '*/.pi/*' > list; xargs rm < list"), ["*/.pi/*"]);
+  assert.deepEqual(shellPathCandidates("find . -path '*/.agents/*' -delete"), ["*/.agents/*"]);
+  assert.deepEqual(shellPathCandidates("find . -path '*/.agents/*' | xargs rm"), ["*/.agents/*"]);
+  assert.deepEqual(shellPathCandidates("find . -path ../.agents"), ["../.agents"]);
+});
+
 test("repository-root verifier scripts remain writable", () => {
   const project = "/Users/example/projects/app";
 

@@ -75,6 +75,15 @@ host-side boundary to model tool calls:
   repository's root `.agent/verify.sh` and `.agent/diagnostics.sh` remain
   writable. The verifier scripts are the established cross-harness project
   contract, and Pi's verifier trust gate asks before executing changed content.
+  Files inside a `.agents/skills/verify-<app>/` directory anywhere in the
+  session root are writable and runnable from Bash too, because
+  `project-flow-verification` keeps its artifact there; `.pi`, `.agents`,
+  `.git/config` or `.git/hooks` segments elsewhere in such a path stay
+  protected. Existence probes (`find -name`/`-path` patterns, `ls`, unary file
+  tests, `git check-ignore`) that only mention a relative control path are not
+  treated as paths, under the same conditions as the `.env*` probes below and
+  only when the command has no pipe, substitution or redirection. Stored prose
+  never masks control paths, because `git -m` is also a path flag.
   Other agent control-plane writes are restricted to sessions started inside the
   canonical `coding-harness` checkout. Elsewhere, file tools cannot change
   instruction files outside the active project, `.pi` or `.agents` resources,
@@ -319,7 +328,11 @@ script, a shell variable) is still contained.
   session temp directories, Pi's `auth.json` and `mcp-auth.json`, and the
   lexical guard's secret names (dot-env files, credential directories such as
   `.aws` or `.ssh`, private keys, `.netrc`, `.npmrc`) inside the project roots
-  stay denied; a tracked `.env.example` stays readable. Pi's `sessions`
+  stay denied; a tracked `.env.example` and certifi's public CA bundle
+  (`certifi/cacert.pem`, which httpx reads when a client is constructed) stay
+  readable but not writable. A bundle below a credential directory stays
+  denied, and no `certifi` directory can be created or renamed, so another
+  `cacert.pem` cannot be moved under the exception. Pi's `sessions`
   directory is readable only from harness-maintenance sessions (SBX-16), so
   ordinary projects use the `recent_sessions` tool rather than the Bash helper.
 - Writes: only the checkout, its Git directory except `config`, `hooks`,
@@ -367,7 +380,7 @@ proxy starts at session start and stops at session shutdown (SBX-41).
 | | Model `bash` commands | User `!` commands |
 | --- | --- | --- |
 | External hosts | only allowlisted hosts, through the proxy | open |
-| Localhost | ports 3000, 4173, 5173, 8000, 8080 and the proxy port | ports 3000, 4173, 5173, 8000, 8080 |
+| Localhost | ports 3000, 4173, 5173, 5190, 8000, 8020, 8080 and the proxy port | ports 3000, 4173, 5173, 5190, 8000, 8020, 8080 |
 | Unix sockets under home | denied | denied |
 
 The allowlist covers port 443 on these hosts:

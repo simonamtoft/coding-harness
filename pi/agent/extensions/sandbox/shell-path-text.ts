@@ -41,13 +41,15 @@ type Blank = (start: number, end: number, capture?: boolean) => void;
  * a path: quoted-delimiter heredoc bodies fed to interpreters or copied by `cat`/`tee`, side-effect-free `sed`/`awk` programs, and quoted
  * prose given to commands that only print or store text. Masked text is returned as `literals` so callers still
  * check it for protected secret paths. Operands accepted by `isProbeName` are masked without becoming literals when
- * an existence or ignore probe names them outside a pipeline or substitution, or when stored prose mentions them.
+ * an existence or ignore probe names them outside a pipeline or substitution; operands accepted by `isStoredProseName`
+ * are masked the same way when stored prose mentions them.
  * Commands whose quoting this scanner cannot follow (ANSI-C `$'…'` strings, or substitutions inside double quotes,
  * which may nest further quotes) are returned unchanged.
  */
 export function maskNonPathText(
   command: string,
   isProbeName: (value: string) => boolean = () => false,
+  isStoredProseName: (value: string) => boolean = isProbeName,
 ): { command: string; literals: string[] } {
   const unchanged = { command, literals: [] };
   if (command.includes("$'")) return unchanged;
@@ -68,7 +70,7 @@ export function maskNonPathText(
   };
   const endCommand = (terminator = "") => {
     endWord();
-    maskCommand(words, blank, isProbeName, terminator);
+    maskCommand(words, blank, isProbeName, isStoredProseName, terminator);
     words = [];
   };
   const startWord = () => {
@@ -297,7 +299,13 @@ function blankProbePieces(quote: Quote, blank: Blank, isProbeName: (value: strin
   }
 }
 
-function maskCommand(words: Word[], blank: Blank, isProbeName: (value: string) => boolean, terminator: string): void {
+function maskCommand(
+  words: Word[],
+  blank: Blank,
+  isProbeName: (value: string) => boolean,
+  isStoredProseName: (value: string) => boolean,
+  terminator: string,
+): void {
   const start = commandIndex(words);
   const name = commandName(words);
   if (PROGRAM_COMMANDS.has(name)) {
@@ -322,7 +330,7 @@ function maskCommand(words: Word[], blank: Blank, isProbeName: (value: string) =
     const option = word.value.match(/^(--?[\w-]+)=/)?.[1] ?? words[index - 1]!.value;
     if ((options && !options.has(option)) || isRedirectTarget(words, index)) continue;
     for (const quote of word.quotes) {
-      if (STORED_PROSE.has(name)) blankProbePieces(quote, blank, isProbeName);
+      if (STORED_PROSE.has(name)) blankProbePieces(quote, blank, isStoredProseName);
       if (isQuotedProse(quote.content)) blank(quote.start, quote.end);
     }
   }

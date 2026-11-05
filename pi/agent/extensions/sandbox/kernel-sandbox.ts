@@ -47,7 +47,7 @@ export interface CommandSandboxScope {
  * Loopback ports commands may reach directly, for dev servers and browser tests. 5000 is left out because macOS
  * AirPlay Receiver listens on it.
  */
-export const LOCAL_SERVICE_PORTS = [3000, 4173, 5173, 8000, 8080];
+export const LOCAL_SERVICE_PORTS = [3000, 4173, 5173, 5190, 8000, 8020, 8080];
 
 /**
  * Secret file names, mirroring the lexical guard's patterns. They are applied only below `secretScanRoots`:
@@ -87,6 +87,12 @@ function regexPath(root: string): string {
 }
 
 const secretNameRegex = (root: string) => `(regex #"^${regexPath(root)}/(.*/)?${SECRET_NAME_PATTERN}")`;
+const SECRET_DIRECTORY_PATTERN = String.raw`(\.env|\.ssh|\.aws|\.gnupg|\.azure|\.kube|\.gcloud|\.config/gcloud|Library/Keychains)/`;
+const secretDirectoryRegex = (root: string) => `(regex #"^${regexPath(root)}/(.*/)?${SECRET_DIRECTORY_PATTERN}")`;
+/** certifi's public CA bundle, which HTTP clients such as httpx read when they are constructed. Read-only. */
+const certifiBundleRegex = (root: string) => `(regex #"^${regexPath(root)}/(.*/)?certifi/cacert\\.pem$")`;
+/** Creating or renaming a `certifi` directory would move another `cacert.pem` under the bundle exception. */
+const certifiDirectoryRegex = (root: string) => `(regex #"^${regexPath(root)}/(.*/)?certifi$")`;
 
 /** A planted `commondir`, `gitdir` or `config.worktree` makes host Git load agent-written config (SBX-36). */
 function gitPointerFilters(commonDirectory: string | undefined): string[] {
@@ -106,6 +112,8 @@ export function commandSandboxProfile(scope: CommandSandboxScope): string {
     ...rule("deny", "file-read-data", subpaths(scope.unreadableRoots)),
     ...rule("allow", "file-read-data", subpaths([...scope.readable, ...session])),
     ...rule("deny", "file-read-data", [...subpaths(scope.unreadable), ...scope.secretScanRoots.map(secretNameRegex)]),
+    ...rule("allow", "file-read-data", scope.secretScanRoots.map(certifiBundleRegex)),
+    ...rule("deny", "file-read-data", [...subpaths(scope.unreadable), ...scope.secretScanRoots.map(secretDirectoryRegex)]),
     ...rule("allow", "file-read-data", literals(scope.readableExceptions)),
     ...rule("deny", "file-write*", ['(subpath "/")']),
     ...rule("allow", "file-write*", subpaths(scope.writable)),
@@ -116,6 +124,7 @@ export function commandSandboxProfile(scope: CommandSandboxScope): string {
       ...literals(scope.unwritableLiterals),
       ...gitPointerFilters(scope.gitCommonDirectory),
       ...scope.secretScanRoots.map(secretNameRegex),
+      ...scope.secretScanRoots.map(certifiDirectoryRegex),
     ]),
     ...rule("deny", "network-outbound", [
       scope.egressProxyPort === undefined ? '(remote ip "localhost:*")' : '(remote ip "*:*")',

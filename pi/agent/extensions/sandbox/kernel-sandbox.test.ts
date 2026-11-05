@@ -47,6 +47,12 @@ function fixture() {
   mkdirSync(join(root, "app"), { recursive: true });
   writeFileSync(join(root, "app", ".env.example"), "TEMPLATE=1");
   writeFileSync(join(root, "key.pem"), "pem");
+  mkdirSync(join(root, ".venv", "site-packages", "certifi"), { recursive: true });
+  writeFileSync(join(root, ".venv", "site-packages", "certifi", "cacert.pem"), "public CA bundle");
+  mkdirSync(join(root, ".aws", "certifi"), { recursive: true });
+  writeFileSync(join(root, ".aws", "certifi", "cacert.pem"), "aws");
+  mkdirSync(join(root, "fixtures"), { recursive: true });
+  writeFileSync(join(root, "fixtures", "cacert.pem"), "private");
   spawnSync("git", ["init", "-q", root]);
   spawnSync("git", ["-C", root, "add", "app/.env.example"]);
   const scope = commandSandboxScope({
@@ -203,7 +209,8 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
   test("read and write inside the checkout and session directory", () => {
     const result = runConfined(
       `cat inside.txt && echo ok > new.txt && echo tmp > "${f.sessionTempDirectory}/scratch" && git status --short`
-        + ` && echo tmp > "${base}/system-temp/scratch" && cat "${f.home}/.cache/cert.pem" && cat app/.env.example`,
+        + ` && echo tmp > "${base}/system-temp/scratch" && cat "${f.home}/.cache/cert.pem" && cat app/.env.example`
+        + " && cat .venv/site-packages/certifi/cacert.pem",
       f.root, f.profile,
     );
     expect(result.status).toBe(0);
@@ -216,6 +223,8 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
     ["a dot-env file inside the checkout", () => "cat .env"],
     ["a credential directory inside the checkout", () => "cat .aws/credentials"],
     ["a secret renamed to an ordinary name", () => "mv key.pem notes.txt; cat notes.txt"],
+    ["a CA bundle name inside a credential directory", () => "cat .aws/certifi/cacert.pem"],
+    ["a bundle name moved under certifi by renaming its parent", () => "mv fixtures certifi; cat certifi/cacert.pem"],
     ["another session's temp directory", (x: typeof f) => `cat "${x.otherSession}/report.html"`],
     ["a file through a python subprocess", (x: typeof f) => `python3 -c 'open("${x.sibling}/notes.txt").read()'`],
   ])("denies reading %s", (_name, command) => {
@@ -229,6 +238,8 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
     ["another session's temp directory", (x: typeof f) => `echo x > "${x.otherSession}/report.html"`],
     ["the Git hooks directory", () => "echo x > .git/hooks/pre-commit"],
     ["the Git config", () => "echo x >> .git/config"],
+    ["the certifi CA bundle", () => "echo x >> .venv/site-packages/certifi/cacert.pem"],
+    ["a key renamed to the certifi bundle name", () => "mkdir -p certifi && mv key.pem certifi/cacert.pem"],
     ["a Git commondir redirect", () => "echo /private/tmp > .git/commondir"],
     ["a replacement .git", () => "mv .git .git-old"],
     ["the system temp directory itself", () => `mv "${base}/system-temp" "${base}/moved"`],
