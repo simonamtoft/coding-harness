@@ -1,3 +1,4 @@
+import type { ExtensionMode } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { withUiLock } from "../shared/ui-lock.ts";
 import {
@@ -22,7 +23,19 @@ type AskContext = Parameters<typeof askWithPanel>[0] & {
 type RecordedAnswer = { question: string; answer: AnswerValue; wasCustom: boolean };
 type QuestionResult = PanelAnswer | "back" | undefined;
 
-export const CLARIFICATION_GATE = `Clarification gate (mandatory): Read-only discovery comes first. Inspect the repository whenever files, tests, or conventions can resolve an uncertainty, and do not ask what that inspection answers. Before any consequential action, including edits, writes, commands with effects, and committing to an approach, decide whether unresolved choices remain that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If they do, collect all closely related blocking questions into one ask_user_question call before acting. Inspection settles facts, not authorization: when a request that deletes, overwrites, or discards work leaves its scope ambiguous, confirm the scope before acting even if inspection suggests a plausible target. You MUST use ask_user_question for every such question; never ask it as ordinary assistant prose unless ask_user_question reports that interactive UI is unavailable, in which case ask in the assistant response and stop until the user answers. If ask_user_question reports cancellation or unavailable UI, do not infer answers or continue with the blocked decisions. Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. Also write each question so it can be answered on its own, because some clients show only the question, its header, and the option descriptions, not details. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_user_question call—do not batch it with edit, write, bash, or other tool calls, and do not restate the details in prose. Ask at most four questions per call. Provide concrete options only when useful; when you do, offer two to four, each with a description, order them best first so the leading option is the one you recommend, and always allow a free-text answer. Do not silently choose a reasonable default.`;
+const GATE_POLICY = `Clarification gate (mandatory): Read-only discovery comes first. Inspect the repository whenever files, tests, or conventions can resolve an uncertainty, and do not ask what that inspection answers. Before any consequential action, including edits, writes, commands with effects, and committing to an approach, decide whether unresolved choices remain that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If they do, collect all closely related blocking questions into one ask_user_question call before acting. Inspection settles facts, not authorization: when a request that deletes, overwrites, or discards work leaves its scope ambiguous, confirm the scope before acting even if inspection suggests a plausible target. You MUST use ask_user_question for every such question; never ask it as ordinary assistant prose unless ask_user_question reports that interactive UI is unavailable, in which case ask in the assistant response and stop until the user answers. If ask_user_question reports cancellation or unavailable UI, do not infer answers or continue with the blocked decisions.`;
+
+const GATE_LIMITS = `Ask at most four questions per call. Provide concrete options only when useful; when you do, offer two to four, each with a description, order them best first so the leading option is the one you recommend, and always allow a free-text answer. Do not silently choose a reasonable default.`;
+
+const CONTEXT_IN_DETAILS = `Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. Also write each question so it can be answered on its own, because some clients show only the question, its header, and the option descriptions, not details. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_user_question call—do not batch it with edit, write, bash, or other tool calls, and do not restate the details in prose.`;
+
+// Paseo's native question form (RPC mode) never renders the details field (ASK-09).
+const CONTEXT_IN_PROSE = `This client's question form shows only each question, its header, and the option descriptions, not the details field. Before the ask_user_question call, write the deciding context in the assistant response: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning, grouped by question, plus any plan you are asking to approve. Keep it brief and write each question so it can be answered on its own. Do not batch the call with edit, write, bash, or other tool calls.`;
+
+export function clarificationGate(mode: ExtensionMode): string {
+  const contextRule = mode === "tui" ? CONTEXT_IN_DETAILS : CONTEXT_IN_PROSE;
+  return `${GATE_POLICY} ${contextRule} ${GATE_LIMITS}`;
+}
 
 // Paseo shows its native question form only for calls whose raw arguments match the
 // rpiv-ask-user-question shape (name, header, 2–4 described options, at most 4 questions,
@@ -167,7 +180,7 @@ export const askQuestionTool = {
   label: "Ask Question",
   description: "Ask the user one or more blocking clarification questions before work continues. Each question may offer choices and always permits a free-text answer.",
   promptSnippet: "Give the decision context, then ask one or more blocking clarification questions with optional choices",
-  // The clarification policy itself is injected once as CLARIFICATION_GATE; keep these to option mechanics it omits.
+  // The clarification policy itself is injected once by clarificationGate; keep these to option mechanics it omits.
   promptGuidelines: [
     "Keep ask_user_question option labels short and put the tradeoff in the option description; say why the leading option leads there or in the question details, never by labelling it recommended.",
   ],

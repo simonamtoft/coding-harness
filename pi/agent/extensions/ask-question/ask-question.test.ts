@@ -12,7 +12,8 @@ mock.module("typebox", () => ({
 
 // Imports tool.ts, not index.ts: the extension entry point pulls in the TUI
 // renderers, which only resolve inside a running pi process.
-const { askQuestionTool, CLARIFICATION_GATE } = await import("./tool.ts");
+const { askQuestionTool, clarificationGate } = await import("./tool.ts");
+const CLARIFICATION_GATE = clarificationGate("tui");
 const { buildSelectItems, CUSTOM_ANSWER_VALUE } = await import("./question-items.ts");
 const { isUiBusy } = await import("../shared/ui-lock.ts");
 
@@ -75,6 +76,16 @@ describe("ask_user_question prompt guidance", () => {
     expect(injectedPrompt).toContain("at most four questions");
     const { questions } = registerTool().parameters;
     expect([questions.items.options.minItems, questions.items.options.maxItems, questions.maxItems]).toEqual([2, 4, 4]);
+  });
+
+  test("under RPC clients, puts the deciding context in prose because the form hides details", () => {
+    const rpcGate = clarificationGate("rpc");
+
+    expect(rpcGate).toContain("write the deciding context in the assistant response");
+    expect(rpcGate).not.toContain("do not restate the details in prose");
+    expect(rpcGate).toContain("MUST use ask_user_question");
+    expect(rpcGate).toContain("Do not batch the call with edit, write, bash, or other tool calls");
+    expect(rpcGate).toContain("at most four questions");
   });
 
   test("permits read-only discovery before asking, and still gates consequential action", () => {

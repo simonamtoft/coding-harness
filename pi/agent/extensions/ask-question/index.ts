@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { renderCall, renderResult } from "./render.ts";
-import { askQuestionTool, CLARIFICATION_GATE } from "./tool.ts";
+import { askQuestionTool, clarificationGate } from "./tool.ts";
 
 export default function askQuestionExtension(pi: ExtensionAPI) {
-  pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\n${CLARIFICATION_GATE}`,
+  pi.on("before_agent_start", (event, ctx) => ({
+    systemPrompt: `${event.systemPrompt}\n\n${clarificationGate(ctx.mode)}`,
   }));
 
   pi.registerTool({ ...askQuestionTool, renderCall, renderResult } as Parameters<

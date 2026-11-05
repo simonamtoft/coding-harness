@@ -54,3 +54,10 @@ Decision ledger area. Entry ids use the `ASK-` prefix; see `../DECISIONS.md` for
 **Why:** Paseo renders one native form only for tool names and argument shapes it recognizes, and it answers the tool's RPC dialogs by replaying rpiv's order; any extra dialog is cancelled. It reads the model's raw arguments before `prepareArguments` runs, so the model itself must emit the shape. Unrecognized calls showed one card per question, toggle, custom answer, and review step. Paseo's form shows the question, header, and option descriptions but not `details`, which met ASK-02's revisit condition.
 **Revisit if:** The Paseo trial is dropped (PI-108); Paseo changes its rpiv adapter or adds a way to register other question tools; or Paseo users report deciding without needed context.
 **Evidence:** User chose "Rename everywhere", "Match rpiv; free text allowed", and "Keep, plus self-contained question".
+
+### ASK-09 · Under Paseo the deciding context goes in prose before the question form
+`accepted` · 2026-11-05 · `01a1aad3`
+**Decision:** The clarification gate depends on `ctx.mode`. In the TUI it is unchanged: context goes in each question's `details` field and the response holds only the `ask_user_question` call. In every other mode, including Paseo's RPC mode, the model writes the deciding context in the assistant response, grouped by question, before the call; questions stay self-contained and the call is still not batched with other tools. Rejected: folding the context into the question text, and prose for every client.
+**Why:** A live PI-109 check in Paseo confirmed that its question form hides `details`, so the TUI rule "do not restate the details in prose" left the user deciding without context, which is ASK-08's revisit condition. Packing facts into question text makes long questions; prose everywhere would show context twice in the TUI, whose panel already renders `details`.
+**Revisit if:** Paseo starts rendering `details` (or another description field) in its question form, or the TUI stops showing `details`.
+**Evidence:** User reported "No, hidden" in Paseo and chose "Prose in RPC mode".
