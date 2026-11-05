@@ -57,6 +57,10 @@ Install them with:
 
 This runs `pi install` per entry, which writes the `packages` array in the
 local `~/.pi/agent/settings.json`. Entries already installed are skipped.
+It also installs the `present` skill's pinned Playwright and mermaid from
+`shared/skills/present/bun.lock` into its gitignored `node_modules`, plus
+Playwright's Chromium. Reports therefore render in any repository, whether
+or not the project itself has Playwright.
 
 When developing one of the plugins, point its settings entry at the local
 checkout instead (for example `../../projects/pi-status-footer`, relative to

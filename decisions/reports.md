@@ -30,3 +30,10 @@ Decision ledger area. Entry ids use the `REP-` prefix; see `../DECISIONS.md` for
 **Decision:** Reverted the instruction that made `present` the default final delivery for substantial work. Deliver concise Markdown by default; use `present` only on an explicit user request while its report pipeline is refined.
 **Why:** Disabling the skill's model invocation hid it from discovery but did not override the conflicting instruction. The resulting workflow produced an unhelpful raw HTML response rather than the intended report delivery.
 **Revisit if:** The presenter reliably generates and returns the promised validated HTML-report link, and a user asks to reconsider automatic report delivery.
+
+### REP-05 · Reports are spec-built before/after comparisons
+`accepted` · 2026-11-04 · `01a1a7db-c13e-773a-940d-0554c9462f20`
+**Decision:** The presenter writes a JSON spec of numbered changes, and `build-report.mjs` renders each one as a before/after pair: a side-by-side `diff` from Git, `image` screenshots, `terminal` output, `steps`, or a Mermaid `diagram` (sequence, workflow, architecture, dependencies) pre-rendered to static SVG. A change without `before` renders as one panel. Text is capped by the build: title 70, summary 160, change title 60, one optional `note` of 140 characters per change, and tags of 40. Refused: the sidebar dashboard template, prose/metric/limitation sections, and presenter-authored HTML (they produced text-heavy, inconsistent reports); hand-drawn SVG and Graphviz (one Mermaid syntax covers sequence diagrams too); an overlay diagram diff (the user chose side-by-side always); a timeline or Gantt kind (call order is what matters).
+**Why:** The user wanted "mainly visuals, as little text as possible", then "tiny explainers" only. Caps in the build hold that line better than instructions alone.
+**Revisit if:** Reports need a kind the five cannot express, or the caps repeatedly force essential information out.
+**Evidence:** "Mainly visuals. As little text as possible."; "Important parts are timing diagrams, workflows, architecture, dependencies"; "Sequence (call order)"; "Side-by-side always".
