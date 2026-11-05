@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -13,18 +13,20 @@ import {
   hasSessionHistoryReadAccess,
   permitsSessionHistoryCommand,
   isControlPlaneWriteBlocked,
-  isProtectedSecretPath,
+  isProtectedSecretTarget,
   isTrustedSharedSkillHelper,
   permitsRootVerifierScriptBashReference,
+  isReadOnlyInspectionCommand,
   isWithin,
+  namesMissingRootEntry,
   playwrightBrowsersRoot,
   requestResearchVaultConfirmation,
   researchVaultBashOperation,
+  sameRepositoryWorktrees,
   shellPathCandidates,
 } from "./policy.ts";
 import { hardenPiPermissions } from "./permissions.ts";
-import { remoteShellProgram, requestRemoteShellConfirmation } from "./remote-shell.ts";
-import { changesDirectoryToSessionTemp } from "./session-temp.ts";
+import { confirmedCommand, requestCommandConfirmation } from "./confirmed-commands.ts";
 import { registerRecentSessionsTool } from "./recent-sessions-tool.ts";
 import { currentRepositoryRoot, isRepositorySessionTranscript, isSafeSessionHistoryTree, isSessionHistoryDirectory, sessionHistoryRoot } from "./session-history.ts";
 
@@ -130,7 +132,7 @@ function inspectPath(root: string, rawPath: string): { resolved?: string; reason
   }
 
   const resolved = realpathForCheck(normalizedInput);
-  if (isProtectedSecretPath(resolved)) return { resolved, reason: "protected secret path" };
+  if (isProtectedSecretTarget(resolved, root)) return { resolved, reason: "protected secret path" };
   if (!isWithin(root, resolved)) {
     return { resolved, outside: true, reason: `path resolves outside the session directory (${resolved})` };
   }
@@ -163,6 +165,9 @@ export function createSandboxGuard(
     const sessionTempDirectory = getSessionTempDirectory();
     return sessionTempDirectory !== undefined && isWithin(sessionTempDirectory, path);
   };
+  // Listed per check, not cached, so worktrees added during the session are recognised.
+  const isSameRepositoryWorktreePath = (path: string) =>
+    sameRepositoryWorktrees(root).some((worktree) => isWithin(worktree, path));
 
   return async (event: ToolCallEvent, ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } }) => {
     if (FILE_TOOLS.has(event.toolName)) {
@@ -171,7 +176,7 @@ export function createSandboxGuard(
         const inspection = inspectPath(root, input.path);
         const isWrite = !READ_TOOLS.has(event.toolName);
         if (isWrite && inspection.resolved
-          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT, getSessionTempDirectory())) {
           return block(`${input.path}: agent control-plane writes require a coding-harness session`);
         }
         if (inspection.reason && !inspection.outside) return block(`${input.path}: ${inspection.reason}`);
@@ -192,6 +197,7 @@ export function createSandboxGuard(
             return block(`${input.path}: research-vault ${event.toolName} denied by user`);
           }
           if (!READ_TOOLS.has(event.toolName)) return block(`${input.path}: ${inspection.reason}`);
+          if (isSameRepositoryWorktreePath(inspection.resolved)) return undefined;
           if (isTrustedRetainedSessionRead(inspection.resolved)
             || isTrustedOutsideRead(event.toolName, inspection.resolved)) return undefined;
           if (sessionReadApprovals.has(inspection.resolved)) return undefined;
@@ -240,9 +246,6 @@ export function createSandboxGuard(
         && realpathForCheck(historyHelper) === historyHelper
         && (!event.input.command.startsWith("bun ~/") || realpathForCheck(installedHistoryHelper) === historyHelper)) return undefined;
 
-      if (sessionTempDirectory && changesDirectoryToSessionTemp(event.input.command, sessionTempDirectory, realpathForCheck)) {
-        return block("Bash cannot change its working directory to the session temp directory; use absolute paths instead");
-      }
       const vaultOperation = researchVaultBashOperation(event.input.command, resolvedResearchVaultRoot);
       const vaultOperationPathsAreSafe = hasSafeResearchVaultBashPaths(event.input.command, resolvedResearchVaultRoot);
       if (vaultOperation && !vaultOperationPathsAreSafe) {
@@ -256,8 +259,25 @@ export function createSandboxGuard(
       }
       if (vaultOperation === "read") return undefined;
 
-      for (const candidate of shellPathCandidates(event.input.command)) {
+      const directoryContext = {
+        cwd: root,
+        home: homedir(),
+        realpath: realpathForCheck,
+        // `cd` needs search permission, not only a directory.
+        isDirectory: (path: string) => {
+          try {
+            accessSync(path, constants.X_OK);
+            return statSync(path).isDirectory();
+          } catch {
+            return false;
+          }
+        },
+        variables: sessionTempDirectory ? { PI_SESSION_TMPDIR: sessionTempDirectory } : undefined,
+      };
+      const readOnlyInspection = isReadOnlyInspectionCommand(event.input.command);
+      for (const candidate of shellPathCandidates(event.input.command, directoryContext)) {
         const path = candidate.startsWith("~") ? join(process.env.HOME ?? "~", candidate.slice(1)) : candidate;
+        if (namesMissingRootEntry(path.replace(/^@/, ""))) continue;
         const inspection = inspectPath(root, path);
         if (inspection.resolved === historyHelper) {
           return block("session-history helper requires the documented read-only command from the coding-harness root");
@@ -270,13 +290,15 @@ export function createSandboxGuard(
           return block(`${candidate}: Bash execution of repository verifier scripts is blocked`);
         }
         if (inspection.resolved
-          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT)) {
+          && isControlPlaneWriteBlocked(root, inspection.resolved, CODING_HARNESS_ROOT, PI_PLUGINS_ROOT, sessionTempDirectory)) {
           return block(`${candidate}: Bash access to the agent control plane requires a coding-harness session`);
         }
         const permittedOutsidePath = inspection.outside && inspection.resolved
           && (isSessionTempPath(inspection.resolved)
             || isPluginWorkspacePath(inspection.resolved)
-            || isTrustedSharedSkillHelper(inspection.resolved, CODING_HARNESS_SHARED_ROOT));
+            || isTrustedSharedSkillHelper(inspection.resolved, CODING_HARNESS_SHARED_ROOT)
+            || isSameRepositoryWorktreePath(inspection.resolved)
+            || (readOnlyInspection && isWithin(PI_PACKAGES_ROOT, inspection.resolved)));
         if (inspection.reason && !permittedOutsidePath) {
           if (inspection.outside && inspection.resolved && canReadSessionHistory("read", inspection.resolved)) {
             return block(`${candidate}: general Bash access to session history is blocked, but transcript reads are allowed here. `
@@ -287,11 +309,11 @@ export function createSandboxGuard(
         }
       }
 
-      const remoteProgram = remoteShellProgram(event.input.command);
-      if (remoteProgram && !await requestRemoteShellConfirmation(ctx, remoteProgram, event.input.command)) {
+      const confirmation = confirmedCommand(event.input.command);
+      if (confirmation && !await requestCommandConfirmation(ctx, confirmation, event.input.command)) {
         return block(ctx.hasUI
-          ? `${remoteProgram} command denied by user`
-          : `${remoteProgram} commands require interactive approval`);
+          ? `${confirmation.program} command denied by user`
+          : `${confirmation.program} commands require interactive approval`);
       }
     }
 
@@ -324,7 +346,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   pi.on("before_agent_start", (event) => {
     if (!sessionTempDirectory) return undefined;
     return {
-      systemPrompt: `${event.systemPrompt}\n\nSession temporary workspace: ${sessionTempDirectory}\nUse this directory for disposable clones, generated analysis, and other scratch artifacts instead of placing them in the repository root. It is also available to Bash commands as $PI_SESSION_TMPDIR; use absolute paths rather than changing Bash's working directory to it.`,
+      systemPrompt: `${event.systemPrompt}\n\nSession temporary workspace: ${sessionTempDirectory}\nUse this directory for disposable clones, generated analysis, and other scratch artifacts instead of placing them in the repository root. It is also available to Bash commands as $PI_SESSION_TMPDIR.`,
     };
   });
 

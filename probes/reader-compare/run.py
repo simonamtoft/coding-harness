@@ -15,10 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 RESULTS = ROOT / 'probes/results/reader-compare'
-MODELS = [('openai-codex', 'gpt-6-luna'), ('anthropic', 'claude-haiku-5-5')]
+# Arms vary only the thinking level; VERSION 1 batches compared models instead (see REPORT.md).
+ARMS = [('PrivateGPT', 'gpt-6-luna', 'low'), ('PrivateGPT', 'gpt-6-luna', 'off')]
+# Commit whose source bytes match cases.json; workers read snapshots so the answer key stays valid.
+SOURCE_REVISION = 'ebb814705b6e73fb38f7fc78ba4ccd593bf7570e'
 LIMIT_SECONDS = 180
-VERSION = 1
-SCORE_VERSION = 2
+VERSION = 2
+SCORE_VERSION = 3
 
 
 def command(*args):
@@ -29,15 +32,23 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def check_sources(spec):
+def arm_label(provider, model, thinking):
+    return f'{provider}/{model}@{thinking}'
+
+
+def snapshot_sources(spec, root):
     for name, expected in spec['sources'].items():
-        actual = sha((ROOT / name).read_bytes())
-        if actual != expected:
-            raise RuntimeError(f'source changed: {name}; expected {expected}, found {actual}')
+        data = subprocess.run(['git', 'show', f'{SOURCE_REVISION}:{name}'], cwd=ROOT,
+                              capture_output=True, check=True).stdout
+        if sha(data) != expected:
+            raise RuntimeError(f'pinned source differs at {SOURCE_REVISION}: {name}')
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
 
 
-def question(case):
-    paths = ', '.join(str(ROOT / path) for path in case['paths'])
+def question(case, root):
+    paths = ', '.join(str(root / path) for path in case['paths'])
     items = '\n'.join(f"{q['id']}: {q['ask']}" for q in case['questions'])
     return (f'Task: Use only these source files: {paths}. Answer the following factual questions '
             f'with IDs A, B, C in the Answered facts section. For each ID, cite the exact source path '
@@ -65,14 +76,16 @@ def fact_blocks(answer):
             for i, m in enumerate(hits)}
 
 
-def cited_lines(block, path, allow_basename=False):
+def cited_lines(block, path, root, allow_basename=False):
     # Bind each labelled range to the preceding source path, stopping at the next path.
     basename = Path(path).name
     source = re.compile(r'(?<![\w/])(?:/?[\w.~-]+/)*[\w.~-]+\.(?:md|ts)(?=[:\s`),;]|$)')
     references = list(source.finditer(block))
     found = set()
     for i, ref in enumerate(references):
-        valid = {path, str(ROOT / path)}
+        valid = {path, str(root / path)}
+        if root.is_relative_to(ROOT):
+            valid.add(str((root / path).relative_to(ROOT)))
         if allow_basename:
             valid.add(basename)
         if ref.group() not in valid:
@@ -87,20 +100,20 @@ def cited_lines(block, path, allow_basename=False):
     return found
 
 
-def score(answer, case, calls):
+def score(answer, case, calls, root):
     blocks = fact_blocks(answer)
     facts = {}
     for q in case['questions']:
         block = blocks.get(q['id'], '')
         terms = all(term.lower() in block.lower() for term in q['mustContain'])
         citations = all(set(e['lines']).issubset(cited_lines(
-            block, e['path'],
+            block, e['path'], root,
             len(case['paths']) == 1
         )) for e in q['evidence'])
         facts[q['id']] = {'termsPresent': terms, 'citationCandidate': citations,
                           'requiresAudit': not (terms and citations)}
     brief = str(Path.home() / '.pi/agent/skills/bulk-read/BULK-READER.md')
-    allowed = {str(ROOT / path) for path in case['paths']} | {brief}
+    allowed = {str(root / path) for path in case['paths']} | {brief}
     return {'facts': facts,
             'briefFirst': bool(calls and calls[0].get('name') == 'read' and
                                calls[0].get('arguments', {}).get('path', '').replace('~', str(Path.home())) == brief),
@@ -110,15 +123,16 @@ def score(answer, case, calls):
             'hasSections': all(heading in answer for heading in ('Answered facts', 'Unresolved facts', 'Coverage limits'))}
 
 
-def run_child(case, provider, model, prompt_file, output, spent, cap):
+def run_child(case, arm, root, prompt_file, output, spent, cap):
+    provider, model, thinking = arm
     args = ['pi', '--mode', 'json', '-p', '--no-session', '--no-extensions',
             '--extension', str(ROOT / 'pi/agent/extensions/sandbox/index.ts'),
             '--extension', str(ROOT / 'pi/agent/extensions/secret-result-guard/index.ts'),
-            '--provider', provider, '--model', model, '--thinking', 'low',
-            '--tools', 'read,grep', '--append-system-prompt', str(prompt_file), question(case)]
+            '--provider', provider, '--model', model, '--thinking', thinking,
+            '--tools', 'read,grep', '--append-system-prompt', str(prompt_file), question(case, root)]
     started = time.monotonic()
     messages, calls = [], []
-    cost, usage = 0., dict(input=0, output=0, cacheRead=0, cacheWrite=0)
+    cost, usage = 0., dict(input=0, output=0, cacheRead=0, cacheWrite=0, reasoning=0)
     status = 'complete'
     with output.open('wb') as raw, output.with_suffix('.stderr').open('w') as err:
         proc = subprocess.Popen(args, cwd=ROOT, stdout=subprocess.PIPE, stderr=err,
@@ -176,11 +190,11 @@ def run_child(case, provider, model, prompt_file, output, spent, cap):
     if status == 'complete' and (exit_code != 0 or final.get('stopReason') != 'stop'):
         status = 'infrastructure'
     answer = result_text(messages) if status == 'complete' else ''
-    return {'case': case['id'], 'model': provider + '/' + model, 'status': status,
+    return {'case': case['id'], 'model': provider + '/' + model, 'arm': arm_label(*arm), 'status': status,
             'scoreVersion': SCORE_VERSION,
             'seconds': round(time.monotonic() - started, 3), 'exitCode': exit_code,
             'usage': usage if messages else None, 'cost': cost if messages else None,
-            'stopReason': final.get('stopReason'), 'assessment': score(answer, case, calls) if answer else None,
+            'stopReason': final.get('stopReason'), 'assessment': score(answer, case, calls, root) if answer else None,
             'answer': answer}
 
 
@@ -199,7 +213,6 @@ def main():
         parser.error('--batch needs --rescore and a 16-digit hex id')
     spec_bytes = (HERE / 'cases.json').read_bytes()
     spec = json.loads(spec_bytes)
-    check_sources(spec)
     agent = (ROOT / 'pi/agent/agents/bulk-reader.md').read_text().split('---', 2)[-1].strip()
     installed_brief = Path.home() / '.pi/agent/skills/bulk-read/BULK-READER.md'
     if not installed_brief.is_file() or installed_brief.read_bytes() != (ROOT / 'shared/skills/bulk-read/BULK-READER.md').read_bytes():
@@ -208,13 +221,20 @@ def main():
     runtime = b''.join((ROOT / path).read_bytes() for path in (
         'AGENTS.md', 'shared/AGENTS.md', 'pi/agent/extensions/sandbox/index.ts',
         'pi/agent/extensions/secret-result-guard/index.ts'))
-    identity = sha(spec_bytes + agent.encode() + runtime + pi_version.encode() + str(VERSION).encode())[:16]
+    identity = sha(spec_bytes + agent.encode() + runtime + pi_version.encode() + str(VERSION).encode()
+                   + json.dumps(ARMS).encode() + SOURCE_REVISION.encode())[:16]
     target = RESULTS / (opts.batch or identity)
+    source_root = target / 'sources'
     print(f'batch={target.name} pi={pi_version} cases={len(spec["cases"])} trials={opts.trials} cap=${opts.cap:g}', flush=True)
     if opts.dry_run: return
     if opts.rescore:
         if not target.is_dir() or not list(target.glob('*.result.json')):
             raise RuntimeError(f'no results in batch {target.name}')
+        # VERSION 1 records (no 'arm') read live repository files; later batches need their snapshot.
+        if not source_root.is_dir():
+            if any('arm' in json.loads(f.read_text()) for f in target.glob('*.result.json')):
+                raise RuntimeError(f'source snapshot missing for batch {target.name}')
+            source_root = ROOT
         by_id = {case['id']: case for case in spec['cases']}
         for f in target.glob('*.result.json'):
             result = json.loads(f.read_text())
@@ -225,26 +245,27 @@ def main():
                 except json.JSONDecodeError: continue
                 if event.get('type') == 'message_end' and event.get('message', {}).get('role') == 'assistant':
                     calls.extend(part for part in event['message'].get('content', []) if part.get('type') == 'toolCall')
-            result['assessment'] = score(result['answer'], by_id[result['case']], calls)
+            result['assessment'] = score(result['answer'], by_id[result['case']], calls, source_root)
             result['scoreVersion'] = SCORE_VERSION
             f.write_text(json.dumps(result, indent=2) + '\n')
         print('existing local records rescored offline', flush=True)
         return
-    for provider, model in MODELS:
+    for provider, model, _ in ARMS:
         rows = command('pi', '--list-models', model).splitlines()[1:]
         if not any(row.split()[:2] == [provider, model] for row in rows):
             raise RuntimeError(f'model not in Pi catalog: {provider}/{model}')
         if command('pi', 'auth', 'check', '--provider', provider, '--no-refresh') != 'ready':
             raise RuntimeError(f'provider not ready: {provider}')
     target.mkdir(parents=True, exist_ok=True)
+    snapshot_sources(spec, source_root)
     prompt_file = target / 'bulk-reader-prompt.md'
     prompt_file.write_text(agent + '\n')
     spent = sum((json.loads(f.read_text()).get('cost') or 0) for f in target.glob('*.result.json'))
     for repeat in range(opts.trials):
         for case in spec['cases']:
-            order = MODELS if repeat % 2 == 0 else MODELS[::-1]
-            for provider, model in order:
-                key = f'{case["id"]}-{repeat+1:02d}-{model}'
+            order = ARMS if repeat % 2 == 0 else ARMS[::-1]
+            for arm in order:
+                key = f'{case["id"]}-{repeat+1:02d}-{arm[1]}-{arm[2]}'
                 result_file = target / (key + '.result.json')
                 if result_file.exists():
                     previous = json.loads(result_file.read_text())
@@ -260,7 +281,7 @@ def main():
                 if spent >= opts.cap - .05:
                     print(f'budget reserve reached after ${spent:.4f}; stopping', flush=True)
                     return
-                result = run_child(case, provider, model, prompt_file, target / (key + '.jsonl'), spent, opts.cap)
+                result = run_child(case, arm, source_root, prompt_file, target / (key + '.jsonl'), spent, opts.cap)
                 result_file.write_text(json.dumps(result, indent=2) + '\n')
                 spent += result['cost'] or 0
                 facts = result['assessment']['facts'] if result['assessment'] else {}
@@ -270,7 +291,7 @@ def main():
                 if result['status'] != 'complete':
                     print('stopped after incomplete run; inspect local evidence before resuming', flush=True)
                     return
-    print(f'finished {len(spec["cases"])*opts.trials*2} runs; reported worker total ${spent:.4f}; data: {target}', flush=True)
+    print(f'finished {len(spec["cases"])*opts.trials*len(ARMS)} runs; reported worker total ${spent:.4f}; data: {target}', flush=True)
 
 
 if __name__ == '__main__':

@@ -61,6 +61,7 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Decision:** Use the TDD bug-fix workflow for explicit TDD/regression requests, or for an unrequested bug with an obvious cheap local seam. Skip unclear, expensive, or integration-heavy paths.
 **Why:** Keeps red–fix–green practical instead of forcing tests where the path is uncertain.
 **Revisit if:** A cheap reliable seam appears for the impractical case.
+Superseded by OWN-12: unrequested bug fixes use the workflow only for engine-room code.
 
 ### SKL-11 · Domain context is a planning input
 `constraint` · 2026-08-25 · `01a038b7`
@@ -175,3 +176,44 @@ Decision ledger area. Entry ids use the `SKL-` prefix; see `../DECISIONS.md` for
 **Why:** This repository is public, and the bundle carries Implement-internal slides, the brand master and photographs of real colleagues (27 MB); upstream also keeps those binaries out of git. Deck assembly (library slides, `slides.py`) and token-based HTML have different workflows, and leaving the bundle unforked lets upstream releases drop in with only the `uv` line to reapply.
 **Revisit if:** The repository becomes private, Implement publishes the bundle in a shareable location, or official web fonts and logo assets become available.
 **Evidence:** Selected "Gitignored local copy", "Separate web skill", "Arial + Palatino stacks", and "uv run --with"; then "Let's gitignore it as well" for the web skill.
+
+### SKL-28 · Cleanse adapts the generic checks of an upstream command, not its template wiring
+`accepted` · 2026-10-22 · `01a163b0-ec60-729d-8658-bc5d60387684`
+**Decision:** Add a user-triggered `cleanse` skill for cleanup after churn and before handing over a proof of concept or a 0→80% implementation. It covers documentation drift, leftovers from abandoned approaches, redundant tests, stale tracker items and workspaces, and handover readiness. It reports findings first and applies only approved fixes. It refuses the upstream command's (ulfaslak/saas_tmplt `.claude/commands/cleanse.md`) project-specific wiring: `AGENTS/DNA/` documents, the Drizzle-versus-database check, Obsidian `[[links]]`, GitHub issue claims, the mandatory read-every-source-file deep mode, and automatic branch/PR/merge. Over-engineering findings stay with `over-engineering-audit`.
+**Why:** Existing skills cover over-building, correctness, and agent-mistake analysis, but none checks whether a repository's documentation, tests, and tracker still describe the code after heavy churn. That is what a handover receiver depends on. Scoping by named area or branch point keeps the cost proportional; reading every file and merging automatically do not fit the findings-first contract.
+**Revisit if:** Repeated invocations show that a check never finds anything, that the skill overlaps with `over-engineering-audit` in practice, or that handover needs a separate workflow.
+**Evidence:** User requested it directly ("Let's call it cleanse. For PoC I also meant before handover."), not derived from analyze-sessions evidence.
+
+### SKL-29 · Cleanse scripts run only installed analysers
+`accepted` · 2026-10-22 · `01a163b0-ec60-729d-8658-bc5d60387684`
+**Decision:** Ship three stdlib-only Python scripts with `cleanse`: `dead_code.py` detects the JavaScript/TypeScript and Python stacks and runs only installed analysers (knip, tsc's unused-code diagnostics, ruff, vulture, deptry); `doc_refs.py` checks Markdown links, repository paths in code spans, and package-script and make targets; `env_vars.py` compares env templates and documented `NAME=value` lines with variables read in non-test code. Refused: ephemeral `npx`/`uvx` downloads of missing analysers, a grep-based unreferenced-file fallback, and scripted Git branch/worktree hygiene.
+**Why:** The user chose installed-only analysers. Missing analysers are reported as a coverage gap so that installing one remains the user's decision. The grep fallback was too noisy to justify. Command and env checks were limited to code spans, fenced blocks, and non-test files after a smoke run on this repository showed prose ("make the") and test harness variables producing most false positives.
+**Revisit if:** Projects routinely lack the analysers and the user wants ephemeral runs, or another stack becomes common enough to need its own runner.
+**Evidence:** Selected "Installed only" and scripts "Dead code, Doc references, Env-var drift"; asked "Would it be possible to detect the stack of the repo and then run the appropriate ones?"
+
+### SKL-30 · Quick-commit commits warning-free plans without confirmation
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** When the commit planner's ready plan ends with exactly `Warnings: none`, quick-commit commits it without `ask_user_question` and reports the plan and an undo command afterwards. Plans with any warning still need confirmation, and pushing still needs an explicit request and confirmation. Refused: skipping only single-commit plans, and keeping the unconditional confirmation.
+**Why:** Across the 50 newest Paseo sessions, 13 of 14 commit-plan confirmations were accepted unchanged, yet the waits totalled about 1.1 h, up to 18.5 m each. The user had already asked to commit, and local commits stay reversible with `git reset --soft` until pushed. The planner now ends every ready plan with an explicit warnings line, so the skip condition does not depend on parsing free-form prose.
+**Revisit if:** A committed warning-free plan groups changes the user would have regrouped, or the planner omits warnings it should have raised.
+**Evidence:** The user chose "Any warning-free plan".
+
+### SKL-31 · Zoom-out adapts upstream globalmaxxing as a user-triggered checkpoint
+`accepted` · 2026-11-03 · `01a1a06e-358b-722b-a4a4-f475dffc97cb`
+**Decision:** Add `zoom-out`, adapted from kasperjunge/skills `globalmaxxing`: map Goal/Objective/Approach/Constraints, generate reframes with six moves, ask, then rank candidates including the current approach. Changes from upstream: renamed to a descriptive name; `disable-model-invocation: true` instead of model-triggered on "diminishing returns"; up to four questions through one `ask_user_question` call instead of 3–5 prose questions; explicitly read-only until the user picks a direction.
+**Why:** No existing skill checks mid-flight whether work is on a local maximum or chasing a proxy: `grill` deepens one plan, `technical-design` runs before implementation, `over-engineering-audit` targets code deletion. Model invocation could make an autonomous task abandon its work and stop on questions; the question limit and tool follow the clarification gate.
+**Revisit if:** The user wants agents to self-trigger the check, or invocations show overlap with `grill` in practice.
+**Evidence:** "Call it zoom-out and build it" — a direct request, not derived from analyze-sessions evidence.
+
+### SKL-32 · Slim threat-model skill instead of importing Grim Prompter
+`accepted` · 2026-11-03 · `01a1a06e-acf9`
+**Decision:** Added a harness-neutral `threat-model` skill with one workflow (scope and evidence, system model, STRIDE lenses plus privacy, multi-tenancy, and agentic lenses only when the system has a subject for them, challenge against counterevidence, proposed treatments with pass/fail/inconclusive checks), producing one Markdown report. Did not install or copy Grim Prompter (jmanico/grim-prompter, about 10.5 MB): left out its JSON artifact contract and record schema, 36 architecture variants, six-stage deep chain, 29-method library, and Git command prefix. Its tool-description-poisoning and credential-authority ideas went into the agentic lens and the `security-review` brief.
+**Why:** The user overrode the `analyze-sessions` evidence requirement for a new skill so the workflow is not forgotten before projects need it. Threat modelling answers a different question than `security-review` (whole system vs one change set), so it stays a separate skill (SKL-05). Grim Prompter's per-record contract costs a large context for every run and serves no current need for machine-readable, revisioned models.
+**Revisit if:** Threat models need to be revised across many runs or consumed by tools, which would justify a structured artifact; or the skill stays unused long enough to fall under SKL-18.
+**Evidence:** "I'd like to create a slim skill even though we didn't analyse whether it would be useful currently, as I can imagine it will be useful on later projects and I don't want to forget it."
+
+### SKL-33 · Live check-packages script; no precomputed package cache
+`accepted` · 2026-11-03 · `01a1a06e`
+**Decision:** Added `check-packages`, a python3-stdlib script that queries deps.dev (existence, default version, release date, deprecation, source repo, licences, attestations) and OSV (advisories) per named package. A failed lookup reports `UNCHECKED` and never a clean result; scoped npm names are skipped unless `--public`; releases under 7 days old are flagged. HTTP goes through `curl` instead of `urllib`. Rejected a Paseo schedule that precomputes results for common packages into a lookup file, and deferred scheduled monitoring of existing project lockfiles.
+**Why:** The user asked for a reusable check so agents do not improvise one for each package (OWN-13's provenance bullet). A cached snapshot goes stale exactly on the signals that matter (new advisories, fresh releases, deprecation), would falsely read as clean, and covers popular packages, which are the least likely lookalikes; a live lookup takes about a second. Homebrew and python.org Pythons on macOS can lack a CA bundle (`cafile=None` on this machine), while curl uses the system trust store. Scoped names are the usual shape of private packages, and every queried name goes to Google. The user chose the 7-day threshold. Like SKL-32, this skill came from a direct request rather than `analyze-sessions` evidence.
+**Revisit if:** Project lockfiles need recurring advisory monitoring (a separate scheduled job with a lockfile reader), or the curl dependency fails on a supported platform.

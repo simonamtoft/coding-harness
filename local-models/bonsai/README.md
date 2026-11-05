@@ -22,8 +22,8 @@ Downloads do not start a server or change Pi configuration. The default remains
 PQ2_0; fetch each profile explicitly for comparisons:
 
 ```bash
-bash experiments/bonsai/setup.sh pq2_0
-bash experiments/bonsai/setup.sh ptq1_0
+bash local-models/bonsai/setup.sh pq2_0
+bash local-models/bonsai/setup.sh ptq1_0
 ```
 
 The script checks SHA-256 before extracting or accepting downloads. It resumes
@@ -46,8 +46,8 @@ drafter, Open WebUI, source build, or automatic startup is installed.
 Start the foreground server in a dedicated terminal:
 
 ```bash
-bash experiments/bonsai/start.sh pq2_0 2>&1 | tee experiments/bonsai/local/logs/server-pq2_0.log
-bash experiments/bonsai/start.sh ptq1_0 2>&1 | tee experiments/bonsai/local/logs/server-ptq1_0.log
+bash local-models/bonsai/start.sh pq2_0 2>&1 | tee local-models/bonsai/local/logs/server-pq2_0.log
+bash local-models/bonsai/start.sh ptq1_0 2>&1 | tee local-models/bonsai/local/logs/server-ptq1_0.log
 ```
 
 Run only one command at a time. Omitting the profile still selects PQ2_0 for
@@ -62,8 +62,8 @@ other processes on this machine can call it. Do not expose or proxy this port.
 In another terminal, verify streaming and a complete tool-call/result/answer:
 
 ```bash
-python3 experiments/bonsai/probe.py pq2_0
-python3 experiments/bonsai/probe.py ptq1_0
+python3 local-models/bonsai/probe.py pq2_0
+python3 local-models/bonsai/probe.py ptq1_0
 ```
 
 Run the profile matching the active server. The probe also checks that
@@ -78,7 +78,7 @@ reasoning default; Pi's thinking setting does not configure a dynamic token cap.
 Do not edit `models.json` concurrently with this step:
 
 ```bash
-python3 experiments/bonsai/configure.py
+python3 local-models/bonsai/configure.py
 pi --provider bonsai-local --model bonsai-2-pq2 --thinking medium
 ```
 
@@ -101,8 +101,8 @@ Restart the selected server before each fresh/cached pair, then run the matching
 profile:
 
 ```bash
-python3 experiments/bonsai/benchmark.py pq2_0
-python3 experiments/bonsai/benchmark.py ptq1_0
+python3 local-models/bonsai/benchmark.py pq2_0
+python3 local-models/bonsai/benchmark.py ptq1_0
 ```
 
 The benchmark uses the same fixed 595-row prompt for both profiles: 9,000 content
@@ -125,17 +125,17 @@ its PID with `lsof -nP -iTCP:18080 -sTCP:LISTEN` and create that local file with
 `{"pid": <server-pid>}` before running trials.
 
 ```bash
-python3 experiments/bonsai/trial.py explain
-python3 experiments/bonsai/trial.py repair
-python3 experiments/bonsai/trial.py repair
-python3 experiments/bonsai/trial.py repair
-python3 experiments/bonsai/trial.py followup --fixture <absolute-repair-fixture-path>
-python3 experiments/bonsai/trial.py explain --normal-harness
-python3 experiments/bonsai/trial.py explain --normal-harness --thinking off
+python3 local-models/bonsai/trial.py explain
+python3 local-models/bonsai/trial.py repair
+python3 local-models/bonsai/trial.py repair
+python3 local-models/bonsai/trial.py repair
+python3 local-models/bonsai/trial.py followup --fixture <absolute-repair-fixture-path>
+python3 local-models/bonsai/trial.py explain --normal-harness
+python3 local-models/bonsai/trial.py explain --normal-harness --thinking off
 
 # Add the candidate explicitly while its server is active:
-python3 experiments/bonsai/trial.py explain --normal-harness --profile ptq1_0
-python3 experiments/bonsai/trial.py repair --profile ptq1_0
+python3 local-models/bonsai/trial.py explain --normal-harness --profile ptq1_0
+python3 local-models/bonsai/trial.py repair --profile ptq1_0
 ```
 
 Each repair starts with the same seeded bug in a new directory. Use the printed

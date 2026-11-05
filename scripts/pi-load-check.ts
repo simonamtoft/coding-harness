@@ -4,9 +4,13 @@
  * extension fails to load, or a canonical skill or prompt template is not registered from this
  * checkout. It makes no model call, so it cannot show how the harness behaves; paid probes do that.
  *
+ * In a linked worktree (for example a Paseo workspace) the installed links point at the main
+ * checkout, so the check starts Pi with a temporary agent directory instead: the repository-owned
+ * entries link to this worktree and every other entry links to the real agent directory.
+ *
  * Usage: bun scripts/pi-load-check.ts
  */
-import { readdir, realpath } from "node:fs/promises";
+import { mkdtemp, readdir, realpath, rm, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -25,8 +29,7 @@ const INSTALLED_PI_LINKS = [
 
 type Command = { name: string; source: string; sourceInfo?: { path?: string } };
 
-async function linkProblems(): Promise<string[]> {
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+async function linkProblems(agentDir: string): Promise<string[]> {
   const problems: string[] = [];
   for (const [installedName, canonicalName] of INSTALLED_PI_LINKS) {
     const installed = join(agentDir, installedName);
@@ -36,6 +39,32 @@ async function linkProblems(): Promise<string[]> {
     }
   }
   return problems;
+}
+
+async function isLinkedWorktree(): Promise<boolean> {
+  const proc = Bun.spawn(["git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], {
+    cwd: REPO_ROOT,
+    stdout: "pipe",
+  });
+  const [gitDir, commonDir] = (await new Response(proc.stdout).text()).trim().split("\n");
+  if ((await proc.exited) !== 0) throw new Error(`git rev-parse failed in ${REPO_ROOT}`);
+  return gitDir !== commonDir;
+}
+
+/**
+ * Creates `overlayDir` entries: the repository-owned resources link to `repoRoot`, and every other
+ * entry of `agentDir` (settings, auth, models, installed packages) links back to `agentDir`.
+ */
+export async function linkOverlay(agentDir: string, repoRoot: string, overlayDir: string): Promise<void> {
+  // shortcut: installed packages come from the real agent directory, so a worktree change to
+  // packages.txt is not loaded until link.sh installs it; replace if package changes need checking.
+  const repoOwned = new Set<string>(INSTALLED_PI_LINKS.map(([installedName]) => installedName));
+  for (const [installedName, canonicalName] of INSTALLED_PI_LINKS) {
+    await symlink(join(repoRoot, canonicalName), join(overlayDir, installedName));
+  }
+  for (const name of await readdir(agentDir)) {
+    if (!repoOwned.has(name)) await symlink(join(agentDir, name), join(overlayDir, name));
+  }
 }
 
 async function canonicalCommands(): Promise<Map<string, string>> {
@@ -54,9 +83,10 @@ async function canonicalCommands(): Promise<Map<string, string>> {
 }
 
 /** Starts Pi outside any project, so project-local resources cannot mask the installed ones. */
-async function registeredCommands(): Promise<{ commands: Command[] | null; stderr: string }> {
+async function registeredCommands(agentDir: string): Promise<{ commands: Command[] | null; stderr: string }> {
   const proc = Bun.spawn(["pi", "--mode", "rpc", "--no-session", "--offline", "--no-approve"], {
     cwd: process.env.TMPDIR ?? "/tmp",
+    env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -103,10 +133,25 @@ function failed(problems: string[]): number {
 }
 
 async function main(): Promise<number> {
-  const broken = await linkProblems();
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+  if (!(await isLinkedWorktree())) return checkLoad(agentDir);
+
+  // A sibling of the agent directory, so local package paths in settings.json, which Pi resolves
+  // relative to the agent directory, still reach the same packages.
+  const overlayDir = await mkdtemp(join(dirname(agentDir), ".load-check-agent-"));
+  try {
+    await linkOverlay(agentDir, REPO_ROOT, overlayDir);
+    return await checkLoad(overlayDir);
+  } finally {
+    await rm(overlayDir, { recursive: true, force: true });
+  }
+}
+
+async function checkLoad(agentDir: string): Promise<number> {
+  const broken = await linkProblems(agentDir);
   if (broken.length > 0) return failed(broken);
 
-  const { commands, stderr } = await registeredCommands();
+  const { commands, stderr } = await registeredCommands(agentDir);
   if (commands === null) {
     const detail = stderr.trim() ? `:\n${stderr.trim()}` : "";
     return failed([`pi exited or passed ${STARTUP_TIMEOUT_MS / 1000}s without answering get_commands${detail}`]);
@@ -126,4 +171,4 @@ async function main(): Promise<number> {
   return 0;
 }
 
-process.exit(await main());
+if (import.meta.main) process.exit(await main());

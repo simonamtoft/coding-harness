@@ -1,0 +1,17 @@
+{
+  "kind": "multi-turn",
+  "prompt": "slugify in src/slug.ts turns 'Hello   World' into 'hello---world'. Runs of spaces should become a single dash: 'hello-world'. Please fix it.",
+  "checkCommand": [
+    "bun",
+    "test"
+  ],
+  "assertions": {
+    "checksPass": true,
+    "filesChanged": [
+      "src/slug.ts"
+    ],
+    "allowedChangedFiles": [
+      "src/slug.ts"
+    ]
+  }
+}

@@ -16,6 +16,7 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Explicit user requirement — the project boundary is not a reason to expose secrets.
 **Revisit if:** An equally strong centrally enforced mechanism replaces it.
 **Evidence:** "We should always deny .env etc. also inside current cwd."
+**Exception (2026-10-22, `01a1624d`):** A regular file named exactly `.env.example` inside the session root that the session's Git repository tracks is exempt for reads, edits, and Bash. Untracked or ignored copies, symlinks, files tracked only by a nested repository, and other template names (`.env.sample`, `.env.template`) stay denied. Narrowed again by SBX-30. The tracking check runs `git ls-files` from the session root with `core.fsmonitor` and bare-repository discovery disabled, so an attacker-controlled repository's config cannot run commands during a path check. A Paseo session hit the block four times documenting a config key and began probing for workarounds. User: "exempt ONLY the file named EXACTLY .env.example, and only if tracked by git".
 
 ### SBX-03 · Bash gets denial only, never the read prompt
 `accepted` · 2026-08-24 · `01a03286`
@@ -143,3 +144,100 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Unlike Claude's Seatbelt, Pi leaves `~/.ssh` keys and the SSH agent reachable to subprocesses, so remote access needed a user checkpoint. Git prompts would fire on most pushes while still missing Git invoked by scripts; per-host approval needs fragile host parsing; Claude already falls back to a permission prompt when sandboxed SSH cannot read keys. Like SBX-14, this is a lexical deterrent, not isolation (SBX-13).
 **Revisit if:** Pi Bash gains OS-level isolation (PI-26), or SSH prompts prove too noisy or too easy to bypass in practice.
 **Evidence:** "perhaps we can do some approval extension. E.g. that it asks for permission every time it tries to run an ssh command"
+
+### SBX-23 · Confirm state-changing Terraform commands in Pi
+`accepted` · 2026-10-19 · `01a1546f`
+**Decision:** The SBX-22 confirmation also covers state-changing `terraform`, `tf`, `tofu`, and `terragrunt` subcommands (`apply`, `destroy`, `import`, `init`, `refresh`, `taint`, `untaint`, `force-unlock`, `test`, mutating `state` and `workspace` subcommands). Rejected: prompting on every Terraform call, and changing Claude's hook, which already auto-allows read-only Terraform and prompts for everything else.
+**Why:** Read-only `fmt`, `validate`, and `plan` belong to the verify loop, so prompting on them would be noise; the state-changing set mirrors Claude's split.
+**Revisit if:** Terraform prompts prove too noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** "State-changing only"; "these, and also alias such as tf"
+**Narrowed by SBX-26:** `init -backend=false` no longer asks.
+
+### SBX-24 · Match confirmation commands by command word, not substring
+`accepted` · 2026-10-19 · `01a1546f`
+**Decision:** The SBX-22/SBX-23 confirmation uses a quote-aware lexer and checks only command words, including those in substitutions, `eval`, `sh -c`, `find -exec`, and after parsed wrapper options. Reversed: splitting on operators before honouring quotes, and treating every word after a wrapper as a possible command.
+**Why:** The old matching prompted on quoted text such as commit messages, `rg` patterns, and heredoc bodies, which made the prompt noise. The cost is that a wrapper option missing from the value-option table can hide the wrapped command; that miss is a lexical deterrent limitation, as SBX-13 already accepts.
+**Revisit if:** Missed invocations through unlisted wrapper options appear in practice, or a real shell parser becomes available to the extension.
+**Evidence:** "I think the ssh command eagerly triggers. E.g. also just if the text string contains ssh itself."
+
+### SBX-25 · Block agent attribution and session links at the agent's command layer
+`accepted` · 2026-10-23 · `01a1639c`
+**Decision:** The shared command-safety contract hard-denies `git commit`/`commit-tree`/`merge`/`tag`/`notes` and `gh pr`/`issue`/`release`/`api` commands whose text contains a `Co-Authored-By` trailer (`:` or `--trailer` `=` form), `Claude-Session:`, or `claude.ai/code/session_`. Rejected: a Git `commit-msg` hook (repository-local or a global `core.hooksPath`), and blocking all URLs in messages.
+**Why:** Claude Code cloud sessions put session links in public `cv-website` commits and PR bodies; a session shared later would expose its whole transcript to any claude.ai account. A Git hook misses PR bodies, and a global hooks path disables repositories' own hooks unless it chains them. Ordinary URLs are legitimate. Message files (`-F`, `--body-file`) and cloud sessions, which run neither guard, remain uncovered; cloud repositories need `{"attribution": false}` in their `.claude/settings.json`.
+**Revisit if:** Agents start writing messages through files, cloud sessions gain a local enforcement point, or human co-author credit becomes needed in agent commits.
+**Evidence:** "Agent-side only"; "Session links + co-author"
+
+### SBX-26 · Local-only `terraform init -backend=false` runs without confirmation
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d` · Superseded by SBX-32
+**Decision:** `terraform init` (and `tf`, `tofu`, `terragrunt`) skips the SBX-23 confirmation when its last `-backend` flag is `-backend=false`. Other `init` forms keep it. Refused: auto-allowing every `init`, and every `init` except `-migrate-state`/`-force-copy`.
+**Why:** An unanswered confirmation for a local-only init stalled a Paseo turn for 2.1 h. With the backend disabled, init only downloads providers and modules into `.terraform`, so the prompt protected nothing. The user chose the narrowest form.
+**Revisit if:** Backend-configuring inits also prove noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "-backend=false only".
+
+### SBX-27 · Track literal `cd` instead of blocking `cd` into the session temp directory
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** The Bash path check resolves relative paths against the directory each command runs in. Literal `cd`/`pushd` targets (with `~` and `$PI_SESSION_TMPDIR` expanded) move later commands; subshells and command substitutions confine their `cd`; pipeline members move nothing; a `cd` that may not take effect makes later commands pass in both directories; and `popd`/`cd -` may return to any directory seen. Directories resolve physically. Heredoc bodies stay inspected but cannot move the shell. The blanket block on `cd` into the session temp directory, and the system-prompt sentence telling agents to avoid it, are removed. A `cd` to an unknown target still leaves the tracked directory unchanged.
+**Why:** Of 182 sandbox blocks in the 50 newest Paseo sessions, about 40 came from resolving `cd sub && tool ../x` against the session root or from the `cd`-to-temp block. The temp-directory block existed only because relative paths after that `cd` were resolved against the root. Tracking the directory fixes both and also catches `cd link && cat ../x` through a symlinked directory, which the root-relative check allowed.
+**Revisit if:** Pi Bash gains OS-level isolation (PI-26), or dynamic `cd` targets become a common source of false denials.
+
+### SBX-28 · Same-repository worktrees are readable and Bash-addressable, not editable
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** The read tools and Bash may reference the main checkout and other worktrees that `git worktree list` reports for the session root's repository, recomputed on every check. `write` and `edit` stay blocked there. Listed worktrees that contain the home directory or the session root, or that lack a `.git` entry, are ignored. Refused: treating sibling worktrees like the session root, and read-tool-only access.
+**Why:** Paseo runs each task in its own worktree, and merge and comparison work needs to inspect the siblings; 14 blocks in the analysed sessions were of this kind. The lexical Bash guard cannot make Bash read-only, so Bash access implies possible modification; the user accepted that for Bash while keeping file-tool edits blocked.
+**Revisit if:** A session modifies a sibling worktree unintentionally, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Bash + read, no edits" and asked that access stay "boxed within current repo or similar".
+
+### SBX-29 · Read-only Bash inspection of installed Pi packages
+`accepted` · 2026-10-26 · `01a17808-2481-773e-9c33-22920020616d`
+**Decision:** Bash may name the Volta package root (installed Pi docs and code) only when every command in the line is a listed inspection program without writing options, substitutions, environment assignments, or output redirection other than to `/dev/null` or another descriptor. Any other command naming that root stays blocked.
+**Why:** The system prompt sends agents to the Pi docs, but `grep` over them was blocked eight times in the analysed sessions. The read tools already had this access (SBX-06's read-only trust model), and the root holds executable harness code, so Bash gets inspection only.
+**Revisit if:** Agents need other tools there, or the allowlist is shown to permit a write.
+
+### SBX-30 · Bash may mention `.env*` names it does not open
+`accepted` · 2026-11-03 · `01a1a06f`
+**Decision:** Relative `.env*` paths (no `..`, `~`, absolute path, or expansion, and no other protected name) are not secret blocks when they are operands of `ls`, unary `test`/`[`/`[[` file tests, `git check-ignore`, or `find -name`/`-path` patterns, provided that command is not piped or substituted and `find` has no `-exec`, `-delete`, or file-writing action; or when they appear inside quoted text given to `backlog`, `git -m`/`--message`, or `gh` title/body options. Reading contents (`cat`, `source`, interpreter code), redirecting into them, `echo`/`printf` text, and data heredocs stay blocked. Considered: existence probes only, or keeping SBX-02 fully strict.
+**Why:** In the 55 sessions after PI-112, about 15 of 91 blocks were existence checks or task-plan and commit text mentioning `.env`; agents then renamed fixtures to `vars.txt` to work around the guard. None of the exempted forms opens the file. A pipeline or substitution could turn probe output or printed text into a reader's operands, so those stay checked; a two-step indirection through a temporary file remains possible, as SBX-13 already accepts for the lexical guard.
+**Revisit if:** An agent reads `.env` contents through one of the exempted forms, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Checks + quoted text".
+
+### SBX-31 · Sibling repositories stay outside Bash
+`rejected` · 2026-11-03 · `01a1a06f`
+**Decision:** Do not give Bash read-only inspection of `~/projects/*` siblings in the style of SBX-29. The read tool keeps its approval prompt (SBX-01) and Bash keeps denial (SBX-03).
+**Why:** The about 12 recent blocks all came from one repository-migration week, when content moved from `nlp-claims` and `call-transcription-and-summarization` into `nlp-ai-pocs`. Cross-repository work can start Pi in the common parent instead.
+**Revisit if:** Sibling-repository blocks recur outside one-off migrations.
+**Evidence:** The user chose "Keep blocked".
+
+### SBX-32 · `terraform init` needs confirmation only when it can migrate state
+`accepted` · 2026-11-03 · `01a1a06d-b69f-7118-8fa7-d3cf1b87d12a`
+**Decision:** `terraform init` (and `tf`, `tofu`, `terragrunt`) runs without confirmation when `-backend=false` is in effect, or when `-input=false` is in effect, neither `-migrate-state` nor `-force-copy` is, and the command text does not mention `TF_CLI_ARGS` (last occurrence of each flag wins; `=false`/`=0` disables). Backend-configuring forms such as `-backend-config=…`, `-reconfigure`, and `-upgrade` qualify with `-input=false`. The other SBX-23 subcommands keep confirmation; `terraform test` stays confirmed because its run blocks apply real infrastructure unless every block uses `plan` or mocks, which the lexical guard cannot see. Reverses the 2026-10-26 refusal recorded in SBX-26. Refused after review: the user-approved narrower rule of confirming only `-migrate-state`/`-force-copy`, because `TF_CLI_ARGS`/`TF_CLI_ARGS_init` can append those flags and a piped answer (`yes | terraform init`) can accept the migration prompt when input is enabled.
+**Why:** In the 50 newest Paseo sessions, 6 of 22 Terraform confirmations were backend inits, waiting 61–1,614 s; Paseo shows the agent as running while the prompt waits, so the wait reads as a hung command. With `-input=false` Terraform errors instead of prompting, so only the explicit flags can migrate state. Other init effects (`.terraform/`, `.terraform.lock.hcl`) are local and visible in Git. Inits without `-input=false` still prompt.
+**Revisit if:** An unconfirmed init changes remote state, agents routinely omit `-input=false` so the prompt stays noisy, or Pi Bash gains OS-level isolation (PI-26).
+**Evidence:** The user chose "Allow init"; the security review of the first implementation found the `TF_CLI_ARGS` and piped-input paths.
+
+### SBX-33 · OS-level isolation runs the Paseo daemon inside a Colima container
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** Isolated agent runs use `paseo/box/`: a second Paseo daemon with Pi in a Linux container on Colima, added to the Paseo app as a direct-connection host, with a default-deny egress firewall applied by root before Paseo drops to an unprivileged user. Refused: the host daemon launching Pi through a `docker exec` wrapper (Paseo terminals and setup hooks would stay on the host); VS Code devcontainers as the workflow (the user drives agents from Paseo, not an editor); Docker Desktop as the runtime (a paid subscription at Implement's size, and the user prefers Colima); OrbStack (paid for commercial use); Apple `container` (no Docker API or devcontainer support); Anthropic's reference firewall script (all rights reserved; `firewall.sh` is independent and also drops its any-host SSH rule).
+**Why:** The container boundary covers everything Paseo launches, which the lexical guard cannot (SBX-13). Measured on the M4: Colima's bind mounts and volumes were faster than Docker Desktop's, and the repository checks passed in the box faster than on the host.
+**Revisit if:** Paseo gains a native sandbox for agents, Colima stops supporting `vz` with virtiofs, or the box's firewall proves too coarse.
+**Evidence:** The user chose "A: daemon in container" and asked to use Colima.
+
+### SBX-34 · The box reads the Pi setup and local Pi files read-only
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** The box mounts this repository and `~/pi-plugins` read-only and runs `link.sh --packages` inside, so agents load the same setup but cannot change it. `models.json` and `settings.json` reach the box as copies that `paseo-box.sh` refreshes on every start into `~/.config/paseo-box/pi`, which is mounted read-only; the daemon password sits outside that folder. The entrypoint resets the home directory as root on every start, persisting only the Pi sign-in, Pi sessions and Paseo state, because Pi auto-loads agent-directory files (`APPEND_SYSTEM.md`, themes) and `~/.agents/skills`. Refused: symlinks to `~/.pi/agent` (Colima resolves them inside the VM, where they break); mounting `~/.pi/agent` into the VM (it exposes sessions and `auth.json` to the VM); the box's own `settings.json` from the example (the user wanted their real preferences, whose package entry needs `~/pi-plugins`).
+**Why:** Agents that can write their own instructions, extensions or `link.sh` could disable the controls meant to contain them.
+**Revisit if:** Pi supports a read-only configuration root, or the copies drift in ways that a restart does not fix.
+**Evidence:** The user chose "Read-only mount", then "B: copy, then mount" and "Real + pi-plugins".
+
+### SBX-35 · Box credentials: own Pi sign-in and passed API keys only
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** Pi signs in to Anthropic separately inside the box, and the launcher passes only `IM_GPT_API_KEY` and `HETZNER_API_KEY`. No SSH keys, Git credentials, cloud CLI configuration or Docker socket enter the box. Refused: copying `auth.json` from the Mac.
+**Why:** Sharing OAuth tokens means a refresh in the box may rotate them and sign the Mac out (inferred from OAuth behaviour, not verified for Pi), and the box should hold no more than it needs to call models.
+**Revisit if:** Pi supports scoped or per-device tokens, or a separate sign-in becomes a burden.
+**Evidence:** The user chose "Separate /login" and both API keys.
+
+### SBX-36 · The box edits the mounted checkout but cannot write its `.git`
+`accepted` · 2026-11-03 · `01a1a06c-984b-7288-b4be-2a71a5f228ac`
+**Decision:** The box mounts the checkout being worked on at `/workspace` on its current branch, with the whole `.git` directory read-only; agents edit files, while commits, branches and Paseo worktrees happen on the Mac or the host Paseo daemon. The launcher refuses linked worktrees. Refused: read-only `.git/hooks` and `.git/config` only (the first implementation; the security review showed, and a reproduction with Git 2.53 confirmed, that a planted `.git/commondir` makes a plain `git status` on the Mac run the agent's `core.fsmonitor`); a separate clone inside the box (keeps commits and worktrees, but loses live edits to the current checkout); accepting the risk.
+**Why:** Git on the Mac executes what `.git` says, and the checkout is the one host path agents can write.
+**Revisit if:** Agents in the box need to commit routinely, or Paseo supports worktrees whose Git data stays outside the Mac checkout.
+**Evidence:** The user chose to "use current checkout / branch we work on", then "A: read-only .git" after the review.

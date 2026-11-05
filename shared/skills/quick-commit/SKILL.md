@@ -1,6 +1,6 @@
 ---
 name: quick-commit
-description: Use when the user wants changes actually committed — "quick commit", "commit this", "commit these changes", or "commit and push". Groups the working tree into coherent commits, confirms the plan once, and commits it.
+description: Use when the user wants changes actually committed — "quick commit", "commit this", "commit these changes", or "commit and push". Groups the working tree into coherent commits and commits them, confirming first only when the plan carries warnings.
 ---
 
 # Quick commit
@@ -16,7 +16,7 @@ Turn the current working tree into one or more coherent commits. This is the com
 
 ## Procedure
 
-1. **Capture the private snapshot.** Resolve `scripts/capture_snapshot.sh` relative to this skill directory and invoke it once. **Pi:** pass `$PI_SESSION_TMPDIR` as its first argument. **Claude Code:** pass its private session workspace when available. Pass the user's stated commit scope as the optional second argument, quoted as one argument.
+1. **Capture the private snapshot.** Run `scripts/capture_snapshot.sh` once, by its absolute path under this skill directory, from the target repository. Never `cd` into the skill directory. **Pi:** pass `$PI_SESSION_TMPDIR` as its first argument. **Claude Code:** pass its private session workspace when available. Pass the user's stated commit scope as the optional second argument, quoted as one argument.
 
    The helper creates a mode-0700 snapshot directory, captures status exactly once, and returns either `EMPTY` or the absolute path of an evidence file. It includes staged and unstaged diffs, message-style evidence, and recursively enumerated nonignored untracked files. It marks unreadable, nonregular, and binary untracked paths as uncaptured. Do not recreate this capture logic in shell, inspect the evidence yourself, or print it into the parent context.
 
@@ -29,11 +29,11 @@ Turn the current working tree into one or more coherent commits. This is the com
 
 3. **Resolve planner clarifications.** Do not read the evidence to second-guess the planner or silently fold material into a group.
 
-   - For a blocking clarification, call `ask_question` exactly once with the planner's `question`, plain-text `details`, and up to three labelled options.
+   - For a blocking clarification, write the planner's details in the assistant response, then call `ask_user_question` exactly once with the planner's question, a short header, and its two or three options, each with its consequence as the description. Paseo's question form does not show `details`, so the response carries them.
    - If the user chooses manual hunk staging, remove the snapshot directory in a separate cleanup command, tell them to use `git add -p -- <path>` with their normal index-isolation workflow, and stop without mutation.
    - For any other answer or requested revision, re-dispatch the planner with the answer and same evidence. Repeat only for an independent unresolved issue.
 
-4. **Show the ready-plan decision.** Call `ask_question` exactly once for each ready plan. Ask whether to commit it. Its plain-text details must contain every group in order, each message, and every exact path:
+4. **Commit or confirm the ready plan.** If the plan's warnings section reads exactly `Warnings: none`, go straight to step 5: the user's request to commit is the authorization, and the report shows the plan. Otherwise write the plan in the assistant response, then call `ask_user_question` exactly once to ask whether to commit the plan shown above. Paseo's question form does not show `details`, so the response must contain every group in order, each message, and every exact path:
 
    ```text
    1. [message]
@@ -42,7 +42,7 @@ Turn the current working tree into one or more coherent commits. This is the com
       ← docs/readme.md
    ```
 
-   Include all warnings: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**. A positive confirmation covers the entire plan.
+   Include all warnings in the response: mixed-concern files, possible secrets, credentials, client data, generated material, uncaptured or nonregular paths, and unrelated pre-existing staged changes. Offer **Commit this plan**, **Re-group or edit messages**, and **Cancel**, each with a one-line description. A positive confirmation covers the entire plan.
 
 5. **Commit the accepted groups.** Remove the snapshot directory in a separate cleanup command using the resolved parent directory of the evidence file. For each full-file group, in order, run:
 
@@ -53,14 +53,14 @@ Turn the current working tree into one or more coherent commits. This is the com
 
    `--only` excludes unrelated pre-existing index entries. Never use `git add -A` across groups.
 
-6. **Push only when requested.** If the user said "and push", separately confirm the remote and branch before `git push`. Otherwise stop after committing; do not push unprompted.
+6. **Push only when requested.** If the user said "and push", separately confirm the remote and branch before `git push`. When the plan was committed without confirmation, the response before that question must show every committed group with its message and exact paths. Otherwise stop after committing; do not push unprompted.
 
-7. **Report.** Show `git log --oneline -n <number of commits made>`.
+7. **Report.** Show `git log --oneline -n <number of commits made>`. When the plan was committed without confirmation, also list each commit's paths and note that `git reset --soft HEAD~<n>` undoes the commits while keeping the changes.
 
 ## Rules
 
 - Never bundle unrelated changes into one commit.
-- Confirm before committing and again before pushing.
+- Confirm before committing a plan with any warning, and always before pushing.
 - The planner alone reads and analyzes working-tree evidence; the parent owns confirmation and Git mutations.
 - Stop and flag possible secrets, credentials, client data, or large generated blobs rather than committing them automatically.
 - Respect `.gitignore` and standing instructions about material that must not be committed.

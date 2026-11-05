@@ -43,7 +43,7 @@ try {
     assert.equal(await guard({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command: recoveryCommand } }, ctx), undefined);
   }
   const extractionArgs = "--session 01a0aaa7-b627-708e-abb1-df479a2162c1 --record 133df9ba --field message.content --offset 0 --limit 2000";
-  for (const command of [`bun ${helper} ${extractionArgs}`, `bun ${helper} --match playwright --limit 25`, `bun ${helper} --audit-bulk-reads --limit 100`, `bun ${helper} --audit-bulk-reads --limit 200`]) {
+  for (const command of [`bun ${helper} ${extractionArgs}`, `bun ${helper} --match playwright --limit 25`, `bun ${helper} --audit-bulk-reads --limit 100`, `bun ${helper} --audit-bulk-reads --limit 200`, `bun ${helper} --audit-blocks --limit 200`]) {
     assert.equal(await guard({ type: "tool_call", toolCallId: "test", toolName: "bash", input: { command } }, ctx), undefined);
   }
   const other = createSandboxGuard(join(cwd, "shared"));

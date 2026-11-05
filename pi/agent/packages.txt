@@ -3,10 +3,9 @@
 # comments are ignored.
 #
 # When developing one of these plugins, replace its entry in settings.json with
-# a local path (for example ../../projects/pi-worktree-agents). The install step
+# a local path (for example ../../projects/pi-status-footer). The install step
 # detects an existing checkout by directory name and leaves it alone.
 
-git:github.com/simonamtoft/pi-worktree-agents
 git:github.com/simonamtoft/pi-status-footer
 
 # Disabled: MCP gateway not in use. Uncomment to reinstate the mcp tools.

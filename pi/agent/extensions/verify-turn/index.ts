@@ -24,12 +24,22 @@ import {
 import { classifyProjectChanges, type ProjectSnapshot } from "./change-scope.ts";
 import { formatVerificationLiveness } from "./liveness.ts";
 import { automaticVerifierNotice } from "./notice.ts";
+import { notifyOutsideTui } from "./progress.ts";
 import {
 	resetReviewCoordination,
 	setAutomaticVerifierAvailable,
 } from "../shared/review-coordination.ts";
-import { VerifierTrustGate } from "./verifier-trust.ts";
+import { reviewVerifierChange, type VerifierChangeReview } from "../shared/verifier-change-review.ts";
 import { resolveVerifier, type Verifier } from "./verifier.ts";
+import {
+  acceptVerifier,
+  changedPaths,
+  NO_VERIFIER,
+  readVerifierContent,
+  verifierChangedSinceAccepted,
+  verifierEntryPath,
+  type AcceptedVerifier,
+} from "./verifier-change.ts";
 
 const MAX_ROUNDS = 3;
 
@@ -304,6 +314,35 @@ function formatFailure(output: string): string {
   ].join("\n");
 }
 
+const ACCEPT_VERIFIER_CHANGE = "Accept the change and run the verifier";
+const SEND_BACK_VERIFIER_CHANGE = "Send it back to the agent";
+
+async function userAcceptsVerifierChange(
+  pi: ExtensionAPI,
+  ctx: { hasUI: boolean; ui: { select: (title: string, options: string[]) => Promise<string | undefined> } },
+  verifierPath: string,
+  review: VerifierChangeReview,
+): Promise<boolean> {
+  if (!ctx.hasUI) return false;
+  const finding = review.verdict === "circumvents" ? "may weaken the project checks" : "could not be cleared";
+  pi.sendMessage({
+    customType: "verify-turn",
+    content: `The agent's change to ${verifierPath} ${finding}. Verifier-change review:\n\n${review.report}`,
+    display: true,
+  });
+  const choice = await ctx.ui.select(
+    `The change to ${verifierPath} ${finding}. Review the report above.`,
+    [ACCEPT_VERIFIER_CHANGE, SEND_BACK_VERIFIER_CHANGE],
+  );
+  if (choice !== ACCEPT_VERIFIER_CHANGE) return false;
+  pi.sendMessage({
+    customType: "verify-turn",
+    content: `The user accepted the change to ${verifierPath}; it is now the accepted verifier.`,
+    display: true,
+  });
+  return true;
+}
+
 export default function verifyTurn(pi: ExtensionAPI) {
   let rounds = 0;
   let verificationRunning = false;
@@ -312,7 +351,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
   let guidanceController: AbortController | undefined;
   let verificationController: AbortController | undefined;
   let snapshotBeforeRun: ProjectSnapshot | undefined;
-  let verifierTrustGate = new VerifierTrustGate();
+  let acceptedVerifier: AcceptedVerifier | undefined;
 
   pi.on("session_start", (_event, ctx) => {
     resetReviewCoordination();
@@ -323,7 +362,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = undefined;
     verificationController = undefined;
     snapshotBeforeRun = undefined;
-    verifierTrustGate = new VerifierTrustGate();
+    acceptedVerifier = undefined;
     ctx.ui.setStatus("verify-turn", undefined);
   });
 
@@ -340,9 +379,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     guidanceController = controller;
     let verifier: Verifier | undefined;
     try {
-      const verifierTrusted = ctx.isProjectTrusted()
-        && await verifierTrustGate.requestApproval(ctx.cwd, ctx.hasUI, (title, message) => ctx.ui.confirm(title, message));
-      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal, verifierTrusted);
+      verifier = await resolveVerifier(pi, ctx.cwd, controller.signal, ctx.isProjectTrusted());
     } catch (error) {
       if (!controller.signal.aborted) throw error;
       return;
@@ -351,6 +388,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
     setAutomaticVerifierAvailable(automaticVerifierAvailable);
     if (!sessionActive || controller.signal.aborted || !automaticVerifierAvailable || !verifier) {
       snapshotBeforeRun = undefined;
+      if (sessionActive && !controller.signal.aborted && !verifier) acceptedVerifier ??= NO_VERIFIER;
       return;
     }
 
@@ -361,6 +399,10 @@ export default function verifyTurn(pi: ExtensionAPI) {
       return;
     }
     if (!sessionActive || controller.signal.aborted) return;
+    if (!acceptedVerifier && snapshotBeforeRun) {
+      const path = verifierEntryPath(verifier, ctx.cwd);
+      acceptedVerifier = acceptVerifier(path, snapshotBeforeRun, await readVerifierContent(ctx.cwd, path));
+    }
 
     return {
       systemPrompt: `${event.systemPrompt}\n\n${automaticVerifierNotice(verifier.label)}`,
@@ -387,8 +429,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
 
       let verifier: Verifier | undefined;
       try {
-        const verifierTrusted = ctx.isProjectTrusted() && verifierTrustGate.isApproved(cwd);
-        verifier = await resolveVerifier(pi, cwd, controller.signal, verifierTrusted);
+        verifier = await resolveVerifier(pi, cwd, controller.signal, ctx.isProjectTrusted());
       } catch (error) {
         if (verificationController === controller) {
           verificationRunning = false;
@@ -417,36 +458,23 @@ export default function verifyTurn(pi: ExtensionAPI) {
         return;
       }
 
-      ctx.ui.setStatus("verify-turn", "running project checks…");
-
-      const runVerification = async (loader?: VerificationLoader) => {
-        const result = await executeVerifier(verifier, cwd, controller.signal, (chunk) => {
-          loader?.appendOutput(chunk);
-        });
-        if (!sessionActive || controller.signal.aborted) return;
-        if (result.code === 0) {
-          rounds = 0;
-          pi.events.emit("verify-turn:passed");
-          return;
-        }
-
+      /** Returns false once the repair budget is spent and the problem is left to the user. */
+      const requestRepair = (failure: string, repair: string, output: string): boolean => {
         rounds += 1;
-        const output = formatFailure([result.stdout, result.stderr].filter(Boolean).join("\n"));
-
         if (rounds > MAX_ROUNDS) {
           rounds = 0;
-          const message = `Verification is still failing after ${MAX_ROUNDS} repair attempts (${verifier.label}); leaving it for the user to resolve:\n\n${output}`;
+          const message = `${failure} after ${MAX_ROUNDS} repair attempts (${verifier.label}); leaving it for the user to resolve:\n\n${output}`;
           pi.sendMessage({ customType: "verify-turn", content: message, display: true });
-          if (ctx.hasUI) ctx.ui.notify("Verification is still failing; see the reported output.", "warning");
-          return;
+          if (ctx.hasUI) ctx.ui.notify(`${failure}; see the reported output.`, "warning");
+          return false;
         }
 
         const finalAttempt = rounds === MAX_ROUNDS;
         const reportingReminder =
           "In your next response, carry forward the complete original-task summary and prior verification; add this repair rather than reporting only the latest failure or fix.";
         const instruction = finalAttempt
-          ? `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). Fix the failure if possible. If the next verification still fails, stop and summarize the remaining problem for the user. ${reportingReminder}`
-          : `Verification failed (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. Fix it before finishing. ${reportingReminder}`;
+          ? `${failure} (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS} (final). ${repair} If the next verification still fails, stop and summarize the remaining problem for the user. ${reportingReminder}`
+          : `${failure} (${verifier.label}) — attempt ${rounds}/${MAX_ROUNDS}. ${repair} ${reportingReminder}`;
 
         pi.sendMessage(
           {
@@ -456,6 +484,80 @@ export default function verifyTurn(pi: ExtensionAPI) {
           },
           { deliverAs: "followUp", triggerTurn: true },
         );
+        return true;
+      };
+
+      const verifierPath = verifierEntryPath(verifier, cwd);
+      if (
+        acceptedVerifier &&
+        snapshotAfterRun &&
+        verifierChangedSinceAccepted(acceptedVerifier, verifierPath, snapshotAfterRun)
+      ) {
+        const finishWithoutVerifier = () => {
+          verificationRunning = false;
+          verificationController = undefined;
+          ctx.ui.setStatus("verify-turn", undefined);
+        };
+        ctx.ui.setStatus("verify-turn", "reviewing the verifier change…");
+        notifyOutsideTui(ctx, `Reviewing the change to ${verifierPath} before running it…`);
+        let review: VerifierChangeReview;
+        try {
+          review = await reviewVerifierChange({
+            cwd,
+            base: acceptedVerifier.revision === "unborn" ? undefined : acceptedVerifier.revision,
+            verifierPath,
+            acceptedPath: acceptedVerifier.path || undefined,
+            acceptedContent: acceptedVerifier.content,
+            changedPaths: changedPaths(snapshotBeforeRun, snapshotAfterRun),
+            model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
+            thinkingLevel: ctx.thinkingLevel,
+            signal: controller.signal,
+          });
+        } catch (error) {
+          finishWithoutVerifier();
+          if (!controller.signal.aborted) throw error;
+          return;
+        }
+        if (!sessionActive || controller.signal.aborted) {
+          finishWithoutVerifier();
+          return;
+        }
+
+        const accepted = review.verdict === "clear" || (await userAcceptsVerifierChange(pi, ctx, verifierPath, review));
+        if (!sessionActive || controller.signal.aborted) {
+          finishWithoutVerifier();
+          return;
+        }
+        if (!accepted) {
+          finishWithoutVerifier();
+          const sentBack = requestRepair(
+            `The change to ${verifierPath} was not accepted`,
+            "The verifier did not run. Restore the checks the change weakened, or make a legitimate verifier change whose intent the diff shows.",
+            ctx.hasUI ? "The user sent the change back; the verifier-change review is above." : review.report,
+          );
+          if (sentBack && ctx.hasUI) ctx.ui.notify(`The change to ${verifierPath} was sent back to the agent.`, "warning");
+          return;
+        }
+        acceptedVerifier = acceptVerifier(verifierPath, snapshotAfterRun, await readVerifierContent(cwd, verifierPath));
+        if (review.verdict === "clear") notifyOutsideTui(ctx, `The change to ${verifierPath} was reviewed and cleared.`);
+      }
+
+      ctx.ui.setStatus("verify-turn", "running project checks…");
+
+      const runVerification = async (loader?: VerificationLoader) => {
+        const result = await executeVerifier(verifier, cwd, controller.signal, (chunk) => {
+          loader?.appendOutput(chunk);
+        });
+        if (!sessionActive || controller.signal.aborted) return;
+        if (result.code === 0) {
+          rounds = 0;
+          notifyOutsideTui(ctx, `Project checks passed (${verifier.label}).`);
+          pi.events.emit("verify-turn:passed");
+          return;
+        }
+
+        const output = formatFailure([result.stdout, result.stderr].filter(Boolean).join("\n"));
+        requestRepair("Verification failed", "Fix the failure before finishing.", output);
       };
 
       try {
@@ -479,6 +581,7 @@ export default function verifyTurn(pi: ExtensionAPI) {
           });
           if (error !== undefined) throw error;
         } else {
+          notifyOutsideTui(ctx, `Running project checks (${verifier.label})…`);
           await runVerification();
         }
       } catch (error) {

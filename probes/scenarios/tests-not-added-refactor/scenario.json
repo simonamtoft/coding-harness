@@ -1,0 +1,17 @@
+{
+  "kind": "multi-turn",
+  "prompt": "shippingCost in src/shipping.ts is hard to read because of the nested conditionals. Flatten it with guard clauses. Behavior must not change.",
+  "checkCommand": [
+    "bun",
+    "test"
+  ],
+  "assertions": {
+    "checksPass": true,
+    "filesChanged": [
+      "src/shipping.ts"
+    ],
+    "allowedChangedFiles": [
+      "src/shipping.ts"
+    ]
+  }
+}

@@ -22,7 +22,7 @@ Widen only when a finding crosses that boundary or independent evidence identifi
 
 ## What it hunts for
 
-- Dependencies that stdlib or the platform already provides
+- Dependencies that stdlib or the platform already provides. Keep established libraries for cryptography, authentication, and complex parsing rather than proposing hand-rolled replacements.
 - Single-implementation interfaces and abstractions
 - Factories that produce only one product
 - Delegating wrappers that add no logic over what they wrap

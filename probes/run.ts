@@ -104,7 +104,7 @@ const VERIFIER_OVERLAY = join(ANSWERS_DIR, "verifier");
 const INSTRUCTIONS_PATH = "shared/AGENTS.md";
 const PACKAGE_MANIFEST_PATH = "pi/agent/packages.txt";
 
-const DEFAULT_MODELS = ["anthropic/claude-sonnet-5-5", "openai-codex/gpt-6-luna"];
+const DEFAULT_MODELS = ["anthropic/claude-sonnet-5-5", "PrivateGPT/gpt-6-luna"];
 const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-5-5";
 const DEFAULT_TRIALS = 10;
 const DEFAULT_CONCURRENCY = 4;

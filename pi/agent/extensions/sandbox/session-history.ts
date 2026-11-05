@@ -165,6 +165,113 @@ export async function listRecentSessionHistory(root: string, repositoryRoot: str
   return matches;
 }
 
+const SANDBOX_BLOCK_PREFIX = "Sandbox blocked tool call: ";
+
+/** Sandbox block reason without its requested path, resolved path, or recovery guidance. */
+function sandboxBlockCategory(reason: string): { category: string; target?: string } {
+  // Path-bearing reasons are `<path>: <template>`; templates without a path contain no ": ".
+  const prefixed = /^(.+?): (.+)$/s.exec(reason);
+  const category = (prefixed?.[2] ?? reason).replace(/ \([^()]*\)/g, "").split(/\. /)[0]!.slice(0, 120);
+  return { category, target: prefixed?.[1] };
+}
+
+/** Home-relative first two segments of a blocked path, so reports group by tree rather than file. */
+function blockTargetRoot(target: string, cwd: string): string {
+  const absolute = resolve(cwd, target.replace(/^@/, "").replace(/^~(?=\/|$)/, homedir()));
+  if (isWithin(cwd, absolute)) return "<cwd>";
+  const home = homedir();
+  const [base, rest] = isWithin(home, absolute) ? ["~", absolute.slice(home.length)] : ["", absolute];
+  return [base, ...rest.split("/").filter(Boolean).slice(0, 2)].join("/") || "/";
+}
+
+/**
+ * Metadata-only audit of sandbox blocks: reports categories, blocked path roots, and the IDs of records holding
+ * a block (for `--session --record` extraction), never prompts or tool output.
+ */
+export async function auditRecentSandboxBlocks(root: string, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("audit limit must be 1–200");
+  const report = [];
+  for (const { path, ...header } of (await sessionHeaders(root)).slice(0, limit)) {
+    const row = { ...header, toolCalls: 0, blocks: 0, workerToolCalls: 0, workerBlocks: 0,
+      reasons: {} as Record<string, number>, targets: {} as Record<string, Record<string, number>>,
+      blockRecords: [] as string[] };
+    const count = (message: Record<string, unknown>, worker: boolean, recordId: unknown) => {
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        const calls = message.content.filter((part) => isObject(part) && part.type === "toolCall").length;
+        if (worker) row.workerToolCalls += calls;
+        else row.toolCalls += calls;
+      }
+      if (message.role !== "toolResult" || !Array.isArray(message.content)) return;
+      const text = message.content.map((part) => isObject(part) && typeof part.text === "string" ? part.text : "").join("");
+      if (!text.startsWith(SANDBOX_BLOCK_PREFIX)) return;
+      if (worker) row.workerBlocks++;
+      else row.blocks++;
+      if (typeof recordId === "string" && row.blockRecords.at(-1) !== recordId) row.blockRecords.push(recordId);
+      const { category, target } = sandboxBlockCategory(text.slice(SANDBOX_BLOCK_PREFIX.length));
+      const key = `${worker ? "subagent " : ""}${String(message.toolName)}: ${category}`;
+      row.reasons[key] = (row.reasons[key] ?? 0) + 1;
+      if (target) {
+        const targetRoot = blockTargetRoot(target, header.cwd);
+        const roots = row.targets[key] ??= {};
+        roots[targetRoot] = (roots[targetRoot] ?? 0) + 1;
+      }
+    };
+    const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
+    for await (const line of lines) {
+      let record: unknown;
+      try { record = JSON.parse(line); } catch { continue; }
+      if (!isObject(record) || record.type !== "message" || !isObject(record.message)) continue;
+      count(record.message, false, record.id);
+      const results = isObject(record.message.details) ? record.message.details.results : undefined;
+      if (record.message.role !== "toolResult" || !Array.isArray(results)) continue;
+      for (const result of results) {
+        if (isObject(result) && Array.isArray(result.messages)) {
+          for (const child of result.messages) if (isObject(child)) count(child, true, record.id);
+        }
+      }
+    }
+    report.push(row);
+  }
+  return report;
+}
+
+const ASK_TOOLS = new Set(["ask_question", "ask_user_question"]);
+
+/**
+ * Metadata-only audit of clarification waits: for each ask tool call, the result record ID (for `--session --record`
+ * extraction of the question and answer) and seconds from the asking assistant message to the answer.
+ */
+export async function auditRecentAskWaits(root: string, limit: number) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("audit limit must be 1–200");
+  const report = [];
+  for (const { path, ...header } of (await sessionHeaders(root)).slice(0, limit)) {
+    const asks: Array<{ tool: string; record: string; waitSeconds: number | null }> = [];
+    const pending = new Map<string, { tool: string; askedAt: number }>();
+    const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
+    for await (const line of lines) {
+      let record: unknown;
+      try { record = JSON.parse(line); } catch { continue; }
+      if (!isObject(record) || record.type !== "message" || !isObject(record.message)) continue;
+      const message = record.message;
+      const at = typeof record.timestamp === "string" ? Date.parse(record.timestamp) : Number.NaN;
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (isObject(part) && part.type === "toolCall" && typeof part.id === "string"
+            && typeof part.name === "string" && ASK_TOOLS.has(part.name)) pending.set(part.id, { tool: part.name, askedAt: at });
+        }
+      }
+      if (message.role !== "toolResult" || typeof message.toolCallId !== "string" || typeof record.id !== "string") continue;
+      const ask = pending.get(message.toolCallId);
+      if (!ask) continue;
+      pending.delete(message.toolCallId);
+      const wait = (at - ask.askedAt) / 1000;
+      asks.push({ tool: ask.tool, record: record.id, waitSeconds: Number.isFinite(wait) ? wait : null });
+    }
+    report.push({ ...header, asks });
+  }
+  return report;
+}
+
 /** Metadata-only audit: never return prompt, tool arguments, or worker output. */
 export async function auditRecentBulkReads(root: string, limit: number) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("audit limit must be 1–200");
@@ -374,6 +481,12 @@ if (import.meta.main) {
       for (const session of await listRecentSessionHistory(sessionHistoryRoot(), repositoryRoot, Number(args[2]))) {
         console.log(JSON.stringify(session));
       }
+    } else if (args.length === 3 && args[0] === "--audit-blocks" && args[1] === "--limit"
+      && /^(?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$/.test(args[2]!)) {
+      for (const row of await auditRecentSandboxBlocks(sessionHistoryRoot(), Number(args[2]))) console.log(JSON.stringify(row));
+    } else if (args.length === 3 && args[0] === "--audit-asks" && args[1] === "--limit"
+      && /^(?:[1-9]|[1-9][0-9]|1[0-9][0-9]|200)$/.test(args[2]!)) {
+      for (const row of await auditRecentAskWaits(sessionHistoryRoot(), Number(args[2]))) console.log(JSON.stringify(row));
     } else if (parseSessionHistoryExtraction(args)) {
       console.log(JSON.stringify(await extractSessionHistoryField(sessionHistoryRoot(), args)));
     } else if (args.length === 3 && args[0] === "--audit-bulk-reads" && args[1] === "--limit"
@@ -409,7 +522,7 @@ if (import.meta.main) {
       const [matchFlag, pattern, limitFlag, rawLimit, ...extra] = args;
       if (matchFlag !== "--match" || !pattern || limitFlag !== "--limit"
         || !/^[1-9]\d*$/.test(rawLimit ?? "") || Number(rawLimit) > 100 || extra.length) {
-        throw new Error('usage: session-history.ts --recent --limit 25 (1–100), --audit-bulk-reads --limit 200, --match "topic" --limit 25 (1–100), or --session UUID --record ID --field message.content --offset 0 --limit 2000 (1–2000 characters)');
+        throw new Error('usage: session-history.ts --recent --limit 25 (1–100), --audit-bulk-reads --limit 200, --audit-blocks --limit 200, --audit-asks --limit 200, --match "topic" --limit 25 (1–100), or --session UUID --record ID --field message.content --offset 0 --limit 2000 (1–2000 characters)');
       }
       for (const session of await findSessionHistory(sessionHistoryRoot(), pattern, Number(rawLimit))) {
         console.log(JSON.stringify(session));

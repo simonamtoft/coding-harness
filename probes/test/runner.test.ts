@@ -47,6 +47,7 @@ function createSandbox(): Sandbox {
   cpSync(join(SOURCE_ROOT, "probes"), join(root, "probes"), {
     recursive: true,
     filter: (source) => !source.startsWith(join(SOURCE_ROOT, "probes/.fixture-cache"))
+      && !source.startsWith(join(SOURCE_ROOT, "probes/results"))
       && !(source.startsWith(`${scenarioRoot}/`) && corpusTasks.has(source.slice(scenarioRoot.length + 1).split("/")[0])),
   });
   rmSync(join(root, "probes/results"), { recursive: true, force: true });

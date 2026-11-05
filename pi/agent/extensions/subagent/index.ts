@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, ToolCall } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
@@ -44,6 +44,12 @@ import {
 	requestReview,
 	type ReviewRequest,
 } from "../shared/review-coordination.ts";
+import {
+	parseVerifierChangeVerdict,
+	registerVerifierChangeReviewer,
+	type VerifierChangeReview,
+	type VerifierChangeReviewRequest,
+} from "../shared/verifier-change-review.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -178,6 +184,8 @@ interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	/** The child's transcript. Paseo's pi-subagents adapter reads `results[].sessionFile` to show the child run. */
+	sessionFile?: string;
 }
 
 interface SubagentDetails {
@@ -212,10 +220,46 @@ function getResultOutput(result: SingleResult): string {
 
 function formatElapsed(result: SingleResult): string {
 	if (!result.startedAt || !result.finishedAt) return "";
-	const elapsedSeconds = Math.max(0, Math.floor((result.finishedAt - result.startedAt) / 1000));
-	const minutes = Math.floor(elapsedSeconds / 60);
-	const seconds = elapsedSeconds % 60;
-	return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+	return formatClock(result.finishedAt - result.startedAt);
+}
+
+function formatClock(milliseconds: number): string {
+	const elapsedSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+	return `${Math.floor(elapsedSeconds / 60).toString().padStart(2, "0")}:${(elapsedSeconds % 60).toString().padStart(2, "0")}`;
+}
+
+/**
+ * One plain-text status line per child run. The TUI renders from `details`; RPC clients such as Paseo
+ * show only a running tool's partial text, so this line is their view of the child.
+ */
+function describeProgress(result: SingleResult): string {
+	if (result.status === "queued") return `${result.agent} · queued`;
+	if (result.status === "completed" || result.status === "failed") {
+		return `${result.agent} · ${result.status} ${formatElapsed(result)}`.trimEnd();
+	}
+	const parts = [result.agent];
+	if (result.startedAt) parts.push(formatClock(Date.now() - result.startedAt));
+	const assistantIndex = result.messages.findLastIndex((message) => message.role === "assistant");
+	const assistant = result.messages[assistantIndex];
+	const finished = new Set(
+		result.messages.slice(assistantIndex + 1).flatMap((message) => (message.role === "toolResult" ? [message.toolCallId] : [])),
+	);
+	const pendingCalls = assistant?.role === "assistant"
+		? assistant.content.filter((part): part is ToolCall => part.type === "toolCall" && !finished.has(part.id))
+		: [];
+	if (pendingCalls.length) {
+		parts.push(`turn ${result.usage.turns}`);
+		parts.push(pendingCalls.map((call) => formatToolCall(call.name, call.arguments, (_color, text) => text)).join(", "));
+	} else if (assistant && assistantIndex === result.messages.length - 1) {
+		parts.push(`turn ${result.usage.turns}`, "finishing");
+	} else {
+		parts.push(`turn ${result.usage.turns + 1}`, "waiting for model");
+	}
+	return parts.join(" · ");
+}
+
+function formatRunsProgress(header: string, results: SingleResult[]): string {
+	return [header, ...results.map(describeProgress)].join("\n");
 }
 
 function truncateParallelOutput(output: string): string {
@@ -292,6 +336,24 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
+/**
+ * Gives one child run a private transcript directory inside the parent's session temp workspace, so
+ * transcripts stay out of the session store and expire with the workspace. Without a workspace the
+ * child runs without a session.
+ */
+async function createTranscriptDirectory(agentName: string): Promise<string | undefined> {
+	const sessionTemp = process.env.PI_SESSION_TMPDIR;
+	if (!sessionTemp) return undefined;
+	const runsDir = path.join(sessionTemp, "subagent-runs");
+	await fs.promises.mkdir(runsDir, { recursive: true, mode: 0o700 });
+	return fs.promises.mkdtemp(path.join(runsDir, `${agentName.replace(/[^\w.-]+/g, "_")}-`));
+}
+
+async function findTranscript(transcriptDir: string): Promise<string | undefined> {
+	const files = (await fs.promises.readdir(transcriptDir)).filter((file) => file.endsWith(".jsonl"));
+	return files.length === 1 ? path.join(transcriptDir, files[0]) : undefined;
+}
+
 interface DispatchDefaults {
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
@@ -319,8 +381,11 @@ async function runSingleAgent(
 
 	const sandboxExtension = path.resolve(path.dirname(__filename), "../sandbox/index.ts");
 	const secretResultGuardExtension = path.resolve(path.dirname(__filename), "../secret-result-guard/index.ts");
+	const transcriptDir = await createTranscriptDirectory(agentName);
 	const args: string[] = [
-		"--mode", "json", "-p", "--no-session", "--no-extensions",
+		"--mode", "json", "-p",
+		...(transcriptDir ? ["--session-dir", transcriptDir] : ["--no-session"]),
+		"--no-extensions",
 		"--extension", sandboxExtension,
 		"--extension", secretResultGuardExtension,
 	];
@@ -346,8 +411,9 @@ async function runSingleAgent(
 
 	const emitUpdate = () => {
 		if (onUpdate) {
+			const output = getFinalOutput(currentResult.messages);
 			onUpdate({
-				content: [{ type: "text", text: getFinalOutput(currentResult.messages) || "(running...)" }],
+				content: [{ type: "text", text: output ? `${describeProgress(currentResult)}\n\n${output}` : describeProgress(currentResult) }],
 				details: makeDetails([currentResult]),
 			});
 		}
@@ -446,6 +512,7 @@ async function runSingleAgent(
 
 		currentResult.exitCode = exitCode;
 		currentResult.finishedAt = Date.now();
+		if (transcriptDir) currentResult.sessionFile = await findTranscript(transcriptDir);
 		currentResult.status = isFailedResult(currentResult) ? "failed" : "completed";
 		if (isFailedResult(currentResult)) {
 			const failure = currentResult.errorMessage || currentResult.stderr.trim() || "The child process exited without an error message.";
@@ -498,7 +565,83 @@ const SubagentParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
 
+async function prepareReviewBundle(
+	pi: ExtensionAPI,
+	base: string | undefined,
+	cwd: string,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
+	const prepared = await pi.exec(prepareScript, [base ?? "AUTO", cwd], { cwd, signal });
+	if (prepared.code !== 0) {
+		throw new Error((prepared.stderr || prepared.stdout || "Could not prepare review bundle").trim());
+	}
+
+	const bundlePath = prepared.stdout
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.at(-1);
+	if (!bundlePath || !fs.existsSync(bundlePath)) {
+		throw new Error("Review bundle preparation did not return a readable file");
+	}
+	return bundlePath;
+}
+
+const VERIFIER_CHANGE_REVIEWER = "verifier-change-reviewer";
+
+async function runVerifierChangeReview(
+	pi: ExtensionAPI,
+	request: VerifierChangeReviewRequest,
+): Promise<VerifierChangeReview> {
+	const discovery = discoverAgents(request.cwd, "user");
+	const reviewerError = discovery.error ?? validateReviewerAgents(discovery.agents, [VERIFIER_CHANGE_REVIEWER]);
+	if (reviewerError) {
+		return { verdict: "undecided", report: `Verifier-change review dispatch failed closed: ${reviewerError}` };
+	}
+
+	const bundlePath = await prepareReviewBundle(pi, request.base, request.cwd, request.signal);
+	try {
+		const changed = request.changedPaths.length
+			? request.changedPaths.map((file) => `- ${file}`).join("\n")
+			: "- (none recorded)";
+		const accepted = !request.acceptedPath
+			? "The session had no verifier before this change; the entry point is new."
+			: request.acceptedContent === undefined
+				? `Accepted ${request.acceptedPath} content is unavailable; judge the entry point's changes in the bundle.`
+				: `Accepted ${request.acceptedPath} content (judge the current entry point against this, not against the bundle base):\n\n\`\`\`\`\n${request.acceptedContent}\n\`\`\`\``;
+		const task = [
+			`Review bundle: ${bundlePath}`,
+			`Changed verifier entry point: ${request.verifierPath}`,
+			accepted,
+			"Files changed in the agent turn that triggered this review (judge test and configuration changes among these):",
+			changed,
+			"Follow your configured brief. Do not edit files.",
+		].join("\n\n");
+		const result = await runSingleAgent(
+			request.cwd,
+			{ model: request.model, thinkingLevel: request.thinkingLevel as ThinkingLevel | undefined },
+			discovery.agents,
+			VERIFIER_CHANGE_REVIEWER,
+			task,
+			undefined,
+			undefined,
+			request.signal,
+			undefined,
+			(results) => ({ mode: "single", agentScope: "user", projectAgentsDir: discovery.projectAgentsDir, results }),
+		);
+		if (isFailedResult(result)) {
+			return { verdict: "undecided", report: `The verifier-change reviewer failed: ${getResultOutput(result)}` };
+		}
+		return parseVerifierChangeVerdict(getResultOutput(result));
+	} finally {
+		await fs.promises.rm(bundlePath, { force: true });
+	}
+}
+
 export default function (pi: ExtensionAPI) {
+	registerVerifierChangeReviewer((request) => runVerifierChangeReview(pi, request));
+
 	pi.events.on("verify-turn:passed", () => {
 		const request = releaseReviewAfterVerification();
 		if (!request) return;
@@ -722,7 +865,10 @@ export default function (pi: ExtensionAPI) {
 						const done = allResults.filter((r) => r.exitCode !== -1).length;
 						onUpdate({
 							content: [
-								{ type: "text", text: `Parallel: ${done}/${allResults.length} done, ${running} running...` },
+								{
+									type: "text",
+									text: formatRunsProgress(`Parallel: ${done}/${allResults.length} done, ${running} running...`, allResults),
+								},
 							],
 							details: makeDetails("parallel")([...allResults]),
 						});
@@ -1141,7 +1287,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Run independent review for a completed non-trivial change",
 		promptGuidelines: [
 			"Use review_changes once after implementation and local checks when a task changes application persistence or schemas, public APIs, concurrency or lifecycle behavior, or behavior spanning multiple modules. When an automatic verifier is available, an autonomous review request is deferred until it passes; then call review_changes once with the preserved arguments. Do not use it for Backlog or task-management-only changes, documentation-only, formatting-only, generated-file-only, or obviously trivial changes.",
-			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, dependency security, or security configuration, or when the user explicitly requests a full security review.",
+			"By default, run only the correctness reviewer. Set security to true only when the change affects authentication, authorization, secrets, cryptography, untrusted input handling, network or filesystem trust boundaries, agent tool permissions, delegation, or approval flows, dependency security, or security configuration, or when the user explicitly requests a full security review.",
 			"When calling review_changes autonomously, provide the files changed for the current task in focus. Validate each returned finding against the code, fix valid findings that remain within the original task scope, and let normal verification run afterward.",
 			"After an autonomous review_changes call and any resulting fixes, make the final response a complete delivery report for the original task: carry forward the implementation summary and verification already performed, then add the review outcome and review-driven fixes. Do not report only the reviewers' concerns or the last fix.",
 			"Do not call review_changes again solely because you fixed findings from its first pass unless the user asks or those fixes materially changed the design.",
@@ -1184,23 +1330,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const prepareScript = path.join(getAgentDir(), "skills", "code-review", "scripts", "prepare-review.sh");
-			const prepared = await pi.exec(prepareScript, [params.base ?? "AUTO", ctx.cwd], {
-				cwd: ctx.cwd,
-				signal,
-			});
-			if (prepared.code !== 0) {
-				throw new Error((prepared.stderr || prepared.stdout || "Could not prepare review bundle").trim());
-			}
-
-			const bundlePath = prepared.stdout
-				.split("\n")
-				.map((line) => line.trim())
-				.filter(Boolean)
-				.at(-1);
-			if (!bundlePath || !fs.existsSync(bundlePath)) {
-				throw new Error("Review bundle preparation did not return a readable file");
-			}
+			const bundlePath = await prepareReviewBundle(pi, params.base, ctx.cwd, signal);
 
 			const discovery = discoverAgents(ctx.cwd, "user");
 			const reviewerNames = params.security
@@ -1235,7 +1365,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (onUpdate) {
 				onUpdate({
-					content: [{ type: "text", text: `Independent review: 0/${reviewerNames.length} complete` }],
+					content: [{ type: "text", text: formatRunsProgress(`Independent review: 0/${reviewerNames.length} complete`, results) }],
 					details: makeDetails([...results]),
 				});
 			}
@@ -1262,7 +1392,7 @@ export default function (pi: ExtensionAPI) {
 								reviewer.status === "completed" || reviewer.status === "failed",
 							).length;
 							onUpdate({
-								content: [{ type: "text", text: `Independent review: ${complete}/${reviewerNames.length} complete` }],
+								content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
 								details: makeDetails([...results]),
 							});
 						},
@@ -1274,7 +1404,7 @@ export default function (pi: ExtensionAPI) {
 							reviewer.status === "completed" || reviewer.status === "failed",
 						).length;
 						onUpdate({
-							content: [{ type: "text", text: `Independent review: ${complete}/${reviewerNames.length} complete` }],
+							content: [{ type: "text", text: formatRunsProgress(`Independent review: ${complete}/${reviewerNames.length} complete`, results) }],
 							details: makeDetails([...results]),
 						});
 					}

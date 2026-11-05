@@ -48,4 +48,4 @@ fi
 "local/$release/llama-server" --version
 fetch "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/$revision/$model" \
     "local/models/$model" "$model_checksum"
-printf 'Setup complete. Start manually with: bash experiments/bonsai/start.sh %s\n' "$profile"
+printf 'Setup complete. Start manually with: bash local-models/bonsai/start.sh %s\n' "$profile"

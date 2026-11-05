@@ -70,7 +70,7 @@
           }
         },
         {
-          "id": "gpt-6-sol",
+          "id": "gpt-6.1-sol",
           "reasoning": true,
           "input": ["text", "image"],
           "cost": {

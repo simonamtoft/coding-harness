@@ -44,6 +44,12 @@ A numbered list of user stories in this form:
 
 Cover the feature's meaningful user-visible behavior without padding the list with implementation details.
 
+## Acceptance Criteria
+
+A numbered list of observable outcomes that together decide when the specification is satisfied. For each criterion, name the check that decides it: a test, command, metric, or observable behavior.
+
+Mark a criterion `human judgement` only when no practical check exists, and name who judges. If the conversation has not established how to check a criterion, record that as an open question under Further Notes instead of inventing a check.
+
 ## Implementation Decisions
 
 The decisions already made, such as:

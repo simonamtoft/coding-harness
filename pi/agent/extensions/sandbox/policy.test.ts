@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,13 +11,17 @@ import {
   hasSafeResearchVaultBashPaths,
   hasTrustedSharedReadAccess,
   isControlPlaneWriteBlocked,
+  isReadOnlyInspectionCommand,
   isTrustedSharedSkillHelper,
   isProtectedSecretPath,
+  isProtectedSecretTarget,
+  namesMissingRootEntry,
   playwrightBrowsersRoot,
   permitsRootVerifierScriptBashReference,
   requestResearchVaultConfirmation,
   researchVaultBashOperation,
   researchVaultBashPaths,
+  sameRepositoryWorktrees,
   shellPathCandidates,
 } from "./policy.ts";
 
@@ -269,6 +274,280 @@ test("search patterns and globs are not filesystem candidates", () => {
   assert.deepEqual(shellPathCandidates("rg --ignore-file=~/.ssh/id_rsa ."), ["~/.ssh/id_rsa"]);
   assert.ok(deniedBashCommandReason("grep -e. ~/.ssh/id_rsa", "/Users/example/project", "/Users/example"));
   assert.ok(deniedBashCommandReason("rg -f ~/.ssh/id_rsa .", "/Users/example/project", "/Users/example"));
+});
+
+test("interpreter heredocs, sed and awk programs, and quoted prose are not path candidates", () => {
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\ns = s.replace(' // 2', '/x')\nopen('/etc/hosts')\nEOF"), []);
+  assert.deepEqual(shellPathCandidates("backlog task view X --plain | sed -n '/Implementation Notes/,$p' | tail -n +20"), []);
+  assert.deepEqual(shellPathCandidates("grep -n '' README.md | sed -n '/onfiguration/,/^[0-9]*:## /p'"), []);
+  assert.deepEqual(shellPathCandidates("awk 'f;/Implementation Notes/{f=1}' notes.txt"), []);
+  assert.deepEqual(shellPathCandidates("sed -e '/a/d' -e '/b/d' input"), []);
+  assert.deepEqual(shellPathCandidates('backlog task edit X --notes "POST /speechtotext/x then /openai/v1 (see /)"'), []);
+  assert.deepEqual(shellPathCandidates("backlog task edit X --final-summary='Rejected per /Acceptance/,/Definition/p'"), []);
+});
+
+test("masked shell text keeps real operands and protected secrets", () => {
+  assert.deepEqual(shellPathCandidates("sed -n '/x/p' /etc/hosts"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("sed -f /etc/script.sed input"), ["/etc/script.sed"]);
+  assert.deepEqual(shellPathCandidates("awk -f /etc/prog.awk input"), ["/etc/prog.awk"]);
+  assert.deepEqual(shellPathCandidates('cat "/etc/my file"'), ["/etc/my"]);
+  assert.deepEqual(shellPathCandidates('cat "../outside file"'), ["../outside"]);
+  assert.deepEqual(shellPathCandidates("bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nprint(1)"), []);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nprint(1)\nEOF\ncat /etc/hosts"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('echo "$(cat "/etc/a b")"'), ["/etc/a"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<'EOF'\nopen('/Users/example/.ssh/id_rsa')\nEOF"), ["/Users/example/.ssh/id_rsa"]);
+  assert.deepEqual(shellPathCandidates('echo "see backend/.env for keys"'), ["backend/.env"]);
+});
+
+test("masking never hides executed text, file-writing programs, redirect targets, or control paths", () => {
+  assert.deepEqual(shellPathCandidates('eval "cat /etc/hosts"'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("git -c alias.x='!cat /etc/hosts' x"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("sed -n '1w /Users/example/.pi/agent/AGENTS.md' input"), ["/Users/example/.pi/agent/AGENTS.md"]);
+  assert.deepEqual(shellPathCandidates("sed -n '/x/r /etc/hosts' input"), ["/x/r", "/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("awk 'BEGIN{print > \"/etc/x\"}'"), ["/etc/x"]);
+  assert.deepEqual(shellPathCandidates("awk 'BEGIN{system(\"cat /etc/hosts\")}'"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('cp /tmp/payload ".pi/extensions/my ext.ts"'), ["/tmp/payload", ".pi/extensions/my"]);
+  assert.deepEqual(shellPathCandidates('echo "x y" > ".pi/extensions/a b.ts"'), [".pi/extensions/a"]);
+  assert.deepEqual(shellPathCandidates('echo "edit .agents/skills now" > out'), [".agents/skills"]);
+  assert.deepEqual(shellPathCandidates("python3 - <<EOF\nx = \"$(cat /etc/hosts)\"\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('git commit -m "fix /a and /b"'), []);
+});
+
+test("awk regex and string literals and cat or tee heredoc data are not path candidates", () => {
+  assert.deepEqual(shellPathCandidates("awk '/\\f/{p++} /Introduction|Related Work/{print p+1\": \"substr($0,1,90)}' x.txt"), []);
+  assert.deepEqual(shellPathCandidates("awk '/^<<<<<<< /{p=1} p{print} /^>>>>>>> /{p=0}' README.md"), []);
+  assert.deepEqual(shellPathCandidates("awk '$3 >= 2 || /a|b/' f"), []);
+  assert.deepEqual(shellPathCandidates("cat > $PI_SESSION_TMPDIR/u.sh <<'EOF'\npython /probe/wait_db.py\nEOF\necho done"), []);
+  assert.deepEqual(shellPathCandidates("tee x.md <<'EOF' >/dev/null\nPOST /api/health\nEOF"), []);
+  assert.ok(shellPathCandidates("awk '{print x/1 > \"/etc/x\" /1}'").includes("/etc/x"));
+  assert.ok(shellPathCandidates("awk '/a/{print | \"cat /etc/hosts\"}'").includes("/etc/hosts"));
+  assert.deepEqual(shellPathCandidates("cat <<EOF\n$(cat /etc/hosts)\nEOF"), ["/etc/hosts"]);
+  assert.ok(shellPathCandidates("awk 'BEGIN { ARGV[1] = \"/etc/hosts\"; ARGC = 2 } { print }'").includes("/etc/hosts"));
+  assert.deepEqual(shellPathCandidates("cat <<< x\ncat /etc/hosts"), ["/etc/hosts"], "a here-string is not a heredoc");
+});
+
+function directoryFixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-cd-")));
+  mkdirSync(join(root, "repo/backend/src"), { recursive: true });
+  mkdirSync(join(root, "repo/scripts"));
+  mkdirSync(join(root, "tmp/session"), { recursive: true });
+  symlinkSync(join(root, "tmp"), join(root, "repo/link"));
+  const repo = join(root, "repo");
+  const context = {
+    cwd: repo,
+    home: join(root, "home"),
+    realpath: (path: string) => existsSync(path) ? realpathSync(path) : path,
+    isDirectory: (path: string) => existsSync(path),
+    variables: { PI_SESSION_TMPDIR: join(root, "tmp/session") },
+  };
+  return { root, repo, context };
+}
+
+test("relative paths after a literal cd resolve against the directory the command runs in", () => {
+  const { root, repo, context } = directoryFixture();
+  try {
+    const paths = (command: string) => shellPathCandidates(command, context);
+    assert.deepEqual(paths("cd backend && uv run ruff format ../scripts/x.py"), [join(repo, "scripts/x.py")]);
+    assert.deepEqual(paths("cd backend/src; sed -n 1,5p ../../scripts/x.py"), [join(repo, "scripts/x.py")]);
+    assert.deepEqual(paths("cd $PI_SESSION_TMPDIR && cat ./a.log"), [join(root, "tmp/session"), join(root, "tmp/session/a.log")]);
+    assert.deepEqual(paths("cd \"${PI_SESSION_TMPDIR}/../..\" && ls"), [join(root, "tmp/session/../..")]);
+    assert.deepEqual(paths("cd link && cat ../x"), [join(root, "x")], "symlinked directories resolve physically");
+    assert.deepEqual(paths("(cd backend && make) && cat ../x"), ["../x"], "subshell cd does not leak");
+    assert.deepEqual(paths("echo $(cd backend && pwd) && cat ../x"), ["../x"]);
+    assert.deepEqual(paths("cd backend | true; cat ../x"), ["../x"], "pipeline members run in subshells");
+    assert.deepEqual(paths("cd new; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort(), "a missing target may fail");
+    assert.deepEqual(paths("test -d backend && cd backend; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort());
+    assert.deepEqual(paths("cd backend && cat ../x"), [join(repo, "x")], "the && chain runs only after cd succeeded");
+    assert.deepEqual(paths("pushd backend; popd; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort());
+    assert.deepEqual(paths("cat <<EOF\ncd backend/src\nEOF\ncat ../../x"), ["../../x"], "heredoc text cannot move the shell");
+    assert.deepEqual(paths("cd $UNKNOWN && cat ../x"), ["../x"]);
+    assert.deepEqual(paths("cd backend 2>&1 && cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("cd -- backend && cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("if true; then cd backend; fi; cat ../x").sort(), [join(root, "x"), join(repo, "x")].sort(),
+      "a cd in an if body may not run");
+    assert.deepEqual(paths("cd backend || cat ../x"), ["../x"], "the command after || runs only when cd failed");
+    assert.deepEqual(paths("cd backend || exit; cat ../x"), [join(repo, "x")]);
+    assert.deepEqual(paths("cat <<< x >/dev/null\ncd link\ncat ./f"), [join(root, "tmp/f")], "a here-string is not a heredoc");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("read-only inspection commands are recognised conservatively", () => {
+  for (const command of [
+    "grep -n 'model' /pi/docs/a.md | head -20",
+    "cd /pi && rg -n 'x|y' dist 2>/dev/null | head",
+    "sed -n '1,40p' /pi/README.md",
+    "find /pi -name '*.md' -maxdepth 2 2>&1 | wc -l",
+  ]) assert.equal(isReadOnlyInspectionCommand(command), true, command);
+  for (const command of [
+    "grep x /pi/a > out",
+    "sed -i '' 's/a/b/' /pi/a",
+    "sed -n '1w /pi/b' /pi/a",
+    "find /pi -delete",
+    "find /pi -exec rm {} +",
+    "rg --pre ./x pattern /pi",
+    "cat $(echo /pi/a)",
+    "cp /pi/a b",
+    "FOO=1 cat /pi/a",
+    "sed -I.bak 's/x/y/' /pi/a",
+    "sed -n -e p -f prog /pi/a",
+    "sed --expression=p /pi/a",
+  ]) assert.equal(isReadOnlyInspectionCommand(command), false, command);
+});
+
+test("sibling worktrees of the session repository are listed; unrelated or broad paths are not", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-worktrees-")));
+  try {
+    const main = join(root, "main");
+    mkdirSync(main);
+    execFileSync("git", ["init", "-q", main]);
+    execFileSync("git", ["-C", main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"]);
+    execFileSync("git", ["-C", main, "worktree", "add", "-q", join(root, "wt")]);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "home")), [join(root, "wt")]);
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "wt"), join(root, "home")), [main]);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "wt/inner")), [], "a worktree containing home is dropped");
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "nothing")), []);
+    const other = join(root, "other");
+    mkdirSync(other);
+    execFileSync("git", ["init", "-q", other]);
+    mkdirSync(join(main, ".git/worktrees/forged"));
+    writeFileSync(join(main, ".git/worktrees/forged/gitdir"), `${join(other, ".git")}\n`);
+    assert.deepEqual(sameRepositoryWorktrees(main, join(root, "home")), [join(root, "wt")], "a record without a link back is ignored");
+    writeFileSync(join(root, "wt/.git"), `gitdir: ${join(other, ".git")}\n`);
+    assert.deepEqual(sameRepositoryWorktrees(join(root, "wt"), join(root, "home")), [], "a forged session .git file grants nothing");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("only a Git-tracked file named exactly .env.example is exempt from secret protection", () => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), "pi-env-template-")));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  try {
+    git("init", "-q");
+    mkdirSync(join(repo, "backend"));
+    for (const name of [".env.example", ".env", ".env.sample"]) writeFileSync(join(repo, "backend", name), "KEY=");
+    writeFileSync(join(repo, ".env.example"), "KEY=");
+    mkdirSync(join(repo, "linked"));
+    symlinkSync(join(repo, "backend", ".env"), join(repo, "linked", ".env.example"));
+    git("add", "backend/.env.example", "backend/.env.sample", "linked/.env.example");
+
+    const nested = join(repo, "nested");
+    mkdirSync(nested);
+    const marker = join(repo, "fsmonitor-ran");
+    execFileSync("git", ["init", "-q"], { cwd: nested, stdio: "ignore" });
+    writeFileSync(join(nested, ".env.example"), "KEY=");
+    execFileSync("git", ["add", ".env.example"], { cwd: nested, stdio: "ignore" });
+    execFileSync("git", ["config", "core.fsmonitor", `touch ${marker}`], { cwd: nested, stdio: "ignore" });
+    const target = (...parts: string[]) => isProtectedSecretTarget(join(repo, ...parts), repo);
+
+    assert.equal(target("backend", ".env.example"), false);
+    assert.equal(target(".env.example"), true, "untracked");
+    assert.equal(target("backend", ".env.sample"), true, "tracked, other name");
+    assert.equal(target("backend", ".env"), true);
+    assert.equal(target("backend", "missing", ".env.example"), true);
+    assert.equal(target("linked", ".env.example"), true, "tracked symlink to .env");
+    assert.equal(isProtectedSecretTarget(join(repo, "backend", ".env.example"), join(repo, "linked")), true, "outside the session root");
+    assert.equal(target("nested", ".env.example"), true, "tracked only by a nested repository");
+    assert.equal(isProtectedSecretTarget(join(nested, ".env.example"), repo), true);
+    assert.equal(existsSync(marker), false, "nested repository config must not run");
+    assert.equal(deniedBashCommandReason("cat backend/.env.example", repo, "/Users/example"), undefined);
+    assert.ok(deniedBashCommandReason("cat .env.example", repo, "/Users/example"));
+    assert.ok(deniedBashCommandReason("cat backend/.env.example backend/.env", repo, "/Users/example"));
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("absolute text whose top-level entry is missing names no host file", () => {
+  for (const text of ["/subscriptions/abc/resourceGroups/rg", "/app/backend/seed", "/%s/%s", "/len", "/Users\\|^Use"]) {
+    assert.equal(namesMissingRootEntry(text), true, text);
+  }
+  for (const path of ["/", "/etc/hosts", "/tmp/x", "/Users/example", "relative/path", "~/x"]) {
+    assert.equal(namesMissingRootEntry(path), false, path);
+  }
+  assert.equal(namesMissingRootEntry("/*/example/file"), false, "a glob may expand to an existing entry");
+  assert.equal(namesMissingRootEntry("/{Users,tmp}/x"), false, "brace expansion");
+  assert.equal(namesMissingRootEntry("/$ROOT/x"), false, "variable expansion");
+  assert.equal(namesMissingRootEntry("/Use\\rs/example"), false, "a backslash may escape an existing name");
+});
+
+test("uv run interpreter heredocs are masked like direct interpreter heredocs", () => {
+  assert.deepEqual(shellPathCandidates("uv run python - \"$M\" <<'EOF'\nprint(len(x)/len(y))\nEOF"), []);
+  assert.deepEqual(shellPathCandidates("uv run bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates("uv run --with python bash <<'EOF'\ncat /etc/hosts\nEOF"), ["/etc/hosts"]);
+});
+
+test("the rm check stops at a newline", () => {
+  const project = "/Users/example/project";
+  assert.equal(deniedBashCommandReason("rm -f $C\ncurl -o /dev/null https://example.com", project, "/Users/example"), undefined);
+  assert.equal(deniedBashCommandReason("rmdir build\nmkdir -p ../infra/docs", project, "/Users/example"), undefined);
+  assert.ok(deniedBashCommandReason("rm -f x\nrm -rf /etc", project, "/Users/example"));
+});
+
+test("project instruction copies in the session workspace are not control-plane paths", () => {
+  const project = "/Users/example/projects/app";
+  const temp = "/private/var/folders/example/T/pi-agent-501/session";
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/AGENTS.md`, harness, plugins, temp), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/CLAUDE.md`, harness, plugins, temp), false);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/.pi/extensions/x.ts`, harness, plugins, temp), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/.git/hooks/pre-commit`, harness, plugins, temp), true);
+  assert.equal(isControlPlaneWriteBlocked(project, `${temp}/stage/AGENTS.md`, harness, plugins), true);
+});
+
+test("key and certificate protection requires a file-name stem", () => {
+  for (const path of [
+    "server.key", "certs/dev.pem", ".server.key", "*.key", "${DIR}.key", "/etc/ssl/private/site.key",
+    "keys/My Cert.pem", "backup(1).pem", "Zertifikat-für.pem", "id~.key",
+  ]) {
+    assert.equal(isProtectedSecretPath(path), true, path);
+  }
+  for (const text of [".key", "\\(.key", "to_entries[]|\\(.value)\\t\\(.key", ".items[].key", "keyfile.json"]) {
+    assert.equal(isProtectedSecretPath(text), false, text);
+  }
+  assert.deepEqual(shellPathCandidates("jq -r 'to_entries[] | \"\\(.value)\\t\\(.key)\"' f.json"), []);
+});
+
+test("dot-env existence probes and stored prose do not expose contents", () => {
+  const project = "/Users/example/project";
+  const denied = (command: string) => deniedBashCommandReason(command, project, "/Users/example");
+  for (const command of [
+    "ls .env 2>&1",
+    "ls -la backend/.env",
+    "test -e backend/.env && echo yes",
+    "[ -f .env ] || echo missing",
+    "if [[ -f .env ]]; then echo ok; fi",
+    "git check-ignore -v backend/.env infra/.terraform",
+    "git -C . check-ignore .env",
+    "find . -name .env -type f",
+    'backlog task edit X --plan "copy .env.example to .env and fill it in"',
+    'backlog task edit X --plan "see ../notes and backend/.env"',
+    'git commit -m "Ignore backend/.env"',
+  ]) assert.equal(denied(command), undefined, command);
+  for (const command of [
+    "cat .env",
+    "source backend/.env",
+    "ls .env | xargs cat",
+    "cat $(ls .env)",
+    "find . -name .env -exec cat {} \\;",
+    "ls .env; cat .env",
+    "test -e .env && cat .env",
+    "ls ../.env",
+    "ls ~/.env",
+    "ls backend/.ssh/.env",
+    "ls x > .env",
+    'echo ".env" | xargs cat',
+    'echo "see backend/.env for keys"',
+    'git commit -m "see ~/.ssh/id_rsa"',
+  ]) assert.ok(denied(command), command);
+});
+
+test("printed prose feeding a pipeline or substitution stays inspected", () => {
+  assert.deepEqual(shellPathCandidates('echo "x /etc/hosts" | xargs cat'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('cat $(printf "a /etc/hosts b")'), ["/etc/hosts"]);
+  assert.deepEqual(shellPathCandidates('echo "POST /api/health then retry"; ls'), []);
 });
 
 test("Bash path inspection still catches explicit and protected paths", () => {

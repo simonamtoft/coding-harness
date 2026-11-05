@@ -50,3 +50,15 @@ test("runs an explicit review immediately without consuming a deferred review", 
 	assert.equal(requestReview(request, false), "run");
 	assert.equal(releaseReviewAfterVerification(), undefined);
 });
+
+test("verify-turn's verifier flag and release reach subagent's module copy", async () => {
+	// Pi loads each extension through its own module registry; query strings give Bun separate copies.
+	const verifyTurnCopy = await import("../shared/review-coordination.ts?extension=verify-turn");
+	const subagentCopy = await import("../shared/review-coordination.ts?extension=subagent");
+	verifyTurnCopy.resetReviewCoordination();
+	verifyTurnCopy.setAutomaticVerifierAvailable(true);
+	assert.equal(subagentCopy.requestReview(request), "deferred");
+	assert.deepEqual(subagentCopy.releaseReviewAfterVerification(), request);
+	assert.equal(subagentCopy.requestReview(request), "run");
+	verifyTurnCopy.resetReviewCoordination();
+});

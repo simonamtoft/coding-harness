@@ -132,7 +132,7 @@ class ReadRoutingTest(unittest.TestCase):
 
     def test_claude_worker_loads_the_shared_brief_with_read_only_tools(self):
         agent = (ROOT / "claude/agents/bulk-reader.md").read_text()
-        self.assertIn("model: haiku\n", agent)
+        self.assertIn("model: claude-haiku-5-5\n", agent)
         self.assertIn("tools: Read, Grep, Glob\n", agent)
         self.assertIn("~/.claude/skills/bulk-read/BULK-READER.md", agent)
         self.assertTrue((ROOT / "shared/skills/bulk-read/BULK-READER.md").is_file())

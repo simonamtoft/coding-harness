@@ -13,7 +13,7 @@ export function renderCall(args: { questions?: QuestionSpec[] }, theme: Theme): 
   const questions = args.questions ?? [];
   const [first] = questions;
   const suffix = questions.length > 1 ? theme.fg("dim", ` +${questions.length - 1} more`) : "";
-  const title = theme.fg("toolTitle", theme.bold("ask_question "));
+  const title = theme.fg("toolTitle", theme.bold("ask_user_question "));
 
   if (!first) return new Text(title, 0, 0);
 

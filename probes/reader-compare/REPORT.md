@@ -44,3 +44,25 @@ All tasks use this public repository's files, so possible training contamination
 - **Excluded events, kept locally:** one early Luna timeout, one `openai-codex` authentication failure, and one run where the parent's first worker call lacked the question (the parent retried successfully; counted but flagged). The worker model was verified against the requested pin in every counted run.
 
 **Recommendation:** keep Luna as the canonical `bulk-reader` model. Revisit if reading assignments are long enough that parent rereads dominate cost, or if the team decides worker citation precision is worth roughly 2× worker cost and slower runs. Other Luna roles were not tested.
+
+## Thinking `off` vs `low` for Luna (PI-103, 16 October 2026)
+
+**Result: keep `low`.** `off` gave equally correct facts but worse line citations. The parent workflow was cheaper with `off` only because the parent checked less, and more wrong citations reached the final answer.
+
+**Worker-only run:** batch `94e97d5aeb5475a6`, Pi 1.3.0, `PrivateGPT/gpt-6-luna`, the same four cases × ten paired repetitions per arm. All 80 runs completed, with no infrastructure failures, for $0.20 reported. The answer key's sources had since changed, so workers read snapshots of them from commit `ebb8147`, which match `cases.json` byte for byte. The scorer was corrected once (score version 3) to accept repository-relative snapshot paths. The records were then rescored offline.
+
+| Arm | Facts correct (audited) | Cited line covers key | Covers or within 5 lines | 726-line document, covers key | Reported cost | Median wall | Reasoning tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `low` | 120/120 | 25/120 | 39/120 | 13/30 | $0.1021 | 8.3s | 1,812 |
+| `off` | 120/120 | 10/120 | 17/120 | 0/30 | $0.0988 | 8.0s | 0 |
+
+The strict citation-candidate proxy scored 8 vs 6 of 120. It is not a useful comparison here, because it rejects `same path` references and facts labelled `A — topic:`. The columns above were produced by a looser audit, which takes every cited line number in each labelled answer and compares it with the key. I inspected all 16 term-check misses. Fifteen were label-format parse failures and one used the synonym "has no pin". In every case the facts were correct. On the large document, every `off` run made two reads and no greps, then cited lines that were confidently wrong, such as 134 for 387. Several `low` runs used grep to locate the rows.
+
+**Parent smoke:** the PI-99 setup again: Sonnet 5.5 parent at medium thinking, the same two prompts and fixture commit `4b2664e`, three paired repetitions. The arms differed only in the trial reader's `thinking:`. All 12 runs completed for $0.30 reported. One `off` attempt timed out after 240 seconds; it was retained as excluded evidence and retried once. In one `off` run, the parent's first worker call lacked the question, and the parent retried it.
+
+| Arm | Final facts correct | Final answers with correct line citations | Wrong citations passed through unchecked | Parent reads/greps after delegation | Combined cost | Worker cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `low` | 6/6 | 4 (+1 off by one) | 1 | 11 | $0.169 | $0.020 |
+| `off` | 6/6 | 3 | 3 | 3 | $0.134 | $0.022 |
+
+On the event task, parents never re-read the source in either arm, so the worker's line numbers became the final citations. On the record task, `low` parents corrected the worker in two of three runs. `off` parents re-read in only one run, and one `off` answer kept wrong lines (377–378 and 348–349). This is a small sample: one parent model, two tasks, three pairs. It supports the narrow conclusion that `off` does not buy a material saving without costing citation quality. It does not support a general ranking of thinking levels. See SUB-24.

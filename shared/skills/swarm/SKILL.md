@@ -19,7 +19,7 @@ Write one frame containing:
 - ownership: the parent owns resource allocation, aggregation, merge, and cleanup;
 - dropout policy: unavailable or incomplete required slices remain `BLOCKED` rather than being silently substituted or treated as passing.
 
-Read-only workers may share a checkout. Writable workers require distinct pre-created worktrees and branches with explicit absolute working directories. Workers must not create, merge, or remove those resources.
+Read-only workers may share a checkout. Writable workers require distinct pre-created worktrees and branches with explicit absolute working directories. Workers must not create, merge, or remove those resources. A workspace that an agent control plane such as Paseo created on its own branch counts as a pre-created worktree; pass its absolute path.
 
 ## Dispatch
 

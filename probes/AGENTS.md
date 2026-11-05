@@ -19,7 +19,7 @@ not treat their results as evidence for a change.
   use explicit `--trials 10` on each new default model before treating them as validated guards.
   A discriminating scenario must keep the full default trial count.
 - Keep `lib/` pure and offline. Process and model work belongs in `run.ts`; lock-file work belongs
-  in `record-lock.ts`. `bun test probes/lib probes/test` must pass without credentials or model
+  in `record-lock.ts`; background launch and waiting belong in `background.ts`. `bun test probes/lib probes/test` must pass without credentials or model
   calls. `probes/test` runs the real runner against `test/fake-pi.ts` in a temporary repository
   copy; extend it when changing runner lifecycle, locking, or cleanup, and never point it at the
   local `results/`.

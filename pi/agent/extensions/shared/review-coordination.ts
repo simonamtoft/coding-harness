@@ -6,18 +6,33 @@ export interface ReviewRequest {
 
 type ReviewDisposition = "run" | "deferred" | "already-deferred";
 
-let automaticVerifierAvailable = false;
-let pendingReview: ReviewRequest | undefined;
-let releasedReview: ReviewRequest | undefined;
+interface ReviewCoordinationState {
+	automaticVerifierAvailable: boolean;
+	pendingReview?: ReviewRequest;
+	releasedReview?: ReviewRequest;
+}
+
+const STATE_KEY = "__piReviewCoordination";
+
+/**
+ * The state lives on globalThis rather than in module scope: pi loads each extension through its own
+ * module registry, so `verify-turn` and `subagent` each get a separate copy of this file.
+ */
+function state(): ReviewCoordinationState {
+	const globals = globalThis as Record<string, unknown>;
+	globals[STATE_KEY] ??= { automaticVerifierAvailable: false } satisfies ReviewCoordinationState;
+	return globals[STATE_KEY] as ReviewCoordinationState;
+}
 
 export function resetReviewCoordination(): void {
-	automaticVerifierAvailable = false;
-	pendingReview = undefined;
-	releasedReview = undefined;
+	const current = state();
+	current.automaticVerifierAvailable = false;
+	current.pendingReview = undefined;
+	current.releasedReview = undefined;
 }
 
 export function setAutomaticVerifierAvailable(available: boolean): void {
-	automaticVerifierAvailable = available;
+	state().automaticVerifierAvailable = available;
 }
 
 function sameRequest(left: ReviewRequest, right: ReviewRequest): boolean {
@@ -30,19 +45,21 @@ function sameRequest(left: ReviewRequest, right: ReviewRequest): boolean {
 
 export function requestReview(request: ReviewRequest, defer = true): ReviewDisposition {
 	if (!defer) return "run";
-	if (releasedReview && sameRequest(releasedReview, request)) {
-		releasedReview = undefined;
+	const current = state();
+	if (current.releasedReview && sameRequest(current.releasedReview, request)) {
+		current.releasedReview = undefined;
 		return "run";
 	}
-	if (!automaticVerifierAvailable) return "run";
-	if (pendingReview) return "already-deferred";
-	pendingReview = request;
+	if (!current.automaticVerifierAvailable) return "run";
+	if (current.pendingReview) return "already-deferred";
+	current.pendingReview = request;
 	return "deferred";
 }
 
 export function releaseReviewAfterVerification(): ReviewRequest | undefined {
-	if (!pendingReview) return undefined;
-	releasedReview = pendingReview;
-	pendingReview = undefined;
-	return releasedReview;
+	const current = state();
+	if (!current.pendingReview) return undefined;
+	current.releasedReview = current.pendingReview;
+	current.pendingReview = undefined;
+	return current.releasedReview;
 }

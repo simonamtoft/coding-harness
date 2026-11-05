@@ -14,6 +14,7 @@ Bundled roles and their owners:
 - `commit-planner` — commit grouping and messages from a supplied working-tree snapshot; owned by `quick-commit`
 - `correctness-reviewer` — correctness and maintainability findings; owned by `code-review`, dispatched by `review_changes`
 - `security-reviewer` — threat-focused security findings; owned by `security-review`, dispatched by `review_changes`
+- `verifier-change-reviewer` — judges whether an agent's verifier edit weakens the checks; owned by `code-review`, dispatched by this extension when `verify-turn` requests it (see `../verify-turn/README.md`)
 - `test-log-analyst` — diagnosis of an oversized test or build log artifact; owned by `diagnose-failure`
 - `bulk-reader` — question-directed extraction from explicit large reference files; owned by `bulk-read`
 - `repository-scout` — repository reconnaissance for a recon slice; owned by `swarm`
@@ -49,11 +50,15 @@ Agent frontmatter may set `thinking` to `off`, `minimal`, `low`, `medium`, `high
 thinking: low
 ```
 
-An explicit value is passed as `--thinking` regardless of parent thinking or local model overrides; Pi applies the selected model's supported thinking levels. Without it, unpinned agents inherit parent thinking and model-pinned agents retain Pi's startup behavior. Only `bulk-reader` currently sets an explicit level (`low`). This is a bounded-extraction trial, not a measured cost or quality improvement.
+An explicit value is passed as `--thinking` regardless of parent thinking or local model overrides; Pi applies the selected model's supported thinking levels. Without it, unpinned agents inherit parent thinking and model-pinned agents retain Pi's startup behavior. Every canonical agent sets an explicit level: `bulk-reader` uses `low` and the others use `medium` (SUB-19). `off` was measured for `bulk-reader` and rejected because it worsened line citations (SUB-24).
 
 ## Isolation change from the bundled example
 
 Child processes include `--no-extensions`. This prevents global parent lifecycle extensions—especially `verify-turn`—from starting nested verification and repair loops inside read-only reviewers. It also means reviewer agents cannot use tools supplied by other extensions. The sandbox and secret-result guard are explicitly re-enabled for every child; parent read-routing is not, so bulk readers can inspect source without recursive cost routing while retaining filesystem and model-egress protections.
+
+## Child transcripts and progress
+
+Each child writes its transcript to a private directory under the parent's session temp workspace (`$PI_SESSION_TMPDIR/subagent-runs/`), never to the session store, and each result reports it as `sessionFile` (SUB-25). Paseo's built-in `pi-subagents` adapter shows that transcript for single-agent `subagent` calls after the child finishes. Without a session temp workspace, children run with `--no-session`. While children run, the partial tool text has one status line per child (agent, elapsed time, turn, current tool or `waiting for model`). The TUI renders from details; RPC clients such as Paseo show only this text.
 
 ## Swarm workflow
 

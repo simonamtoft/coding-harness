@@ -12,7 +12,8 @@
       "mcp__plugin_playwright_playwright__browser_evaluate",
       "mcp__plugin_playwright_playwright__browser_run_code_unsafe"
     ],
-    "defaultMode": "plan"
+    "defaultMode": "plan",
+    "additionalDirectories": ["~/.claude/skills"]
   },
   "model": "opus[1m]",
   "skillOverrides": {

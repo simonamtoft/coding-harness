@@ -135,3 +135,17 @@ Decision ledger area. Entry ids use the `PRB-` prefix; see `../DECISIONS.md` for
 **Why:** The 2026-10-06 baseline exposed limits that make the results unfit to steer changes. The default pair (Sonnet 5.5, GPT-6 Luna) leaves out the main-session models (Sol, Opus 5.5), and Luna is measured on whole tasks it is never assigned. Sonnet 5.5 also judges its own trials. Tasks are short and fully specified: at most 10% of the context window used, no compactions, and seven of eight harder candidates at 10/10 on both models, so strong models sit at the ceiling. The visual human-review prompt shows no images, rubric, or diff, and its only sample changes no UI (PI-50 AC#6 open). A small model can still screen harness changes, but its effects need confirming on the models in use.
 **Revisit if:** The suite is resumed with a default pair that includes a main-session model, longer tasks that reach compaction or ambiguity, and a human review with a rubric and a UI-changing sample. PI-51, PI-52, PI-53, and PI-84 should not assume its evidence until then.
 **Evidence:** "I think I'd like to park my evaluation suite for now as a work in progress and not rely on it for changes." The user chose "Whole probes suite" and "Ledger + docs + notes".
+
+### PRB-20 · Monitor long probe runs with a launch-and-wait helper, not fixed sleeps
+`accepted` · 2026-10-21 · `01a15f36`
+**Decision:** Long probe runs launch through `probes/background.ts start`, which uses an exclusive run directory and a detached supervisor that records the runner's exit status. Agents monitor them with `wait`, which streams the log and returns as soon as the run ends or after a bounded `--max-seconds`. `run.ts` and trial execution are unchanged. Rejected a docs-only `nohup` recipe, because the required success-and-failure check could not test it, and a generic Pi background-job tool, which is broader than probe monitoring and would change the runtime harness.
+**Why:** In session `01a110c3` an 80-trial pilot was monitored with `sleep 600`/`sleep 900`. Those sleeps could delay noticing completion or failure by up to 15 minutes, and the idle waits cost cache-warm model calls. This is separate from PRB-12, which keeps the host awake.
+**Revisit if:** Pi gains a native way to wait on background processes, or long-running commands outside `probes/` need the same workflow.
+**Evidence:** The user chose "Probe launch/wait helper" over "Docs-only shell recipe" and "Generic Pi background-job tool".
+
+### PRB-21 · Default probe Luna model uses the `PrivateGPT` alias
+`accepted` · 2026-10-28 · `01a17e8b`
+**Decision:** Change the runner's default small model from `openai-codex/gpt-6-luna` to `PrivateGPT/gpt-6-luna`, following SUB-21. Stored `openai-codex` Luna records stay on disk but no longer serve as cached default baselines; select them with `--models openai-codex/gpt-6-luna`.
+**Why:** SUB-21 moved the OpenAI-family subagent pins to `PrivateGPT` but missed the runner while the suite was parked (PRB-19). Default runs then sent Luna trials to a provider with no login, and every trial failed as infrastructure.
+**Revisit if:** SUB-21 is revisited or the probe default pair changes (see PRB-19's revisit condition).
+**Evidence:** "luna should be available from privategpt in pi..." then "go ahead".

@@ -11,9 +11,10 @@ export interface QuestionOption {
 
 export interface QuestionSpec {
   question: string;
+  header: string;
   details?: string;
   options?: QuestionOption[];
-  multiple?: boolean;
+  multiSelect?: boolean;
   placeholder?: string;
 }
 

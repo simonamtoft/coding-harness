@@ -26,7 +26,12 @@ when staged changes touch Pi runtime inputs (`shared/AGENTS.md`,
 The check starts Pi in RPC mode without any model call. It fails when the
 installed links do not point at this checkout, an extension fails to load, or a
 canonical skill or prompt is not registered from here. It tests the working tree
-the links point at, not only the staged snapshot.
+the links point at, not only the staged snapshot. In a linked worktree, such as
+a Paseo workspace, it leaves `~/.pi` alone. It starts Pi with a temporary
+sibling agent directory (`~/.pi/.load-check-agent-*`, removed afterwards) whose
+repository-owned entries link to the worktree and whose other entries link to
+`~/.pi/agent`. Package changes in `packages.txt` are not loaded there until
+`link.sh` installs them.
 
 ## Verification
 
@@ -42,7 +47,6 @@ evidence for changes. See [probes/README.md](probes/README.md).
 
 | Package | Source |
 | --- | --- |
-| [pi-worktree-agents](https://github.com/simonamtoft/pi-worktree-agents) | `git:github.com/simonamtoft/pi-worktree-agents` |
 | [pi-status-footer](https://github.com/simonamtoft/pi-status-footer) | `git:github.com/simonamtoft/pi-status-footer` |
 
 Install them with:
@@ -55,9 +59,71 @@ This runs `pi install` per entry, which writes the `packages` array in the
 local `~/.pi/agent/settings.json`. Entries already installed are skipped.
 
 When developing one of the plugins, point its settings entry at the local
-checkout instead (for example `../../projects/pi-worktree-agents`, relative to
+checkout instead (for example `../../projects/pi-status-footer`, relative to
 `~/.pi/agent`). The install step recognises a checkout by directory name and
 leaves the override in place.
+
+`pi-worktree-agents` is no longer in the manifest while Paseo owns worktrees
+(see below). Removing it from the manifest does not uninstall it; run
+`pi remove git:github.com/simonamtoft/pi-worktree-agents` to drop it from the
+local install.
+
+### Paseo trial
+
+The `paseo-trial` branch aligns this setup with [Paseo](https://paseo.sh/), a
+desktop and mobile control plane that runs Pi as `pi --mode rpc` and Claude
+through the Agent SDK. Paseo loads the same global resources as a terminal
+session: `~/.pi/agent` (instructions, skills, extensions, prompts, `mcp.json`)
+and Claude's user, project, and local settings, including hooks.
+
+- Configuration: `paseo/config.json` is the canonical `~/.paseo/config.json`,
+  and `link.sh` links it. Paseo writes through the link (it resolves the
+  symlink before its atomic rename), so `paseo daemon config set`,
+  `set-password`, and app settings change the tracked file and may reformat it.
+  Review its diff for secrets before committing: `daemon.auth.password` and
+  provider `env` API keys must not be committed. The rest of `~/.paseo`
+  (worktrees, logs, credentials, sessions) stays local and untracked.
+
+- Pi deaths under Paseo: Paseo launches `pi`, the Volta shim, which reports a
+  signal-killed Node child as `Pi RPC process exited with code 1 and signal
+  null` with empty stderr. `paseo/pi-diagnostic.sh` is a temporary opt-in
+  launcher that runs Pi's Node entry directly, logs the real exit signal plus
+  periodic memory and process-list samples to `~/.paseo/pi-diagnostic/`, and
+  re-raises the signal so Paseo reports it. Enable it with
+  `launchctl setenv PI_COMMAND "$PWD/paseo/pi-diagnostic.sh"` from this
+  checkout, then quit and reopen Paseo. Disable it with
+  `launchctl unsetenv PI_COMMAND` and another Paseo restart. Remove the script
+  once the cause is known.
+
+- Worktrees: Paseo workspaces under `~/.paseo/worktrees` own worktree creation
+  and cleanup. `swarm` accepts a Paseo workspace as a writable worker's
+  pre-created worktree; workers still never create, merge, or remove one.
+- Backlog in worktrees: `backlog/` is untracked, so the root `paseo.json`
+  setup hook symlinks each new worktree's `backlog` to the source checkout's.
+  Every worktree edits the same tracker. Paseo reads `paseo.json` from the
+  committed base branch, so the hook only applies once it is committed there.
+- Orchestration skills: do not enable Paseo's orchestration skills (`paseo`,
+  `paseo-handoff`, `paseo-committee`, `paseo-advisor`). Its installer writes
+  each one to `~/.claude/skills`, which is the `shared/skills` link, and to
+  `~/.agents/skills`, which Pi also loads, so they would land untracked in this
+  repository and load twice in Pi.
+- RPC sessions: the sandbox and trust prompts appear as Paseo question cards.
+  `ask_user_question` follows the argument shape and dialog order of
+  `rpiv-ask-user-question`, so Paseo shows a call as one question form; a call
+  with a free-text-only question falls back to one card per dialog. The form
+  does not show a question's `details`. `verify-turn` reports start and pass as notifications because
+  RPC clients do not render its project-checks panel. `custom-header`,
+  `context-monitor`, and `pi-status-footer` are terminal-only.
+- Sandbox boundary: a Pi session started in a Paseo worktree of this repository
+  is not a coding-harness session, so agent control files stay write-protected
+  there. Edit the harness from the canonical checkout. Sessions may read, and
+  reference from Bash, the other worktrees of their own repository, but
+  file-tool edits there stay blocked.
+- Isolated runs: [`paseo/box/`](paseo/box/README.md) runs a second Paseo
+  daemon with Pi and this repository's Pi setup in a Colima container, behind
+  a default-deny egress firewall, on one mounted checkout. Add it in Paseo as a
+  direct-connection host for unattended or untrusted agent runs. It is not
+  linked by `link.sh`; its launcher mounts this checkout read-only.
 
 ### Local-only skills: implement-powerpoint and implement-brand-web
 
@@ -78,8 +144,10 @@ this bundle's brand references when it is present.
 
 ## Layout
 
-- `experiments/bonsai/`: local-model playground with tracked setup notes;
+- `local-models/bonsai/`: local-model playground with tracked setup notes;
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
+- `local-models/gemma/`: foreground launcher and Pi setup notes for a local
+  Gemma 4 12B llama.cpp server. Not deployed by `link.sh`.
 - `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
   whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Parked as
   work in progress (PRB-19); paid runs are manual, on request only. See [probes/README.md](probes/README.md).
@@ -131,6 +199,10 @@ when each run or verifier finishes, so an idle session waiting for input does no
 keep the Mac awake. The display may still dim, and nothing prevents sleep when
 the lid closes on battery.
 - `claude/`: Claude hooks, settings, agents, statusline, and themes.
+- `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
+  the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),
+  and `box/`, the isolated Paseo and Pi container (not linked; started with
+  `paseo/box/paseo-box.sh`).
 
 Only genuinely harness-neutral resources live in `shared/`, and they are the
 single source of truth for both harnesses:
@@ -148,7 +220,7 @@ format or capability:
 | --- | --- |
 | `pi/agent/prompts/` | Pi reads `prompts/`; Claude Code reads `commands/`. `review.md` also calls `review_changes`, a Pi extension tool. |
 | `pi/agent/agents/` | Agent frontmatter differs per harness (`model` and `tools` vocabularies). The reviewers are Pi-only because `review_changes` drives them. |
-| `claude/agents/` | A Claude-shaped `presenter` so the shared `present` skill works in both harnesses. |
+| `claude/agents/` | Claude-shaped stubs for `bulk-reader`, `commit-planner`, `presenter`, and `test-log-analyst`, each pointing at its brief in the owning shared skill. Claude enforces each stub's `tools` allowlist, and `claude/settings.json` adds `~/.claude/skills` to `additionalDirectories` so subagents can read their briefs without a prompt. |
 
 The `present` and `swarm` skills stay shared: their workflows are
 harness-neutral, and only the delegation call differs (Pi's `subagent` tool vs
@@ -158,8 +230,8 @@ the standard `/skill:swarm` command rather than a separate prompt alias.
 Per-project verifiers are harness-neutral too. Pi's `verify-turn` extension and
 Claude's `verify-turn.sh` Stop hook both resolve `.agent/verify.sh`, then a
 `verify` task in a `Taskfile`, so a repo wires one verifier for both. Pi discovers
-and executes these repository-controlled commands only after Pi project trust
-and a separate content-bound verifier approval for the current session.
+and executes these repository-controlled commands once Pi project trust is
+established, without a separate verifier approval prompt.
 
 Pi's optional fast diagnostics are also project-owned: an executable
 `.agent/diagnostics.sh` receives the changed path after each successful Pi edit or

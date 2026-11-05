@@ -75,3 +75,17 @@ Decision ledger area. Entry ids use the `VER-` prefix; see `../DECISIONS.md` for
 **Decision:** Reversed VER-06's rule that edit-then-commit turns verify. When `HEAD` changes during a normal turn, Pi and Claude skip automatic verification; Pi also leaves deferred review unreleased. Active failure-repair rounds still run verification.
 **Why:** `quick-commit` is the deliberate completion boundary. The cited session `01a09fc9` committed successfully but then triggered redundant verification and review.
 **Revisit if:** Committing ceases to represent a completed unit of work, or automatic checks must enforce a post-commit policy.
+
+### VER-13 · Remove the per-session verifier approval prompt
+`reverted` · 2026-09-15 · `01a15f40`
+**Decision:** Removed `VerifierTrustGate` and its "Trust repository verifier for this session?" prompt. Pi project trust alone now gates verifier discovery and execution. The separate diagnostics approval is unchanged.
+**Why:** The user always approved the prompt, so it added friction without changing any outcome. This removes the gate cited in SBX-15: an agent-edited `.agent/verify.sh` now runs at end of turn without re-approval, and repositories that Pi auto-trusts (no `.pi` resources) run their verifier unprompted.
+**Revisit if:** Sessions routinely run in untrusted repositories, or prompt-injected verifier edits become a concrete threat.
+**Evidence:** "Remove the \"Trust verifier for this session\" check. It's too much friction as I always just auto approve it anyways."
+
+### VER-14 · Review agent verifier edits before trusting the verifier
+`accepted` · 2026-10-22 · `01a163af`
+**Decision:** Before running a verifier whose entry point (`.agent/verify.sh` or the selected Taskfile) differs from the session's accepted content, verify-turn has the subagent extension dispatch a read-only `verifier-change-reviewer` over the full change bundle. Only an exact `VERDICT: CLEAR` accepts the edit automatically; anything else asks the user in the UI (accept or send back) and otherwise becomes a failed repair round without running the verifier. Rejected: a notice with the diff only (relies on the user spotting weakening), and telling the agent to call `review_changes` (relies on agent compliance). The trigger is the verifier entry point only; the reviewer also judges weakened tests and test configuration in the bundle. Pi only; the Claude hook is unchanged.
+**Why:** SBX-15 lets agents edit the verifier and VER-13 removed the trust prompt, so a weakened verifier could report a pass nobody inspected. ESF ADR 0007 records the same failure ("gates the agent could rewrite"). Comparing against accepted content rather than the previous turn stops an agent from clearing a finding by leaving the edit in place for one more turn. The user asked to be asked rather than silently blocked, since VER-13 showed blanket prompts become friction.
+**Revisit if:** Reviewer false positives make the accept prompt routine, test-only weakening without a verifier edit becomes a concrete problem, or the Claude hook needs parity.
+**Evidence:** The user chose "Auto reviewer", "Verifier + tests", and "Fail and notify. Additionally it could perhaps raise a question to the user whether it's OK or not."
