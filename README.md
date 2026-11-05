@@ -129,11 +129,35 @@ and Claude's user, project, and local settings, including hooks.
   null` with empty stderr. `paseo/pi-diagnostic.sh` is a temporary opt-in
   launcher that runs Pi's Node entry directly, logs the real exit signal plus
   periodic memory and process-list samples to `~/.paseo/pi-diagnostic/`, and
-  re-raises the signal so Paseo reports it. Enable it with
-  `launchctl setenv PI_COMMAND "$PWD/paseo/pi-diagnostic.sh"` from this
-  checkout, then quit and reopen Paseo. Disable it with
-  `launchctl unsetenv PI_COMMAND` and another Paseo restart. Remove the script
-  once the cause is known.
+  re-raises the signal so Paseo reports it. `launchctl setenv` does not
+  survive logout or reboot, so `paseo/pi-diagnostic.launchagent.plist`
+  re-applies `PI_COMMAND` at each login (it assumes this checkout is at
+  `~/coding-harness`). Install it, then quit and reopen Paseo:
+
+  ```bash
+  cp paseo/pi-diagnostic.launchagent.plist ~/Library/LaunchAgents/com.coding-harness.pi-diagnostic.plist
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.coding-harness.pi-diagnostic.plist
+  ```
+
+  If Paseo starts at login before the agent runs, Pi will not use the launcher
+  until Paseo is restarted. Paseo shutdowns also end Pi with `exited with code
+  0`; the daemon log shows `Shutdown requested via websocket` for those, so
+  they are not crashes.
+
+  To remove the diagnostics once the cause is known, run these from this
+  checkout, then quit and reopen Paseo:
+
+  ```bash
+  launchctl bootout gui/$(id -u)/com.coding-harness.pi-diagnostic
+  rm ~/Library/LaunchAgents/com.coding-harness.pi-diagnostic.plist
+  launchctl unsetenv PI_COMMAND
+  rm -r ~/.paseo/pi-diagnostic
+  git rm paseo/pi-diagnostic.sh paseo/pi-diagnostic.launchagent.plist
+  ```
+
+  Then delete this paragraph and the `pi-diagnostic` entries in `AGENTS.md`
+  and the layout list below. `bootout` reports an error if the agent was never
+  loaded; that is harmless.
 
 - Worktrees: Paseo workspaces under `~/.paseo/worktrees` own worktree creation
   and cleanup. `swarm` accepts a Paseo workspace as a writable worker's
@@ -250,7 +274,8 @@ into Backlog tasks or decisions, and delete handled entries.
   since November 2026: the files and links stay, and their tests still run in
   the verifier, but new harness work targets Pi (OWN-16).
 - `paseo/`: the Paseo daemon's `config.json`, linked to `~/.paseo/config.json`,
-  the temporary `pi-diagnostic.sh` launcher (not linked; opt in via `PI_COMMAND`),
+  the temporary `pi-diagnostic.sh` launcher and its login LaunchAgent (not
+  linked; opt in via `PI_COMMAND`),
   and `box/`, the isolated Paseo and Pi container (not linked; started with
   `paseo/box/paseo-box.sh`).
 

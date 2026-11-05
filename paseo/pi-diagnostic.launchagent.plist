@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Re-applies PI_COMMAND at each login so Paseo keeps launching Pi through
+     paseo/pi-diagnostic.sh. Assumes this checkout lives at ~/coding-harness.
+     Install and remove as described in README.md ("Pi deaths under Paseo"). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.coding-harness.pi-diagnostic</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>/bin/launchctl setenv PI_COMMAND "$HOME/coding-harness/paseo/pi-diagnostic.sh"</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
