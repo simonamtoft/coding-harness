@@ -262,3 +262,10 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Why:** Access to the Docker socket gives control of the host, so any socket grant voids the profile for that command.
 **Revisit if:** agents routinely need containers (for example test databases), in which case use paseo-box or an approval that states the command runs with full host access.
 **Evidence:** The user chose to "do the docker stuff manually".
+
+### SBX-40 · Allowlist the present report scripts as Node helpers
+`accepted` · 2026-11-04 · `01a1a7db-c13e-773a-940d-0554c9462f20`
+**Decision:** Extend SBX-17's allowlist with `present`'s `build-report.mjs`, `validate-report.mjs`, and `render-report.mjs`. Each restricts its own indirect inputs. `build-report.mjs` embeds only real image files (checked by signature) from the session temporary directory or the current repository. It runs Git only on the repository it was started in, for repository-relative, non-secret paths at plain revisions, and writes only inside the session temporary directory. `render-report.mjs` reads and writes only inside the session temporary directory, and both browser pages abort network requests. Refused: leaving `present` unusable outside coding-harness sessions.
+**Why:** The presenter runs in project sessions, and SBX-17's revisit condition is a Node helper that has a project-session need and restricts its indirect filesystem inputs safely. Regression tests in `build-report.test.mjs` cover each restriction.
+**Revisit if:** The spec gains a field that reads other files, or the scripts need to read outside these roots.
+**Evidence:** The user chose "Allowlist, restricted".
