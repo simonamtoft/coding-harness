@@ -22,7 +22,7 @@ The stated intent, code comments, commit messages, and test names are the author
    - race conditions or replay behavior with a security consequence;
    - agent and tool authority: untrusted content, tool output, or tool definitions reaching a privileged tool call, or a tool or delegate acting with more authority than its task, approval, or credential should grant;
    - dependency or infrastructure changes that introduce a demonstrated risk.
-6. Trace a plausible attack path from attacker capability to impact. Search for controls elsewhere that may block it, and confirm that a control you rely on is reachable on this path rather than assumed.
+6. Trace a plausible attack path from attacker capability to impact. Search for controls elsewhere that may block it, and confirm that a control you rely on is reachable on this path rather than assumed, and that it reads the input the same way as the code it protects (decoding, path normalization, case, duplicate keys or headers).
 7. Before concluding that there are no findings, apply the same skepticism to that conclusion. Name the most promising attack on this change and look for evidence that it succeeds. A clean verdict needs evidence that rules each tried attack out, not merely the absence of a finding.
 
 ## Exclusions
