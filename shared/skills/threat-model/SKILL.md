@@ -48,7 +48,7 @@ If the user supplies an existing threat model, update it: keep its threat IDs, m
 
    For each threat, state the attacker capability, entry point, prerequisites, affected assets, existing controls, and impact.
 
-4. **Challenge each threat.** Search for counterevidence: validation, middleware, platform guarantees, backend authorization, or isolation that blocks the path. Classify what remains:
+4. **Challenge each threat.** Search for counterevidence: validation, middleware, platform guarantees, backend authorization, or isolation that blocks the path. A control counts only if it reads the input the same way the component that acts on it does: same decoding, path normalization, case, and duplicate-key or duplicate-header handling. Otherwise treat it as unconfirmed. Classify what remains:
    - *evidenced weakness* — implementation or execution evidence shows the path is open;
    - *design hypothesis* — the path is plausible, but at least one prerequisite or control is unconfirmed. Name the observation that would decide it.
 
