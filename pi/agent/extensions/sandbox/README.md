@@ -116,6 +116,12 @@ host-side boundary to model tool calls:
   `chmod 777`, deletion outside the workspace or temporary directories, and
   protected-secret access. It returns an actionable reason; `git push
   --force-with-lease` remains permitted.
+- Pi-only, outside the shared contract: Bash is denied when an email address
+  follows a `User-Agent` or `From:` marker, `curl -A`, or `wget -U` within 150
+  characters of the same command segment, including heredoc bodies and inline
+  interpreter code. Any address matches, because the policy does not know the
+  user's identity (see SBX-11). Scripts written through Write or Edit and run
+  later are not inspected; the egress allowlist bounds where they can send it.
 - Bash is also blocked when it contains an explicit filesystem path outside the
   current, permitted plugin workspace, same-repository worktree, or session temp
   directory, or names a protected secret pattern. Relative paths are resolved
@@ -414,7 +420,9 @@ Failure modes:
 - **A Pi started from a `!` command:** it inherits that command's open egress
   and cannot apply its own profile inside it, so it refuses its model's Bash
   commands. A Pi started from a model command inherits the proxied profile and
-  runs normally. `PI_COMMAND_SANDBOX_EGRESS` records which policy applies.
+  runs normally. `PI_COMMAND_SANDBOX_EGRESS` records which policy applies;
+  `local-model` marks a Pi started by the confidential-mode launcher, whose
+  model commands run under the inherited whole-process profile.
 - **Unlisted host or port, IP literal, or plain-HTTP request:** the proxy
   answers `403 Forbidden` with a `Pi command sandbox: …` body. curl shows
   `CONNECT tunnel failed, response 403`; most other clients report a proxy or
@@ -456,7 +464,8 @@ Residual gaps:
 
 The kernel profile covers commands only. Pi's own file tools, extensions and
 MCP servers still run unconfined behind the lexical guard below; PI-125 tracks
-confining the whole process. Commands can still write files in the checkout and
+confining the whole process. Confidential mode is the exception: it confines the
+whole Pi process to the local model port (SBX-45, `local-models/confidential/`). Commands can still write files in the checkout and
 caches that unconfined processes later run (Git hooks excepted), and a
 harness-maintenance session can edit the extension or Paseo configuration that
 sets the off switch; those are the same trust gaps as before (SBX-07).

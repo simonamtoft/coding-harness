@@ -282,6 +282,24 @@ test("secret paths inside inline interpreter code stay denied", () => {
   assert.equal(deny("node -e \"page.screenshot({ path: dir + '/cv-' + name + '.png' })\""), undefined);
 });
 
+test("email addresses in User-Agent or From headers are denied", () => {
+  const deny = (command: string) => deniedBashCommandReason(command, "/Users/example/project", "/Users/example");
+
+  assert.ok(deny("curl -H 'User-Agent: research-bot (someone@example.com)' https://en.wikipedia.org/w/api.php"));
+  assert.ok(deny("curl -sSA 'Example Co someone@example.com' https://www.sec.gov/cgi-bin/browse-edgar"));
+  assert.ok(deny("curl --user-agent=\"bot someone@example.dk\" https://example.org"));
+  assert.ok(deny("wget -U 'bot someone@example.com' https://example.org"));
+  assert.ok(deny("curl -H 'From: someone@example.com' https://example.org"));
+  assert.ok(deny("python3 -c \"requests.get(u, headers={'User-Agent': 'bot someone@example.com'})\""));
+  assert.ok(deny("USER_AGENT='bot someone@example.com' node fetch.mjs"));
+  assert.ok(deny("cat > fetch.py <<'EOF'\nheaders = {\"user-agent\": \"bot <someone@example.com>\"}\nEOF"));
+
+  assert.equal(deny("curl -A 'research-bot/1.0' https://en.wikipedia.org/w/api.php"), undefined);
+  assert.equal(deny("curl -H 'User-Agent: bot/1.0' https://example.org && echo someone@example.com"), undefined);
+  assert.equal(deny("grep -A 2 someone@example.com contacts.txt"), undefined);
+  assert.equal(deny("git commit -m 'Move email from someone@example.com'"), undefined);
+});
+
 test("real command arguments outside inline code stay inspected", () => {
   assert.deepEqual(shellPathCandidates("npx playwright screenshot --output /tmp/shot.png"), ["/tmp/shot.png"]);
   assert.deepEqual(shellPathCandidates("node -e \"run()\" > /tmp/log"), ["/tmp/log"]);

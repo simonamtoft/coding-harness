@@ -4,9 +4,10 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import { isTrackedEnvTemplate, isWithin, sameRepositoryWorktrees } from "./policy.ts";
 
 /**
- * Kernel (Seatbelt) confinement for shell commands Pi runs. Only the commands are confined, not Pi itself:
+ * Kernel (Seatbelt) confinement for shell commands Pi runs. Normally only the commands are confined, not Pi itself:
  * macOS refuses to apply a sandbox inside a sandboxed process, so a confined Pi could not give its commands
- * less access than it needs for its own credentials.
+ * less access than it needs for its own credentials. Confidential mode is the exception: there the whole Pi
+ * process runs under `confidentialSandboxProfile`, which its commands inherit.
  */
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** Set at Pi launch to run commands unconfined while tuning the profile. */
@@ -14,11 +15,13 @@ export const DISABLE_VARIABLE = "PI_COMMAND_SANDBOX";
 /** Marks commands, and any Pi started by them, as already confined; macOS rejects a nested profile. */
 export const ACTIVE_VARIABLE = "PI_COMMAND_SANDBOX_ACTIVE";
 /**
- * Egress policy of the confining profile: `proxied` for model commands, `open` for user `!` commands. A Pi started
- * inside a command inherits that profile, so its model commands are restricted only when this says `proxied`.
+ * Egress policy of the confining profile: `proxied` for model commands, `open` for user `!` commands, and
+ * `local-model` for a Pi started by the confidential-mode launcher. A Pi started inside a profile inherits it, so its
+ * model commands are restricted only when this says `proxied` or `local-model`.
  */
 export const EGRESS_VARIABLE = "PI_COMMAND_SANDBOX_EGRESS";
 export type CommandEgress = "proxied" | "open";
+export type InheritedEgress = CommandEgress | "local-model";
 
 export interface CommandSandboxScope {
   home: string;
@@ -68,6 +71,11 @@ const ESCAPE_SERVICES = [
   '(global-name-prefix "com.apple.lsd.")',
   '(global-name "com.apple.coreservices.appleevents")',
 ];
+/**
+ * Daemons that reach the network for the caller even when every outbound connection is denied: mDNSResponder for
+ * DNS and nsurlsessiond for background URL sessions.
+ */
+const NETWORK_PROXY_SERVICES = ['(global-name "com.apple.dnssd.service")', '(global-name "com.apple.nsurlsessiond")'];
 
 function sbplString(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -169,7 +177,7 @@ export type CommandSandboxMode =
   | { kind: "confine" }
   | { kind: "unconfined"; reason: "disabled" | "unsupported-platform" }
   /** The inherited profile already limits egress; Pi cannot apply its own inside it. */
-  | { kind: "unconfined"; reason: "already-confined"; inheritedEgress: CommandEgress }
+  | { kind: "unconfined"; reason: "already-confined"; inheritedEgress: InheritedEgress }
   | { kind: "unavailable"; reason: string };
 
 /**
@@ -191,8 +199,10 @@ export function commandSandboxMode(
   if (platform !== "darwin") return { kind: "unconfined", reason: "unsupported-platform" };
   if (!existsSync(SANDBOX_EXEC)) return { kind: "unavailable", reason: `${SANDBOX_EXEC} is missing` };
   if (env[ACTIVE_VARIABLE] === "1" && isConfined()) {
-    // Anything but an explicit `proxied` marker is treated as open egress, so a missing marker fails closed.
-    return { kind: "unconfined", reason: "already-confined", inheritedEgress: env[EGRESS_VARIABLE] === "proxied" ? "proxied" : "open" };
+    // Anything but an explicit restricted marker is treated as open egress, so a missing marker fails closed.
+    const marker = env[EGRESS_VARIABLE];
+    const inheritedEgress = marker === "proxied" || marker === "local-model" ? marker : "open";
+    return { kind: "unconfined", reason: "already-confined", inheritedEgress };
   }
   return { kind: "confine" };
 }
@@ -276,10 +286,14 @@ export interface CommandSandboxContext {
 }
 
 /** Derives the confinement scope from host facts: the checkout's Git layout, PATH, and Git signing config. */
+function gitCommonDirectory(root: string): string | undefined {
+  const output = gitOutput(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return output ? realpathIfExists(output) : undefined;
+}
+
 export function commandSandboxScope(context: CommandSandboxContext): CommandSandboxScope {
   const { root, home, agentDirectory, sessionTempDirectory, codingHarnessRoot } = context;
-  const gitCommonOutput = gitOutput(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  const commonDirectory = gitCommonOutput ? realpathIfExists(gitCommonOutput) : undefined;
+  const commonDirectory = gitCommonDirectory(root);
   const worktrees = sameRepositoryWorktrees(root, home);
   const isHarnessRepository = root === codingHarnessRoot || worktrees.includes(codingHarnessRoot);
   const caches = HOME_CACHES.map((path) => join(home, path));
@@ -325,4 +339,58 @@ export function commandSandboxScope(context: CommandSandboxContext): CommandSand
     gitCommonDirectory: commonDirectory,
     egressProxyPort: context.egressProxyPort,
   };
+}
+
+export interface ConfidentialSandboxContext {
+  root: string;
+  home: string;
+  agentDirectory: string;
+  systemTempDirectory: string;
+  /** Loopback port of the local model server, the only network destination. */
+  modelPort: number;
+}
+
+/**
+ * Whole-process profile for confidential mode: Pi, its extensions, MCP servers and commands may connect only to the
+ * local model port. Reads stay open because nothing can leave the machine; writes are limited so data cannot reach a
+ * synced folder or plant Git hooks or config that later run unconfined. LaunchServices, Apple Events, DNS and
+ * URL sessions are denied because they reach the network through other processes. Inbound connections are not
+ * restricted: a `network-bind` rule limited to loopback still allowed binding 0.0.0.0 (measured).
+ */
+export function confidentialSandboxProfile(context: ConfidentialSandboxContext): string {
+  const { root, home, agentDirectory, systemTempDirectory, modelPort } = context;
+  const commonDirectory = gitCommonDirectory(root);
+  const git = commonDirectory ? [commonDirectory] : [];
+  const sessions = join(agentDirectory, "sessions");
+  // Pi takes proper-lockfile locks (`<file>.lock` directories) even to read trust, settings and auth. The files
+  // themselves stay read-only: settings and trust decide what an unconfined Pi later loads and runs.
+  const agentLocks = `(regex #"^${regexPath(agentDirectory)}/[^/]+\\.lock(/|$)")`;
+  // pi-status-footer records usage data, which nothing executes, by renaming a temporary file over it.
+  const usageRecord = `(regex #"^${regexPath(agentDirectory)}/consumption\\.json(\\.[0-9]+\\.tmp)?$")`;
+  return [
+    "(version 1)",
+    "(allow default)",
+    ...rule("deny", "file-write*", ['(subpath "/")']),
+    ...rule("allow", "file-write*", [
+      ...subpaths([
+        root, ...git, ...HOME_CACHES.map((path) => join(home, path)), systemTempDirectory, "/private/tmp",
+        "/private/var/tmp", "/dev", realpathIfExists(sessions) ?? sessions,
+      ]),
+      agentLocks,
+      usageRecord,
+      ...literals([join(agentDirectory, "crashes.json")]),
+    ]),
+    ...rule("deny", "file-write*", [
+      ...subpaths([
+        ...EXECUTABLE_CACHES.map((path) => join(home, path)),
+        ...(commonDirectory ? [join(commonDirectory, "config"), join(commonDirectory, "hooks")] : []),
+      ]),
+      ...literals([join(root, ".git"), ...git, systemTempDirectory]),
+      ...gitPointerFilters(commonDirectory),
+    ]),
+    "(deny network-outbound)",
+    ...rule("allow", "network-outbound", [`(remote ip "localhost:${modelPort}")`]),
+    ...rule("deny", "mach-lookup", [...ESCAPE_SERVICES, ...NETWORK_PROXY_SERVICES]),
+    "",
+  ].join("\n");
 }

@@ -582,6 +582,25 @@ function publishesAgentAttribution(command: string): boolean {
   return writesMessage && /co-authored-by[:=]|claude-session:|claude\.ai\/code\/session_/i.test(command);
 }
 
+const EMAIL_ADDRESS = String.raw`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`;
+const REST_OF_COMMAND_TO_EMAIL = String.raw`[^\n;|&]{0,150}?${EMAIL_ADDRESS}`;
+const IDENTIFYING_HEADER_WITH_EMAIL = [
+  new RegExp(String.raw`user[-_ ]?agent${REST_OF_COMMAND_TO_EMAIL}`, "i"),
+  new RegExp(String.raw`\bfrom['"]?\s*:${REST_OF_COMMAND_TO_EMAIL}`, "i"),
+  new RegExp(String.raw`\bcurl\b[^\n;|&]*?\s-[A-Za-z]*A[\s'"]${REST_OF_COMMAND_TO_EMAIL}`),
+  new RegExp(String.raw`\bwget\b[^\n;|&]*?\s-U[\s'"]${REST_OF_COMMAND_TO_EMAIL}`),
+];
+
+/**
+ * Models fill User-Agent or From contact fields, which some sites request, with
+ * personal email addresses they find in context. Matches any address, since the
+ * user's own identity is deliberately unknown to the policy. Header values are
+ * usually quoted, so this inspects the unmasked command, heredoc bodies included.
+ */
+function sendsEmailInIdentifyingHeader(command: string): boolean {
+  return IDENTIFYING_HEADER_WITH_EMAIL.some((pattern) => pattern.test(command));
+}
+
 /** Returns the hard-deny reason for a Bash command, if the shared safety policy blocks it. */
 export function deniedBashCommandReason(
   command: string,
@@ -620,6 +639,9 @@ export function deniedBashCommandReason(
   }
   if (publishesAgentAttribution(command)) {
     return "Co-Authored-By trailers and Claude session links are blocked in commits and GitHub text";
+  }
+  if (sendsEmailInIdentifyingHeader(command)) {
+    return "email addresses in User-Agent or From headers disclose contact data; use a User-Agent without an email address";
   }
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+(?:filter-branch|filter-repo)\b/)) return "Git history rewrites are blocked";
   if (commandMatches(command, /\bgit(?:\s+[^;|&\s]+)*\s+clean\b[^;|&]*\s-[^\s;|&]*f/)) return "`git clean -f` deletes untracked files irrecoverably";

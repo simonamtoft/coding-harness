@@ -9,6 +9,7 @@ import {
   commandSandboxMode,
   commandSandboxProfile,
   commandSandboxScope,
+  confidentialSandboxProfile,
   confinedEnvironment,
   confinedShellCommand,
   DISABLE_VARIABLE,
@@ -189,6 +190,11 @@ describe("commandSandboxMode", () => {
     }
   });
 
+  test("keeps the local-model egress of a confidential-mode launcher", () => {
+    expect(commandSandboxMode({ [ACTIVE_VARIABLE]: "1", [EGRESS_VARIABLE]: "local-model" }, "darwin", () => true))
+      .toEqual({ kind: "unconfined", reason: "already-confined", inheritedEgress: "local-model" });
+  });
+
   test("ignores a forged confinement marker in an unconfined process", () => {
     expect(commandSandboxMode({ [ACTIVE_VARIABLE]: "1" }, "darwin", () => false)).toEqual({ kind: "confine" });
   });
@@ -199,6 +205,34 @@ describe("commandSandboxMode", () => {
 
   test("leaves non-macOS hosts to their own boundary", () => {
     expect(commandSandboxMode({}, "linux")).toEqual({ kind: "unconfined", reason: "unsupported-platform" });
+  });
+});
+
+describe("confidentialSandboxProfile", () => {
+  const profile = confidentialSandboxProfile({
+    root: "/Users/u/project", home: "/Users/u", agentDirectory: "/Users/u/.pi/agent",
+    systemTempDirectory: "/private/var/folders/x/T", modelPort: 8080,
+  });
+
+  test("denies every outbound connection except the model port", () => {
+    expect(profile).toContain("(deny network-outbound)\n");
+    expect(profile.match(/\(remote ip /g)).toEqual(['(remote ip ']);
+    expect(profile).toContain('(allow network-outbound\n  (remote ip "localhost:8080")');
+    expect(profile.indexOf("(deny network-outbound)")).toBeLessThan(profile.indexOf("(allow network-outbound"));
+  });
+
+  test("denies LaunchServices, Apple Events, DNS and URL sessions", () => {
+    for (const service of [
+      "com.apple.coreservices.launchservicesd", "com.apple.coreservices.appleevents", "com.apple.dnssd.service",
+      "com.apple.nsurlsessiond",
+    ]) {
+      expect(profile).toContain(service);
+    }
+  });
+
+  test.skipIf(process.platform !== "darwin")("Seatbelt compiles the profile", () => {
+    const result = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/usr/bin/true"], { encoding: "utf8" });
+    expect(result.status === 0 || result.stderr.includes("sandbox_apply")).toBe(true);
   });
 });
 
@@ -352,5 +386,71 @@ describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] ==
     const result = runConfined(inner, f.root, f.profile);
     expect(result.output).toContain("sandbox_apply");
     expect(result.output).not.toContain("nested");
+  });
+});
+
+describe.skipIf(process.platform !== "darwin" || process.env[ACTIVE_VARIABLE] === "1")("confidential mode on macOS", () => {
+  const f = fixture();
+
+  async function withProfile(run: (profile: string, modelPort: number, otherPort: number) => void) {
+    const servers = [0, 0].map(() => createServer((socket) => socket.end("hello")));
+    await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))));
+    const [modelPort, otherPort] = servers.map((server) => (server.address() as { port: number }).port);
+    const profile = confidentialSandboxProfile({
+      root: f.root, home: f.home, agentDirectory: f.agentDirectory, systemTempDirectory: join(base, "system-temp"), modelPort,
+    });
+    try {
+      run(profile, modelPort, otherPort);
+    } finally {
+      for (const server of servers) server.close();
+    }
+  }
+
+  const connectTo = (profile: string, host: string, port: number) =>
+    runConfined(`python3 -c 'import socket; socket.create_connection(("${host}", ${port}), timeout=3)'`, f.root, profile);
+
+  test("reaches the model port and nothing else", async () => {
+    await withProfile((profile, modelPort, otherPort) => {
+      expect(connectTo(profile, "127.0.0.1", modelPort).status).toBe(0);
+      for (const [host, port] of [["127.0.0.1", otherPort], ["127.0.0.1", 6767], ["1.1.1.1", 443]] as const) {
+        const result = connectTo(profile, host, port);
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain("PermissionError");
+      }
+    });
+  });
+
+  test("cannot resolve names", async () => {
+    await withProfile((profile) => {
+      const result = runConfined(`python3 -c 'import socket; socket.getaddrinfo("example.com", 443)'`, f.root, profile);
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain("gaierror");
+    });
+  });
+
+  test("writes only to the checkout, temp directories and Pi sessions", async () => {
+    mkdirSync(join(f.agentDirectory, "sessions"), { recursive: true });
+    await withProfile((profile) => {
+      const allowed = `echo ok > new.txt && echo s > "${f.agentDirectory}/sessions/s.jsonl" && echo t > "${base}/system-temp/t"`
+        + ` && mkdir "${f.agentDirectory}/trust.json.lock" && touch "${f.agentDirectory}/trust.json.lock"`
+        + ` && rmdir "${f.agentDirectory}/trust.json.lock" && echo [] > "${f.agentDirectory}/crashes.json"`
+        + ` && echo {} > "${f.agentDirectory}/consumption.json.42.tmp"`
+        + ` && mv "${f.agentDirectory}/consumption.json.42.tmp" "${f.agentDirectory}/consumption.json"`;
+      expect(runConfined(allowed, f.root, profile).status).toBe(0);
+      for (const command of [
+        `mkdir -p "${f.home}/Library/Mobile Documents" && echo x > "${f.home}/Library/Mobile Documents/copy.txt"`,
+        `echo x > "${f.sibling}/copy.txt"`,
+        `echo x > "${f.agentDirectory}/settings.json"`,
+        `echo x > "${f.agentDirectory}/trust.json"`,
+        `mkdir "${f.agentDirectory}/trust.json.lock.d"`,
+        `echo x > "${f.agentDirectory}/consumption.json.tmp.sh"`,
+        "echo x > .git/hooks/pre-commit",
+        "echo x >> .git/config",
+      ]) {
+        const result = runConfined(command, f.root, profile);
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain("Operation not permitted");
+      }
+    });
   });
 });

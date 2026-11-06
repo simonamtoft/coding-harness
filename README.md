@@ -212,6 +212,10 @@ this bundle's brand references when it is present.
   downloaded models and runtime state stay ignored. Not deployed by `link.sh`.
 - `local-models/gemma/`: foreground launcher and Pi setup notes for a local
   Gemma 4 12B llama.cpp server. Not deployed by `link.sh`.
+- `local-models/confidential/`: confidential-mode launcher that runs Pi with
+  local Gemma under a whole-process Seatbelt profile with no other network
+  access; Paseo's `pi-confidential` provider runs it. See
+  [local-models/confidential/README.md](local-models/confidential/README.md).
 - `probes/`: behavior scenarios for isolated `shared/AGENTS.md` comparisons and
   whole-Pi-harness checks, plus local-only records reused by later runs on this machine. Parked as
   work in progress (PRB-19); paid runs are manual, on request only. See [probes/README.md](probes/README.md).

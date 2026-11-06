@@ -45,6 +45,7 @@ import {
   confinedEnvironment,
   confinedShellCommand,
   DISABLE_VARIABLE,
+  type CommandSandboxMode,
 } from "./kernel-sandbox.ts";
 import {
   AZURE_EGRESS_HOSTS,
@@ -379,10 +380,10 @@ export function createSandboxGuard(
  */
 function registerCommandSandbox(
   pi: ExtensionAPI,
+  mode: CommandSandboxMode,
   getSessionTempDirectory: () => string | undefined,
   commandGrants: Map<string, CommandGrant>,
 ): void {
-  const mode = commandSandboxMode();
   if (mode.kind === "unconfined") {
     if (mode.reason === "disabled") {
       pi.on("session_start", (_event, ctx) => {
@@ -499,11 +500,15 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     RESEARCH_VAULT_ROOT,
     (command, grant) => commandGrants.set(command, grant),
   );
-  registerCommandSandbox(pi, () => sessionTempDirectory, commandGrants);
+  const sandboxMode = commandSandboxMode();
+  registerCommandSandbox(pi, sandboxMode, () => sessionTempDirectory, commandGrants);
+  // The confidential profile denies chmod in the agent directory; the next unconfined session hardens it.
+  const confidentialMode = sandboxMode.kind === "unconfined" && sandboxMode.reason === "already-confined"
+    && sandboxMode.inheritedEgress === "local-model";
 
   pi.on("session_start", (_event, ctx) => {
     try {
-      hardenPiPermissions(getAgentDir());
+      if (!confidentialMode) hardenPiPermissions(getAgentDir());
     } catch (error) {
       ctx.ui.notify(`Could not harden Pi file permissions: ${error instanceof Error ? error.message : String(error)}`, "error");
     }

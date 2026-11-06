@@ -28,7 +28,7 @@
   "agents": {
     "metadataGeneration": {
       "providers": [
-        { "provider": "pi", "model": "anthropic/claude-haiku-4-5" }
+        { "provider": "pi", "model": "local/gemma-4-12b" }
       ]
     },
     "providers": {
@@ -84,6 +84,16 @@
             "id": "local/gemma-4-12b",
             "label": "Gemma (local)"
           }
+        ]
+      },
+      "pi-confidential": {
+        "extends": "pi",
+        "label": "Pi (confidential)",
+        "description": "Local Gemma only, no other network access",
+        "command": ["/Users/siap/coding-harness/local-models/confidential/start.sh"],
+        "paseoTools": { "enabled": false },
+        "models": [
+          { "id": "local/gemma-4-12b", "label": "Gemma (local)", "isDefault": true }
         ]
       },
       "codex": {
