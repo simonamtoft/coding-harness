@@ -45,6 +45,7 @@ Route a change to the narrowest owner. `shared/` is only for one implementation 
 - Edit canonical sources here, never their installed paths under `~/.pi` or `~/.claude`.
 - `link.sh` defines link topology, Pi package installation, and this checkout's `core.hooksPath`. Preserve its refusal and backup behavior for existing targets.
 - Do not commit credentials, authentication state, machine-local provider/model configuration, sessions, caches, installed packages, generated state, or local `~/.pi/agent/settings.json`, `models.json`, and `subagents.json`. Canonical built-in model defaults in `pi/agent/agents/` are the exception; local `subagents.json` overrides remain untracked.
+- This repository is public. Do not commit employer- or client-confidential material: internal documents, templates, brand guidance, photographs of people, client names or data, or anything copied from client work. Keep such material in gitignored local paths or untracked local configuration, use generic placeholders in examples and tests, and ask before committing anything whose confidentiality is unclear. Infrastructure hostnames are not covered (OWN-17).
 - Update `README.md` with changes to link behavior, layout, installation, or ownership boundaries.
 
 ## Inspecting Pi session history
