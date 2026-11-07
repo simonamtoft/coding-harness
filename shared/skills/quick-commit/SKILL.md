@@ -47,11 +47,11 @@ Turn the current working tree into one or more coherent commits. This is the com
 5. **Commit the accepted groups.** Remove the snapshot directory in a separate cleanup command using the resolved parent directory of the evidence file. For each full-file group, in order, run:
 
    ```bash
-   git add -- <exact paths for this group>
+   git add -- <paths in this group that exist in the working tree>
    git commit --only -m "<message>" -- <exact paths for this group>
    ```
 
-   `--only` excludes unrelated pre-existing index entries. Never use `git add -A` across groups.
+   `--only` excludes unrelated pre-existing index entries and records the group's deletions itself, staged or not. Leave deleted paths out of `git add`: an already-staged deletion matches nothing, so `git add` fails with "pathspec did not match". Never use `git add -A` across groups.
 
 6. **Push only when requested.** If the user said "and push", separately confirm the remote and branch before `git push`. When the plan was committed without confirmation, the response before that question must show every committed group with its message and exact paths. Otherwise stop after committing; do not push unprompted.
 
