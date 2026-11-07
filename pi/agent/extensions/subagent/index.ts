@@ -1010,8 +1010,9 @@ export default function (pi: ExtensionAPI) {
 
 			const requestError = validateRequestedAgents(agents, requestedNames);
 			if (requestError) {
+				const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
 				return {
-					content: [{ type: "text", text: `Agent dispatch failed closed: ${requestError}` }],
+					content: [{ type: "text", text: `Agent dispatch failed closed: ${requestError}\nAvailable agents: ${available}` }],
 					details: makeDetails("single")([]),
 					isError: true,
 				};
