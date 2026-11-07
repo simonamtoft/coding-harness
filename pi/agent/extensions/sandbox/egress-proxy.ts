@@ -26,6 +26,8 @@ export const BASE_EGRESS_HOSTS: readonly HostRule[] = [
   { host: "api.nuget.org", ports: HTTPS },
   { host: "rubygems.org", ports: HTTPS },
   { host: "github.com", ports: [443, 22] },
+  // Implement's GitHub Enterprise, the origin of work repositories; SSH only, so fetch works and pushes hit noPushGitSsh.
+  { host: "imcg.ghe.com", ports: [22] },
   { host: "api.github.com", ports: HTTPS },
   { host: "codeload.github.com", ports: HTTPS },
   // Raw files, release assets and uv's Python downloads.
@@ -205,7 +207,8 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     });
     upstream.once("connect", () => {
       connected = true;
-      client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      // macOS `nc -X connect`, which carries Git over SSH, rejects every CONNECT reply except an HTTP/1.0 200.
+      client.write("HTTP/1.0 200 Connection established\r\n\r\n");
       const relay = (first: Buffer) => {
         if (decision.port !== SSH_PORT && first[0] !== TLS_HANDSHAKE_RECORD) {
           client.destroy();
@@ -267,6 +270,16 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
   };
 }
 
+/**
+ * SBX-51: Git runs this as `sh -c '<command> "$@"'` with the remote program last, so the function sees what the
+ * server is asked to run. It refuses pushes (receive-pack, Git LFS uploads) and tunnels everything else. This is a
+ * deterrent: a command can override the variable or run `ssh` directly, which SBX-22 confirms.
+ */
+function noPushGitSsh(port: number): string {
+  const refusal = "Pi command sandbox: git push over SSH is refused; the user pushes outside Pi";
+  return `pi_git_ssh() { for arg; do remote=$arg; done; case $remote in git-receive-pack*|"git receive-pack"*|git-lfs-*" upload"*) echo "${refusal}" >&2; exit 1;; esac; exec ssh -o ProxyCommand='/usr/bin/nc -X connect -x 127.0.0.1:${port} %h %p' "$@"; }; pi_git_ssh`;
+}
+
 /** Points HTTP clients, Node's built-in fetch and Git over SSH at the proxy; loopback stays direct. */
 export function proxyEnvironment(port: number, token?: string): Record<string, string> {
   const credentials = token ? `${PROXY_USER}:${token}@` : "";
@@ -276,6 +289,8 @@ export function proxyEnvironment(port: number, token?: string): Record<string, s
     HTTPS_PROXY: url, https_proxy: url, HTTP_PROXY: url, http_proxy: url,
     NO_PROXY: direct, no_proxy: direct,
     NODE_USE_ENV_PROXY: "1",
-    GIT_SSH_COMMAND: `ssh -o ProxyCommand='/usr/bin/nc -X connect -x 127.0.0.1:${port} %h %p'`,
+    GIT_SSH_COMMAND: noPushGitSsh(port),
+    // The command's first word is not `ssh`, so Git would otherwise probe it with `-G` to pick an option syntax.
+    GIT_SSH_VARIANT: "ssh",
   };
 }

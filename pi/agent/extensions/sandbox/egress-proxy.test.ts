@@ -99,6 +99,29 @@ describe("proxyEnvironment", () => {
     expect(env.https_proxy).toBe("http://pi:abc@127.0.0.1:51234");
     expect(env.GIT_SSH_COMMAND).toContain("-x 127.0.0.1:51234");
   });
+
+  // Runs the command the way Git does: `sh -c '<command> "$@"'` with the remote program as the last argument.
+  const runGitSsh = (...args: string[]) => {
+    const command = proxyEnvironment(51234).GIT_SSH_COMMAND!;
+    return Bun.spawnSync(["/bin/sh", "-c", `${command} "$@"`, command, ...args]);
+  };
+
+  test.each([
+    ["git-receive-pack 'org/repo.git'"],
+    ["git receive-pack 'org/repo.git'"],
+    ["git-lfs-authenticate 'org/repo.git' upload"],
+    ["git-lfs-transfer 'org/repo.git' upload"],
+  ])("refuses the push program %p over SSH", (remote) => {
+    const result = runGitSsh("-o", "SendEnv=GIT_PROTOCOL", "git@imcg.ghe.com", remote);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("git push over SSH is refused");
+  });
+
+  test("passes fetches to ssh with the proxy command", () => {
+    const result = runGitSsh("-G", "git@github.com", "git-upload-pack 'org/repo.git'");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("proxycommand /usr/bin/nc -X connect -x 127.0.0.1:51234 %h %p");
+  });
 });
 
 /** First byte of a TLS handshake record, enough for the proxy's protocol check. */
@@ -145,7 +168,7 @@ describe("startEgressProxy", () => {
     const f = await fixture([{ host: "allowed.test", ports: [443] }]);
     try {
       const response = await request(f.proxyPath, `CONNECT allowed.test:443 HTTP/1.1\r\nHost: allowed.test:443\r\n\r\n${TLS_HELLO}`);
-      expect(response).toStartWith("HTTP/1.1 200 Connection Established\r\n\r\n");
+      expect(response).toStartWith("HTTP/1.0 200 Connection established\r\n\r\n");
       expect(response).toEndWith("upstream-hello");
       expect(f.connected).toEqual([{ address: "93.184.216.34", port: 443 }]);
     } finally {
@@ -186,7 +209,7 @@ describe("startEgressProxy", () => {
       const token = f.proxy.grant([{ host: "granted.test", ports: [443] }]);
       const auth = (secret: string) => `Proxy-Authorization: Basic ${Buffer.from(`pi:${secret}`).toString("base64")}\r\n`;
       const head = (extra: string) => `CONNECT granted.test:443 HTTP/1.1\r\n${extra}\r\n${TLS_HELLO}`;
-      expect(await request(f.proxyPath, head(auth(token)))).toStartWith("HTTP/1.1 200");
+      expect(await request(f.proxyPath, head(auth(token)))).toStartWith("HTTP/1.0 200");
       expect(await request(f.proxyPath, head(""))).toStartWith("HTTP/1.1 403");
       expect(await request(f.proxyPath, head(auth("forged")))).toStartWith("HTTP/1.1 403");
       f.proxy.revoke(token);
@@ -218,8 +241,9 @@ describe("startEgressProxy", () => {
     const f = await fixture([{ host: "allowed.test", ports: [443, 22] }]);
     try {
       const http = await request(f.proxyPath, "CONNECT allowed.test:443 HTTP/1.1\r\n\r\nGET / HTTP/1.1\r\n\r\n");
-      expect(http).toBe("HTTP/1.1 200 Connection Established\r\n\r\n");
+      expect(http).toBe("HTTP/1.0 200 Connection established\r\n\r\n");
       const ssh = await request(f.proxyPath, "CONNECT allowed.test:22 HTTP/1.1\r\n\r\nSSH-2.0-OpenSSH\r\n");
+      expect(ssh).toStartWith("HTTP/1.0 200 ");
       expect(ssh).toEndWith("upstream-hello");
     } finally {
       await f.close();

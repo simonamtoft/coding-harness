@@ -423,13 +423,22 @@ its worktrees or the temp directories. The script itself sends only module
 paths on a fixed list of public hosts.
 
 Tunnels to port 443 must start with a TLS handshake; plaintext inside the tunnel
-is dropped. Port 22 (`github.com`) carries SSH.
+is dropped. Port 22 (`github.com`, `imcg.ghe.com`) carries SSH.
 
 Model commands get `HTTPS_PROXY`/`HTTP_PROXY` in both cases,
 `NODE_USE_ENV_PROXY=1` (needed for Node's built-in `fetch`),
 `NO_PROXY=localhost,127.0.0.1,::1`, and a `GIT_SSH_COMMAND` that tunnels SSH
 through the proxy with `nc -X connect`. These override any proxy settings
-inherited from Pi's environment.
+inherited from Pi's environment. The proxy answers `CONNECT` with
+`HTTP/1.0 200`, the only reply macOS `nc` accepts.
+
+That `GIT_SSH_COMMAND` refuses pushes (SBX-51): it exits before connecting
+when Git asks the server to run `git-receive-pack` or a Git LFS upload, so
+fetch, pull and Backlog's remote refresh work while the user pushes outside
+Pi. Pushing over HTTPS fails separately because the credential helpers cannot
+reach `~/.config/gh` or the keychain. A command that overrides
+`GIT_SSH_COMMAND` or runs `ssh` directly gets past the refusal; SBX-22's
+confirmation covers the visible forms.
 
 Failure modes:
 
