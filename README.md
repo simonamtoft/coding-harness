@@ -202,9 +202,21 @@ the machine that created it, so copy it across by hand. Get the
 unzip implement-powerpoint.skill -d ~/coding-harness/shared/skills/
 ```
 
-After unpacking a new release, reapply the `uv run -q --with lxml --with pillow`
-line below "All commands are" in its `SKILL.md`. `implement-brand-web` reads
-this bundle's brand references when it is present.
+After unpacking a new release, reapply two local edits:
+
+- In `SKILL.md`, the paragraph starting "All commands are": run
+  `uv run -q --with lxml --with pillow python3 <this skill>/scripts/slides.py`
+  by absolute path from the working repository, never after `cd` into the skill.
+- In `scripts/slides.py`, a `library_slide(slug)` helper that resolves
+  `LIBRARY / (slug + ".pptx")` and returns `None` outside `LIBRARY`, used
+  everywhere a slug becomes a library path (`build`, `text`, the type-size
+  check). The Pi sandbox relies on this containment to trust the script.
+
+`implement-brand-web` reads this bundle's brand references when it is present.
+
+The tracked `project-knowledge` skill keeps an engagement's sources, meeting
+notes, actions and open questions as Markdown under a project's `context/`
+folder; decks built with `implement-powerpoint` go in `context/decks/`.
 
 ## Layout
 
