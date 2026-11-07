@@ -17,6 +17,7 @@ const TERRAFORM_STATE_CHANGING_NESTED: Record<string, Set<string>> = {
   workspace: new Set(["delete", "new"]),
 };
 const SHELL_KEYWORDS = new Set(["if", "elif", "while", "until", "do", "then", "else", "!", "{"]);
+const LEADING_KEYWORDS = /^(?:(?:if|elif|while|until|do|then|else|!|\{)\s+)+/;
 // Options that consume the following token; the command word follows the wrapper's options and operands.
 const WRAPPER_VALUE_OPTIONS: Record<string, Set<string>> = {
   env: new Set(["-u", "--unset", "-C", "--chdir"]),
@@ -43,9 +44,14 @@ const EXPORTING_BUILTINS = new Set(["export", "declare", "typeset", "readonly", 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const WORD_BREAK = /[\s;&|<>()]/;
 
-export type ConfirmedCommand = { category: "SSH-family" | "state-changing Terraform"; program: string };
+type Match = { category: "SSH-family" | "state-changing Terraform"; program: string };
+/** `trigger` is the source text of the simple command that needs confirmation. */
+export type ConfirmedCommand = Match & { trigger: string };
 
-const CUSTOM_GIT_SSH: ConfirmedCommand = { category: "SSH-family", program: "git with a custom SSH command" };
+/** Quote-removed words of one simple command and its `[start, end)` span in the scanned source. */
+type SimpleCommand = { tokens: string[]; start: number; end: number };
+
+const CUSTOM_GIT_SSH: Match = { category: "SSH-family", program: "git with a custom SSH command" };
 
 /** Index of the `)` closing a `$(` whose body starts at `start`, honouring quotes; the input length if unclosed. */
 function closingParen(source: string, start: number): number {
@@ -70,18 +76,18 @@ function closingQuote(source: string, start: number, quote: string, escapes = qu
 }
 
 /** Commands in the `$(…)` and backtick substitutions of text the shell expands but does not run. */
-function substitutionCommands(text: string): string[][] {
-  const commands: string[][] = [];
+function substitutionCommands(text: string): SimpleCommand[] {
+  const commands: SimpleCommand[] = [];
   for (let index = 0; index < text.length; index += 1) {
     if (text[index] === "\\") {
       index += 1;
     } else if (text.startsWith("$(", index)) {
       const end = closingParen(text, index + 2);
-      commands.push(...simpleCommands(text.slice(index + 2, end)));
+      commands.push(...simpleCommandsAt(text, index + 2, end));
       index = end;
     } else if (text[index] === "`") {
       const end = closingQuote(text, index + 1, "`");
-      commands.push(...simpleCommands(text.slice(index + 1, end)));
+      commands.push(...simpleCommandsAt(text, index + 1, end));
       index = end;
     }
   }
@@ -93,13 +99,14 @@ function substitutionCommands(text: string): string[][] {
  * heredoc bodies stay data; `$(…)` and backtick substitutions, also inside double quotes and unquoted
  * heredocs, become their own commands. Heredocs fed to a shell, or never closed, are scanned as commands.
  */
-function simpleCommands(source: string): string[][] {
-  const commands: string[][] = [];
+function simpleCommands(source: string): SimpleCommand[] {
+  const commands: SimpleCommand[] = [];
   const pendingHeredocs: Array<{ delimiter: string; stripTabs: boolean; quoted: boolean; feedsShell: boolean }> = [];
   let tokens: string[] = [];
   let word = "";
   let inWord = false;
   let index = 0;
+  let start = 0;
 
   const append = (text: string) => { word += text; inWord = true; };
   const endWord = () => {
@@ -109,19 +116,19 @@ function simpleCommands(source: string): string[][] {
   };
   const endCommand = () => {
     endWord();
-    if (tokens.length > 0) commands.push(tokens);
+    if (tokens.length > 0) commands.push({ tokens, start, end: index });
     tokens = [];
   };
   // Returns the index after the substitution starting at `index`, or undefined if none starts there.
   const substitution = (): number | undefined => {
     if (source.startsWith("$(", index)) {
       const end = closingParen(source, index + 2);
-      commands.push(...simpleCommands(source.slice(index + 2, end)));
+      commands.push(...simpleCommandsAt(source, index + 2, end));
       return end + 1;
     }
     if (source[index] === "`") {
       const end = closingQuote(source, index + 1, "`");
-      commands.push(...simpleCommands(source.slice(index + 1, end)));
+      commands.push(...simpleCommandsAt(source, index + 1, end));
       return end + 1;
     }
     return undefined;
@@ -177,12 +184,14 @@ function simpleCommands(source: string): string[][] {
         index = lineEnd + 1;
       }
       const body = source.slice(bodyStart, index);
-      if (feedsShell || !closed) commands.push(...simpleCommands(body));
-      else if (!quoted) commands.push(...substitutionCommands(body));
+      if (feedsShell || !closed) commands.push(...simpleCommandsAt(source, bodyStart, index));
+      else if (!quoted) commands.push(...shifted(substitutionCommands(body), bodyStart));
     }
   };
 
   while (index < source.length) {
+    // Until the first word begins, the command starts here.
+    if (tokens.length === 0 && !inWord) start = index;
     const char = source[index]!;
     const afterSubstitution = substitution();
     if (afterSubstitution !== undefined) {
@@ -237,6 +246,15 @@ function simpleCommands(source: string): string[][] {
   return commands;
 }
 
+/** The simple commands of `source[start, end)`, with spans in `source` coordinates. */
+function simpleCommandsAt(source: string, start: number, end: number): SimpleCommand[] {
+  return shifted(simpleCommands(source.slice(start, end)), start);
+}
+
+function shifted(commands: SimpleCommand[], offset: number): SimpleCommand[] {
+  return commands.map((command) => ({ ...command, start: command.start + offset, end: command.end + offset }));
+}
+
 function commandWord(token: string): string {
   return token.split("/").at(-1) ?? "";
 }
@@ -276,6 +294,15 @@ function initIsLocalOnly(args: string[], cliArgsInjected: boolean): boolean {
     return value !== undefined && !isFalse(value);
   });
   return !cliArgsInjected && !migrates && isFalse(lastValue("input"));
+}
+
+/**
+ * Terraform's CLI prints usage instead of running the command when `-h`, `-help`, or `--help` appears
+ * anywhere before `--`. Terragrunt is excluded: it can run its own hooks before forwarding to Terraform.
+ */
+function requestsHelp(args: string[]): boolean {
+  const end = args.indexOf("--");
+  return (end === -1 ? args : args.slice(0, end)).some((arg) => arg === "-h" || arg === "-help" || arg === "--help");
 }
 
 /** Index of the wrapped command word after a wrapper's options, assignments, and operands. */
@@ -321,18 +348,23 @@ function envSplitString(args: string[]): string | undefined {
  */
 export function confirmedCommand(source: string): ConfirmedCommand | undefined {
   // Any mention counts: assignments, `export`, `env`, and nested shells can all reach Terraform's environment.
-  return confirmedIn(source, TF_CLI_ARGS.test(source));
+  const cliArgsInjected = TF_CLI_ARGS.test(source);
+  for (const { tokens, start, end } of simpleCommands(source)) {
+    const match = confirmedSimpleCommand(tokens, cliArgsInjected);
+    if (match) return { ...match, trigger: source.slice(start, end).trim().replace(LEADING_KEYWORDS, "") };
+  }
+  return undefined;
 }
 
-function confirmedIn(source: string, cliArgsInjected: boolean): ConfirmedCommand | undefined {
-  for (const tokens of simpleCommands(source)) {
+function confirmedIn(source: string, cliArgsInjected: boolean): Match | undefined {
+  for (const { tokens } of simpleCommands(source)) {
     const match = confirmedSimpleCommand(tokens, cliArgsInjected);
     if (match) return match;
   }
   return undefined;
 }
 
-function confirmedSimpleCommand(tokens: string[], cliArgsInjected: boolean): ConfirmedCommand | undefined {
+function confirmedSimpleCommand(tokens: string[], cliArgsInjected: boolean): Match | undefined {
   let index = 0;
   while (index < tokens.length) {
     const token = tokens[index]!;
@@ -349,7 +381,7 @@ function confirmedSimpleCommand(tokens: string[], cliArgsInjected: boolean): Con
   return confirmedInvocation(tokens, index, cliArgsInjected);
 }
 
-function confirmedInvocation(tokens: string[], index: number, cliArgsInjected: boolean): ConfirmedCommand | undefined {
+function confirmedInvocation(tokens: string[], index: number, cliArgsInjected: boolean): Match | undefined {
   const word = commandWord(tokens[index] ?? "");
   const args = tokens.slice(index + 1);
 
@@ -375,6 +407,7 @@ function confirmedInvocation(tokens: string[], index: number, cliArgsInjected: b
   if (REMOTE_SHELL_PROGRAMS.has(word)) return { category: "SSH-family", program: word };
   if (word === "rsync" && usesRemoteRsync(args)) return { category: "SSH-family", program: "rsync" };
   if (TERRAFORM_PROGRAMS.has(word)) {
+    if (word !== "terragrunt" && requestsHelp(args)) return undefined;
     const subcommand = terraformStateChangingSubcommand(args, cliArgsInjected);
     return subcommand ? { category: "state-changing Terraform", program: `${word} ${subcommand}` } : undefined;
   }
@@ -395,7 +428,7 @@ const AZURE_CREDENTIAL_PROGRAMS = new Set(["az", ...TERRAFORM_PROGRAMS]);
  * Lexical like `confirmedCommand`: a script that calls `az` internally is not detected and runs without them.
  */
 export function azureCredentialProgram(source: string): string | undefined {
-  for (const tokens of simpleCommands(source)) {
+  for (const { tokens } of simpleCommands(source)) {
     let index = 0;
     while (index < tokens.length) {
       const redirection = REDIRECTION.exec(tokens[index]!);
@@ -440,7 +473,7 @@ export async function requestAzureCredentials(
 ): Promise<"once" | "session" | "denied"> {
   if (!ctx.hasUI) return "denied";
   const choice = await ctx.ui.select(
-    `Give this command access to your Azure CLI credentials (~/.azure)?\nProgram: ${program}\nCommand: ${command}`,
+    `Give this command access to your Azure CLI credentials (~/.azure)?\nProgram: ${program}\n${commandBlock(command)}`,
     ["Allow once", AZURE_SESSION_CHOICE, "Deny"],
   );
   if (choice === "Allow once") return "once";
@@ -454,8 +487,99 @@ export async function requestCommandConfirmation(
 ): Promise<boolean> {
   if (!ctx.hasUI) return false;
   const choice = await ctx.ui.select(
-    `Allow ${match.category} command?\nProgram: ${match.program}\nCommand: ${command}`,
+    [
+      `Allow ${match.category} command?`,
+      `Program: ${match.program}`,
+      ...(match.trigger === command.trim() ? [] : [`Trigger: ${match.trigger}`]),
+      commandBlock(command),
+    ].join("\n"),
     ["Allow once", "Deny"],
   );
   return choice === "Allow once";
+}
+
+function commandBlock(command: string): string {
+  const formatted = formatCommand(command);
+  return formatted.includes("\n") ? `Command:\n${formatted}` : `Command: ${formatted}`;
+}
+
+// Statement joiners, longest first; `;` and newlines only separate.
+const STATEMENT_OPERATORS = ["&&", "||", "|&", "|", ";", "\n", "&"];
+const SEPARATORS = new Set([";", "\n"]);
+const PIPES = new Set(["|", "|&"]);
+// Keywords that open a block; `do` and `then` join the line that introduced them.
+const BLOCK_OPENER = /^(do|then|else|\{)(?:\s+|$)/;
+const BLOCK_CLOSERS = new Set(["done", "fi", "esac", "}", "else", "elif"]);
+const INDENT = "  ";
+
+/**
+ * Lays out a command for a confirmation prompt: one top-level statement per line, `&&`/`||`/`|` kept at the
+ * line end, pipeline stages and block bodies indented. Display only: it never decides what runs, and drops
+ * only whitespace and `;` separators. Commands with heredocs are shown unchanged because their bodies are
+ * line-sensitive.
+ */
+function formatCommand(command: string): string {
+  if (/(?<!<)<<(?!<)/.test(command)) return command.trim();
+  const lines: string[] = [];
+  let level = 0;
+  let piped = false;
+  for (const { text, joiner } of statements(command)) {
+    let rest = text;
+    if (BLOCK_CLOSERS.has(rest.split(/\s/, 1)[0]!)) level = Math.max(0, level - 1);
+    for (let opener = BLOCK_OPENER.exec(rest); opener; opener = BLOCK_OPENER.exec(rest)) {
+      const keyword = opener[1]!;
+      if ((keyword === "do" || keyword === "then") && lines.length > 0) lines[lines.length - 1] += `; ${keyword}`;
+      else lines.push(INDENT.repeat(level) + keyword);
+      level += 1;
+      rest = rest.slice(opener[0].length);
+    }
+    if (rest) lines.push(INDENT.repeat(level + (piped ? 1 : 0)) + rest);
+    if (joiner && lines.length > 0) lines[lines.length - 1] += ` ${joiner}`;
+    else if (joiner) lines.push(joiner);
+    piped = PIPES.has(joiner);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Top-level statements of `command` with the operator that joins each to the next (`""` for a separator).
+ * Quotes, substitutions, comments, and parenthesised groups stay inside one statement.
+ */
+function statements(command: string): Array<{ text: string; joiner: string }> {
+  const result: Array<{ text: string; joiner: string }> = [];
+  let text = "";
+  let depth = 0;
+  for (let index = 0; index < command.length; index += 1) {
+    const operator = depth === 0 ? statementOperator(command, index) : undefined;
+    if (operator !== undefined) {
+      result.push({ text: text.trim(), joiner: SEPARATORS.has(operator) ? "" : operator });
+      text = "";
+      index += operator.length - 1;
+      continue;
+    }
+    const char = command[index]!;
+    let last = index;
+    if (char === "\\") last = index + 1;
+    else if (command.startsWith("$'", index)) last = closingQuote(command, index + 2, "'", true);
+    else if (char === "'" || char === "\"" || char === "`") last = closingQuote(command, index + 1, char);
+    else if (command.startsWith("$(", index)) last = closingParen(command, index + 2);
+    else if (char === "#" && /^[\s;&|(]?$/.test(command[index - 1] ?? "")) {
+      const lineEnd = command.indexOf("\n", index);
+      last = (lineEnd === -1 ? command.length : lineEnd) - 1;
+    } else if (char === "(") depth += 1;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    text += command.slice(index, last + 1);
+    index = last;
+  }
+  result.push({ text: text.trim(), joiner: "" });
+  return result.filter((statement) => statement.text || statement.joiner);
+}
+
+function statementOperator(command: string, index: number): string | undefined {
+  const operator = STATEMENT_OPERATORS.find((candidate) => command.startsWith(candidate, index));
+  const previous = command[index - 1] ?? "";
+  // `>&`, `&>`, `<&`, and `>|` are redirections.
+  if (operator === "&" && (/[<>]/.test(previous) || command[index + 1] === ">")) return undefined;
+  if (operator?.startsWith("|") && previous === ">") return undefined;
+  return operator;
 }

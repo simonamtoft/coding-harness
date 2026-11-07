@@ -50,7 +50,7 @@ export interface CommandSandboxScope {
  * Loopback ports commands may reach directly, for dev servers and browser tests. 5000 is left out because macOS
  * AirPlay Receiver listens on it.
  */
-export const LOCAL_SERVICE_PORTS = [3000, 4173, 5173, 5190, 8000, 8020, 8080];
+export const LOCAL_SERVICE_PORTS = [3000, 4173, 4317, 5173, 5190, 8000, 8020, 8080];
 
 /**
  * Secret file names, mirroring the lexical guard's patterns. They are applied only below `secretScanRoots`:

@@ -8,6 +8,11 @@ import {
   requestCommandConfirmation,
 } from "./confirmed-commands.ts";
 
+function matchOf(command: string) {
+  const match = confirmedCommand(command);
+  return match && { category: match.category, program: match.program };
+}
+
 test("SSH-family invocations require confirmation", () => {
   const cases: Array<[string, string]> = [
     ["ssh deploy@example.com uptime", "ssh"],
@@ -69,7 +74,7 @@ test("SSH-family invocations require confirmation", () => {
     ["declare -x GIT_SSH_COMMAND='ssh -i key'", "git with a custom SSH command"],
   ];
   for (const [command, program] of cases) {
-    assert.deepEqual(confirmedCommand(command), { category: "SSH-family", program }, command);
+    assert.deepEqual(matchOf(command), { category: "SSH-family", program }, command);
   }
 });
 
@@ -134,9 +139,11 @@ test("state-changing Terraform invocations require confirmation", () => {
     ["2> err.log terraform -chdir=infra destroy", "terraform destroy"],
     ["timeout 600 ./bin/terraform apply", "terraform apply"],
     ["grep x <<< \"$(terraform apply)\"", "terraform apply"],
+    ["terraform apply -- -help", "terraform apply"],
+    ["terragrunt apply -help", "terragrunt apply"],
   ];
   for (const [command, program] of cases) {
-    assert.deepEqual(confirmedCommand(command), { category: "state-changing Terraform", program }, command);
+    assert.deepEqual(matchOf(command), { category: "state-changing Terraform", program }, command);
   }
 });
 
@@ -159,11 +166,15 @@ test("read-only Terraform commands run without confirmation", () => {
     "terraform -chdir=infra init -input=false -migrate-state=false",
     "terraform init -force-copy=false --input=false",
     "rg 'terraform apply' docs",
+    "terraform init -help",
+    "tofu apply --help",
+    "terraform -chdir=infra destroy -h",
+    "cd infra && for s in a b; do echo $s; done; terraform init -help 2>/dev/null | grep -i -A3 upgrade",
   ]) assert.equal(confirmedCommand(command), undefined, command);
 });
 
 test("confirmation shows the command and fails closed", async () => {
-  const ssh = { category: "SSH-family", program: "ssh" } as const;
+  const ssh = { category: "SSH-family", program: "ssh", trigger: "ssh host uptime" } as const;
   const titles: string[] = [];
   const approved = await requestCommandConfirmation({
     hasUI: true,
@@ -176,6 +187,60 @@ test("confirmation shows the command and fails closed", async () => {
   assert.equal(await requestCommandConfirmation({ hasUI: true, ui: { select: async () => "Deny" } }, ssh, "ssh host"), false);
   assert.equal(await requestCommandConfirmation({ hasUI: true, ui: { select: async () => undefined } }, ssh, "ssh host"), false);
   assert.equal(await requestCommandConfirmation({ hasUI: false, ui: { select: async () => "Allow once" } }, ssh, "ssh host"), false);
+});
+
+test("the trigger is the source text of the simple command that needs confirmation", () => {
+  const cases: Array<[string, string]> = [
+    ["ssh host", "ssh host"],
+    ["cd infra && for s in a b; do echo \"$s\"; done; terraform init 2>/dev/null | grep -i upgrade", "terraform init 2>/dev/null"],
+    ["grep x <<< \"$(terraform apply -target='a b')\"", "terraform apply -target='a b'"],
+    ["bash -c 'ssh host uptime' && ls", "bash -c 'ssh host uptime'"],
+    ["bash <<'EOF'\nssh host uptime\nEOF", "ssh host uptime"],
+    ["ls # comment\n  ssh host", "ssh host"],
+    ["if true; then ssh host; fi", "ssh host"],
+  ];
+  for (const [command, trigger] of cases) assert.equal(confirmedCommand(command)?.trigger, trigger, command);
+});
+
+test("the prompt shows the trigger and lays out the command one statement per line", async () => {
+  const command = "cd infra && for s in bootstrap shared; do echo \"== $s\"; grep -A1 '^provider' $s/x.hcl | grep -v '^--'; done; "
+    + "terraform init 2>/dev/null | grep -i -A3 upgrade";
+  const titles: string[] = [];
+  await requestCommandConfirmation(
+    { hasUI: true, ui: { select: async (title) => { titles.push(title); return "Deny"; } } },
+    confirmedCommand(command)!,
+    command,
+  );
+  assert.equal(titles[0], [
+    "Allow state-changing Terraform command?",
+    "Program: terraform init",
+    "Trigger: terraform init 2>/dev/null",
+    "Command:",
+    "cd infra &&",
+    "for s in bootstrap shared; do",
+    "  echo \"== $s\"",
+    "  grep -A1 '^provider' $s/x.hcl |",
+    "    grep -v '^--'",
+    "done",
+    "terraform init 2>/dev/null |",
+    "  grep -i -A3 upgrade",
+  ].join("\n"));
+});
+
+test("the command layout keeps every non-separator character", async () => {
+  const significant = (text: string) => text.replace(/[\s;]/g, "");
+  for (const command of [
+    "if [ -f a ]; then ssh host 'a; b && c'; elif true; then echo $(x; y); else { ls; }; fi",
+    "ssh host 2>&1 >| log &>/dev/null & wait; (cd a; ls) || echo \"x | y\" # c; d",
+    "ssh host $'it\\'s; here' ;; | |& `a; b`",
+    "cat <<EOF | ssh host\na; b && c\nEOF",
+  ]) {
+    const titles: string[] = [];
+    const ask = { hasUI: true, ui: { select: async (title: string) => { titles.push(title); return "Deny"; } } };
+    await requestCommandConfirmation(ask, confirmedCommand(command)!, command);
+    const shown = titles[0]!.slice(titles[0]!.indexOf("Command:") + "Command:".length);
+    assert.equal(significant(shown), significant(command), command);
+  }
 });
 
 test("Azure CLI and Terraform invocations need the Azure credentials", () => {

@@ -7,6 +7,7 @@ import {
   AZURE_EGRESS_HOSTS,
   BASE_EGRESS_HOSTS,
   egressDecision,
+  GO_PROXY_EGRESS_HOSTS,
   isPublicAddress,
   providerHostRules,
   proxyEnvironment,
@@ -24,12 +25,18 @@ describe("egressDecision", () => {
     ["GitHub.com.:443"],
     ["objects.githubusercontent.com:443"],
     ["registry.npmjs.org:443"],
+    ["repo1.maven.org:443"],
+    ["crates.io:443"],
+    ["api.nuget.org:443"],
+    ["rubygems.org:443"],
   ])("allows %s", (authority) => {
     expect(egressDecision(authority, BASE_EGRESS_HOSTS).allowed).toBe(true);
   });
 
   test.each([
     ["example.com:443", "not-allowlisted"],
+    ["api.osv.dev:443", "not-allowlisted"],
+    ["static.crates.io:443", "not-allowlisted"],
     ["registry.npmjs.org:22", "not-allowlisted"],
     ["githubusercontent.com:443", "not-allowlisted"],
     ["evilgithub.com:443", "not-allowlisted"],
@@ -46,6 +53,11 @@ describe("egressDecision", () => {
   test("Azure hosts are not in the base allowlist", () => {
     expect(egressDecision("management.azure.com:443", BASE_EGRESS_HOSTS).allowed).toBe(false);
     expect(egressDecision("management.azure.com:443", AZURE_EGRESS_HOSTS).allowed).toBe(true);
+  });
+
+  test("the Go module proxy is only a grant, never in the base allowlist", () => {
+    expect(egressDecision("proxy.golang.org:443", BASE_EGRESS_HOSTS).allowed).toBe(false);
+    expect(egressDecision("proxy.golang.org:443", GO_PROXY_EGRESS_HOSTS).allowed).toBe(true);
   });
 });
 

@@ -20,6 +20,11 @@ export const BASE_EGRESS_HOSTS: readonly HostRule[] = [
   { host: "registry.npmjs.org", ports: HTTPS },
   { host: "pypi.org", ports: HTTPS },
   { host: "files.pythonhosted.org", ports: HTTPS },
+  // Metadata APIs of the other registries check-packages queries (SBX-50); not every package manager's full host set.
+  { host: "repo1.maven.org", ports: HTTPS },
+  { host: "crates.io", ports: HTTPS },
+  { host: "api.nuget.org", ports: HTTPS },
+  { host: "rubygems.org", ports: HTTPS },
   { host: "github.com", ports: [443, 22] },
   { host: "api.github.com", ports: HTTPS },
   { host: "codeload.github.com", ports: HTTPS },
@@ -38,6 +43,12 @@ export const AZURE_EGRESS_HOSTS: readonly HostRule[] = [
   { host: "releases.hashicorp.com", ports: HTTPS },
   { host: "checkpoint-api.hashicorp.com", ports: HTTPS },
 ];
+
+/**
+ * Added only for a command that just runs the check-packages script on Go specs (SBX-50): on a cache miss the Go module
+ * proxy fetches the module path from its host, so in the base list it would relay requests to any host.
+ */
+export const GO_PROXY_EGRESS_HOSTS: readonly HostRule[] = [{ host: "proxy.golang.org", ports: HTTPS }];
 
 /** HTTPS hosts of model provider base URLs; loopback endpoints are excluded because the proxy refuses them anyway. */
 export function providerHostRules(baseUrls: readonly (string | undefined)[]): HostRule[] {

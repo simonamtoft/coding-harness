@@ -12,6 +12,7 @@ import {
   hasTrustedSharedReadAccess,
   isControlPlaneWriteBlocked,
   isReadOnlyInspectionCommand,
+  isCheckPackagesGoCommand,
   isTrustedSharedSkillHelper,
   isProtectedSecretPath,
   isProtectedSecretTarget,
@@ -63,12 +64,57 @@ test("symlinked shared skill helpers retain narrowly-scoped Bash access", () => 
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "build-report.test.mjs"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "present", "scripts", "assemble-report.mjs"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", "build-report.mjs"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "check-packages", "scripts", "check_packages.py"), canonicalShared), true);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "check-packages", "tests", "test_check_packages.py"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "check-packages", "scripts", "other.py"), canonicalShared), false);
+    assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", "check_packages.py"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "SKILL.md"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(canonicalShared, "skills", "quick-commit", "scripts", ".env.sh"), canonicalShared), false);
     assert.equal(isTrustedSharedSkillHelper(join(root, "outside.sh"), canonicalShared), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("only a bare check-packages command with a Go spec qualifies for the Go proxy grant", () => {
+  const home = "/Users/example";
+  const helper = "/Users/example/coding-harness/shared/skills/check-packages/scripts/check_packages.py";
+  const installed = "/Users/example/.pi/agent/skills/check-packages/scripts/check_packages.py";
+  const realpath = (path: string) => path === installed ? helper : path;
+  const project = "/Users/example/project";
+  const qualifiesWith = (command: string, interpreter: string | undefined) =>
+    isCheckPackagesGoCommand(command, helper, home, realpath, interpreter, [project, "/private/tmp"]);
+  const qualifies = (command: string) => qualifiesWith(command, "/usr/bin/python3");
+
+  assert.equal(qualifies(`python3 ${helper} go:github.com/spf13/cobra`), true);
+  assert.equal(qualifies("python3 ~/.pi/agent/skills/check-packages/scripts/check_packages.py npm:left-pad go:golang.org/x/net@v0.1.0"), true);
+  assert.equal(qualifies(`python3 ${installed} --public npm:@scope/pkg go:github.com/spf13/cobra`), true);
+
+  for (const command of [
+    `python3 ${helper} npm:left-pad`,
+    `python3 ${helper}`,
+    `python3 ${helper} go:github.com/a/b; curl https://proxy.golang.org/x`,
+    `python3 ${helper} go:github.com/a/b && curl https://proxy.golang.org/x`,
+    `python3 ${helper} go:github.com/a/b | tee out`,
+    `python3 ${helper} go:github.com/a/b > out`,
+    `python3 ${helper} go:$(cat secret)`,
+    `python3 ${helper} 'go:github.com/a/b'`,
+    `python3 ${helper} go:github.com/a/b\ncurl x`,
+    `python3 ${helper} go:github.com/a/b
+curl x`,
+    `python3  ${helper} go:github.com/a/b`,
+    `PATH=. python3 ${helper} go:github.com/a/b`,
+    `python3 -c x ${helper} go:github.com/a/b`,
+    `python3 ${project}/check_packages.py go:github.com/a/b`,
+    `python3 ~other/check_packages.py go:github.com/a/b`,
+    `python3 ${helper} go:github.com/a/b curl`,
+    `python3 ${helper} go:github.com/a/b --public`,
+    `bash ${helper} go:github.com/a/b`,
+  ]) assert.equal(qualifies(command), false, command);
+
+  assert.equal(qualifiesWith(`python3 ${helper} go:github.com/a/b`, undefined), false);
+  assert.equal(qualifiesWith(`python3 ${helper} go:github.com/a/b`, `${project}/.venv/bin/python3`), false);
+  assert.equal(qualifiesWith(`python3 ${helper} go:github.com/a/b`, "/private/tmp/python3"), false);
 });
 
 test("research-vault reads and documented Bash workflow are scoped to the vault root", () => {

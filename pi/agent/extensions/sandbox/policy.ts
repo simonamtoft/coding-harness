@@ -38,14 +38,45 @@ export function isTrustedSharedSkillHelper(targetPath: string, codingHarnessShar
   const relativePath = relative(codingHarnessSharedRoot, targetPath).split(sep);
   if (relativePath.length !== 4 || relativePath[0] !== "skills" || relativePath[2] !== "scripts") return false;
   if (relativePath[3]!.endsWith(".sh")) return true;
-  return TRUSTED_NODE_HELPERS.get(relativePath[1]!)?.includes(relativePath[3]!) ?? false;
+  return TRUSTED_SCRIPT_HELPERS.get(relativePath[1]!)?.includes(relativePath[3]!) ?? false;
 }
 
-/** SBX-17, SBX-40: Node helpers that restrict their own indirect filesystem inputs. */
-const TRUSTED_NODE_HELPERS = new Map<string, readonly string[]>([
+/** SBX-17, SBX-40, SBX-50: non-shell helpers that restrict their own indirect filesystem inputs. */
+const TRUSTED_SCRIPT_HELPERS = new Map<string, readonly string[]>([
   ["visual-verification", ["capture-pages.mjs", "capture-scenario.mjs"]],
   ["present", ["build-report.mjs", "validate-report.mjs", "render-report.mjs"]],
+  ["check-packages", ["check_packages.py"]],
 ]);
+
+const CHECK_PACKAGES_TOKEN = /^[A-Za-z0-9._~/@:+-]+$/;
+const CHECK_PACKAGES_SPEC = /^(?:npm|pypi|go|maven|cargo|nuget|rubygems):[A-Za-z0-9._/@:+-]+$/i;
+
+/**
+ * SBX-50: whether a Bash command does nothing but run the check-packages script with at least one Go spec, so it may
+ * reach proxy.golang.org, which fetches unknown modules from any host. Only space-separated literal words are
+ * accepted: no quoting, expansion, chaining, redirection or environment prefix. `interpreter` is the real path of
+ * `python3` on PATH; one inside `writableRoots` could have been replaced by a confined command.
+ */
+export function isCheckPackagesGoCommand(
+  command: string,
+  helper: string,
+  home: string,
+  realpath: (path: string) => string,
+  interpreter: string | undefined,
+  writableRoots: readonly string[],
+): boolean {
+  const tokens = command.split(" ");
+  if (!tokens.every((token) => CHECK_PACKAGES_TOKEN.test(token))) return false;
+  const [program, script, ...args] = tokens;
+  if (program !== "python3" || !script) return false;
+  const scriptPath = script.startsWith("~/") ? join(home, script.slice(2)) : script;
+  if (!isAbsolute(scriptPath) || realpath(scriptPath) !== helper) return false;
+  if (!interpreter || writableRoots.some((root) => isWithin(root, interpreter))) return false;
+  const specs = args[0] === "--public" ? args.slice(1) : args;
+  return specs.length > 0
+    && specs.every((spec) => CHECK_PACKAGES_SPEC.test(spec))
+    && specs.some((spec) => /^go:/i.test(spec));
+}
 
 export function hasSessionHistoryReadAccess(
   toolName: string,

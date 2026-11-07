@@ -19,6 +19,7 @@ import {
   permitsSessionHistoryCommand,
   isControlPlaneWriteBlocked,
   isProtectedSecretTarget,
+  isCheckPackagesGoCommand,
   isTrustedSharedSkillHelper,
   permitsRootVerifierScriptBashReference,
   isReadOnlyInspectionCommand,
@@ -50,6 +51,7 @@ import {
 import {
   AZURE_EGRESS_HOSTS,
   BASE_EGRESS_HOSTS,
+  GO_PROXY_EGRESS_HOSTS,
   type EgressProxy,
   type HostRule,
   providerHostRules,
@@ -83,6 +85,21 @@ interface CommandGrant {
   hosts: readonly HostRule[];
 }
 const AZURE_GRANT: CommandGrant = { roots: [AZURE_CONFIG_ROOT], hosts: AZURE_EGRESS_HOSTS };
+const GO_PROXY_GRANT: CommandGrant = { roots: [], hosts: GO_PROXY_EGRESS_HOSTS };
+const CHECK_PACKAGES_HELPER = join(CODING_HARNESS_SHARED_ROOT, "skills", "check-packages", "scripts", "check_packages.py");
+
+/** Real path of the first executable `name` on Pi's PATH, which model commands inherit. */
+function executableOnPath(name: string): string | undefined {
+  for (const directory of (process.env.PATH ?? "").split(":").filter(isAbsolute)) {
+    try {
+      accessSync(join(directory, name), constants.X_OK);
+      return realpathSync.native(join(directory, name));
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
 const configuredResearchVaultRoot = resolve(homedir(), "research");
 const RESEARCH_VAULT_ROOT = existsSync(configuredResearchVaultRoot)
   ? realpathSync.native(configuredResearchVaultRoot)
@@ -367,6 +384,12 @@ export function createSandboxGuard(
         if (approval === "denied") return block(`${azureProgram} access to Azure credentials denied by user`);
         if (approval === "session") azureApprovedForSession = true;
         grantCommand(event.input.command, AZURE_GRANT);
+      }
+
+      const confinedWritableRoots = [root, ...sameRepositoryWorktrees(root), TEMP_ROOT, "/private/tmp", "/private/var/tmp"];
+      if (isCheckPackagesGoCommand(event.input.command, CHECK_PACKAGES_HELPER, homedir(), realpathForCheck,
+        executableOnPath("python3"), confinedWritableRoots)) {
+        grantCommand(event.input.command, GO_PROXY_GRANT);
       }
     }
 

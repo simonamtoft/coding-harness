@@ -21,7 +21,13 @@ host-side boundary to model tool calls:
   check, so reads via the installed `~/.pi/agent/skills` link are checked
   against the shared tree and remain readable without prompting. Recursive
   tools such as `grep` and `find` do not receive this exception, preventing a
-  trusted directory root from exposing protected descendants. All read tools
+  trusted directory root from exposing protected descendants. Bash may run
+  shared skill helpers under `skills/<skill>/scripts/`: every `.sh` script, and
+  only these other scripts, because each restricts its own indirect inputs:
+  `visual-verification`'s `capture-pages.mjs` and `capture-scenario.mjs`
+  (SBX-17), `present`'s `build-report.mjs`, `validate-report.mjs` and
+  `render-report.mjs` (SBX-40), and `check-packages`'s `check_packages.py`
+  (SBX-50). All read tools
   may inspect installed package content under Volta's `tools/image/packages`
   directory, and Playwright's managed browser cache
   (`PLAYWRIGHT_BROWSERS_PATH` when absolute, otherwise
@@ -386,7 +392,7 @@ proxy starts at session start and stops at session shutdown (SBX-41).
 | | Model `bash` commands | User `!` commands |
 | --- | --- | --- |
 | External hosts | only allowlisted hosts, through the proxy | open |
-| Localhost | ports 3000, 4173, 5173, 5190, 8000, 8020, 8080 and the proxy port | ports 3000, 4173, 5173, 5190, 8000, 8020, 8080 |
+| Localhost | ports 3000, 4173, 4317, 5173, 5190, 8000, 8020, 8080 and the proxy port | ports 3000, 4173, 4317, 5173, 5190, 8000, 8020, 8080 |
 | Unix sockets under home | denied | denied |
 
 The allowlist covers port 443 on these hosts:
@@ -394,6 +400,8 @@ The allowlist covers port 443 on these hosts:
 - the HTTPS hosts of every model provider Pi has credentials for (from
   `models.json` and signed-in providers, read once at session start);
 - `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org`;
+- `repo1.maven.org`, `crates.io`, `api.nuget.org` and `rubygems.org`, the
+  other registries `check-packages` queries (SBX-50);
 - `github.com` (also port 22), `api.github.com`, `codeload.github.com` and
   `*.githubusercontent.com`.
 
@@ -403,6 +411,16 @@ A command approved for Azure credentials also gets `login.microsoftonline.com`,
 `checkpoint-api.hashicorp.com`. These hosts are tied to a random token in that
 command's proxy URL. The token is revoked, and its tunnels closed, when that
 Bash call returns, so background processes it left running lose those hosts.
+
+A command that is exactly `python3 <check_packages.py> [--public] <specs>`,
+with at least one `go:` spec, also gets `proxy.golang.org` through the same
+kind of token (SBX-50). On a cache miss the Go module proxy fetches the module
+path from its host, so in the base list it would relay requests to any host.
+The command must be space-separated literal words (no quoting, expansion,
+chaining or redirection), the script argument must resolve to the canonical
+helper, and the `python3` on Pi's `PATH` must not resolve inside the project,
+its worktrees or the temp directories. The script itself sends only module
+paths on a fixed list of public hosts.
 
 Tunnels to port 443 must start with a TLS handshake; plaintext inside the tunnel
 is dropped. Port 22 (`github.com`) carries SSH.

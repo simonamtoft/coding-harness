@@ -310,3 +310,30 @@ Decision ledger area. Entry ids use the `SBX-` prefix; see `../DECISIONS.md` for
 **Decision:** `deniedBashCommandReason` hard-denies a Bash command in which an email address follows a `User-Agent`/`From:` marker, `curl -A`, or `wget -U`, matching any address. The cases live in `policy.test.ts`, not `shared/command-safety.tsv`. Refused: matching only the user's own address (the policy would have to learn the identity SBX-11 keeps from agents); an AGENTS.md instruction (model-dependent); inspecting Write/Edit content (SBX-41's allowlist already bounds where a written script can send it).
 **Why:** anthropics/claude-code#107757: models fill site-requested contact User-Agents (Wikipedia, SEC EDGAR) with personal emails from context. The shared contract's rows run against the parked Claude hook, which must not change (OWN-16).
 **Revisit if:** the Claude harness is unparked (move the cases into the shared contract), or legitimate contact-address User-Agents become a recurring need.
+
+### SBX-47 · Terraform help requests skip the state-changing confirmation
+`accepted` · 2026-11-06 · `01a1b0fa-beb6-72f7-94fa-02a52d866ef2`
+**Decision:** A `terraform`, `tf`, or `tofu` invocation with `-h`, `-help`, or `--help` before any `--` skips the SBX-23 confirmation, whatever the subcommand. `terragrunt` keeps it.
+**Why:** Terraform's CLI library prints usage instead of running the command when a help flag appears anywhere before `--`, so `terraform init -help` cannot touch state; it still prompted under SBX-32 because it lacked `-input=false`. Terragrunt can run its own hooks before forwarding to Terraform.
+**Revisit if:** Terraform or OpenTofu changes how its CLI handles help flags.
+
+### SBX-48 · Confirmation prompts show the trigger and a laid-out command
+`accepted` · 2026-11-06 · `01a1b0fa-beb6-72f7-94fa-02a52d866ef2`
+**Decision:** The SBX-22/SBX-23 confirmation adds a `Trigger:` line with the original source text of the simple command that matched, omitted when it is the whole command. Both it and the Azure credential prompt print the command one top-level statement per line, with `&&`/`||`/`|` at the line end and pipeline stages and block bodies indented. The layout is display only and drops nothing but whitespace and `;`; commands with heredocs are shown unchanged. Refused: a trigger line alone over an unchanged one-line command, and re-quoting the lexer's quote-removed words for the trigger, which would misstate the original quoting.
+**Why:** Agent commands often join loops, pipes and `;` lists on one line, so the user could not find the part that needed approval.
+**Revisit if:** Pi's select dialog stops rendering multi-line titles, or a real shell parser replaces the lexical guard.
+**Evidence:** "for me it's hard to understand / read the command because it's a lot of nesting / joining"; the user chose "Trigger + split".
+
+### SBX-49 · Local service port 4317
+`accepted` · 2026-11-06 · `01a1b0fe-8bef-7529-bbc4-561a62547fad`
+**Decision:** Add 4317 to the loopback ports confined commands may connect to. Refused: 4399, which appeared in only one report.
+**Why:** cv-website's build prerenders pages by fetching them from a local Vite preview server on 4317, and Playwright checks use the same port; seven papercuts recorded those connections being refused.
+**Revisit if:** per-project ports keep growing the list (see SBX-44).
+**Evidence:** The user chose "4317 only".
+
+### SBX-50 · Trust the check-packages script and allow its registry hosts
+`accepted` · 2026-11-07 · `01a1b56a-8626-7729-bb35-4cea25bf6625`
+**Decision:** Extend SBX-17's helper allowlist with `check-packages`'s `scripts/check_packages.py`, the first Python entry; other shared Python files stay blocked. Add `repo1.maven.org`, `crates.io`, `api.nuget.org` and `rubygems.org` (port 443) to the base egress allowlist; npm, PyPI and `api.github.com` were already there. Grant `proxy.golang.org` only to a Bash command that is exactly `python3 <helper> [--public] <specs>` with a `go:` spec, literal words only, with `python3` on PATH resolving outside the project, its worktrees and temp directories; the script sends only module paths on a fixed list of public hosts. Refused: `proxy.golang.org` in the base list (on a cache miss it fetches the module path from any host, so every command would gain an open relay; found in review); looking up Go modules through the GitHub API instead (modules off github.com, such as `golang.org/x` and `k8s.io`, would report `UNCHECKED`); keeping the relay and documenting it; `api.deps.dev` and `api.osv.dev` (SKL-36 replaced them, so Google no longer receives every queried name).
+**Why:** The check-packages skill is mandatory before adding packages, yet project sessions blocked its script and the proxy refused its hosts. The script reads nothing but its argument specs, so it has no indirect filesystem inputs. Maven Central, crates.io, NuGet and RubyGems serve only their own content without credentials, so they are not exfiltration channels. The Go proxy grant follows the per-command token pattern of the Azure hosts (SBX-38).
+**Revisit if:** the script gains file inputs; a package manager for these ecosystems needs further hosts (cargo's `index.crates.io` and `static.crates.io`, Go's `sum.golang.org`), which for Go must not reopen the relay; or Google's front end is shown to route a mismatched SNI or `Host` for these hosts.
+**Evidence:** The user chose "Registry-native, plus GitHub advisories", "Registry hosts" and, after review, "Script-only grant".
