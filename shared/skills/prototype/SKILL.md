@@ -36,4 +36,4 @@ backlog task edit <id> --append-notes "Prototype verdict: <which option won and 
 backlog task edit <id> --add-ref <durable-artifact-path-or-url> --plain
 ```
 
-Omit the reference when the prototype is deleted rather than preserved. Otherwise capture the answer in a commit message, an ADR (`/domain-modeling`), or a `NOTES.md` next to the prototype.
+Omit the reference when the prototype is deleted rather than preserved. Otherwise capture the answer in a commit message, an ADR (`/record-decision`), or a `NOTES.md` next to the prototype.

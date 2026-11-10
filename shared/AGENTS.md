@@ -77,7 +77,7 @@ Rules for the loop itself:
 - Consult the tracker when a request names a task or asks about tracker state, a skill directs it, or before creating, planning, updating, or finalizing tracked work. Skip it for questions, explanations, debugging, code review, retrospectives, commits, and single mechanical edits.
 - Whether work needs a task is normally known only after investigation, so consult it when acting on the work. A skill that mandates a first tracker read is the exception; that read is the disambiguation.
 - Before a task lifecycle action, read `backlog instructions overview` and the matching `task-creation`, `task-execution`, or `task-finalization` guide, each at most once per session. Keep discovery targeted: use `backlog task list --ready --sort priority --limit 10 --plain`, `backlog search "<query>" --plain`, or `backlog task view <id> --plain`; inspect only the selected task and avoid bulk view loops or broad JSON listings.
-- Never edit tracker markdown files directly. Use the CLI so metadata, relationships, and history stay consistent.
+- Never edit tracker markdown files directly. Use the CLI so metadata, relationships, and history stay consistent. The one exception is a Backlog decision's body below its frontmatter, which the CLI cannot write; `record-decision` owns that edit.
 
 ## 6. Present Clearly
 

@@ -35,6 +35,8 @@ Do not use an architecture label to bypass the clarification gate. When an unres
 
 6. **Pause before implementation.** Present the artifact and decision. Implementation happens only when the user asks for it or an already-approved task requires it. If new evidence makes the shape wrong, revise the artifact rather than forcing the implementation through it.
 
+7. **Record the approved decision.** Once the user approves a decision that is hard to reverse, surprising without context, and the result of a real trade-off, or one the project's instructions require recording, record it with `/record-decision`.
+
 ## Use other design evidence only when needed
 
 This workflow owns technical contracts, module boundaries, and trade-offs. Bring in another method only for a distinct unanswered question:
