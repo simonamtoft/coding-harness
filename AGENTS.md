@@ -107,7 +107,7 @@ The probes suite is parked as work in progress (PRB-19). Do not run paid probes 
 For link-topology changes, exercise `link.sh` with an isolated temporary `HOME`; never test a forced install against the real home directory.
 
 <!-- BACKLOG.MD GUIDELINES START -->
-<!-- backlog.md-instructions-version: 1.51.0 -->
+<!-- backlog.md-instructions-version: 1.55.3 -->
 <CRITICAL_INSTRUCTION>
 
 ## Backlog.md Workflow
