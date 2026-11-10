@@ -174,7 +174,8 @@ and Claude's user, project, and local settings, including hooks.
 - RPC sessions: the sandbox and trust prompts appear as Paseo question cards.
   `ask_user_question` follows the argument shape and dialog order of
   `rpiv-ask-user-question`, so Paseo shows a call as one question form; a call
-  with a free-text-only question falls back to one card per dialog. The form
+  with a free-text-only question falls back to one card per dialog, so outside
+  the TUI the gate asks for options on every question. The form
   does not show a question's `details`. `verify-turn` reports start and pass as notifications because
   RPC clients do not render its project-checks panel. `custom-header`,
   `context-monitor`, and `pi-status-footer` are terminal-only.

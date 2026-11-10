@@ -25,7 +25,13 @@ type QuestionResult = PanelAnswer | "back" | undefined;
 
 const GATE_POLICY = `Clarification gate (mandatory): Read-only discovery comes first. Inspect the repository whenever files, tests, or conventions can resolve an uncertainty, and do not ask what that inspection answers. Before any consequential action, including edits, writes, commands with effects, and committing to an approach, decide whether unresolved choices remain that could materially change scope, behavior, user experience, data design, dependencies, destructive effects, or acceptance criteria. If they do, collect all closely related blocking questions into one ask_user_question call before acting. Inspection settles facts, not authorization: when a request that deletes, overwrites, or discards work leaves its scope ambiguous, confirm the scope before acting even if inspection suggests a plausible target. You MUST use ask_user_question for every such question; never ask it as ordinary assistant prose unless ask_user_question reports that interactive UI is unavailable, in which case ask in the assistant response and stop until the user answers. If ask_user_question reports cancellation or unavailable UI, do not infer answers or continue with the blocked decisions.`;
 
-const GATE_LIMITS = `Ask at most four questions per call. Provide concrete options only when useful; when you do, offer two to four, each with a description, order them best first so the leading option is the one you recommend, and always allow a free-text answer. Do not silently choose a reasonable default.`;
+const OPTIONS_WHEN_USEFUL = `Provide concrete options only when useful; when you do, offer two to four, each with a description, order them best first so the leading option is the one you recommend, and always allow a free-text answer.`;
+
+// Paseo shows its form only if every question in the call has options; one free-text-only
+// question turns the whole call into generic dialogs (ASK-10).
+const OPTIONS_ON_EVERY_QUESTION = `Give every question two to four options, each with a description, even an open question: offer the most likely answers, because one question without options makes this client drop its question form for the whole call. Order them best first so the leading option is the one you recommend; the user can always write a different answer.`;
+
+const GATE_LIMITS = `Ask at most four questions per call. Do not silently choose a reasonable default.`;
 
 const CONTEXT_IN_DETAILS = `Put the deciding context in each question's details field: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning. Also write each question so it can be answered on its own, because some clients show only the question, its header, and the option descriptions, not details. When asking approval of a plan, put the plan itself in the assistant response, because a plan is too long to read inside the question. Otherwise the response must contain only the ask_user_question call—do not batch it with edit, write, bash, or other tool calls, and do not restate the details in prose.`;
 
@@ -33,8 +39,10 @@ const CONTEXT_IN_DETAILS = `Put the deciding context in each question's details 
 const CONTEXT_IN_PROSE = `This client's question form shows only each question, its header, and the option descriptions, not the details field. Before the ask_user_question call, write the deciding context in the assistant response: the key facts, constraints, or tradeoffs the user needs to choose without relying on hidden reasoning, grouped by question, plus any plan you are asking to approve. Keep it brief and write each question so it can be answered on its own. Do not batch the call with edit, write, bash, or other tool calls.`;
 
 export function clarificationGate(mode: ExtensionMode): string {
-  const contextRule = mode === "tui" ? CONTEXT_IN_DETAILS : CONTEXT_IN_PROSE;
-  return `${GATE_POLICY} ${contextRule} ${GATE_LIMITS}`;
+  const isTui = mode === "tui";
+  const contextRule = isTui ? CONTEXT_IN_DETAILS : CONTEXT_IN_PROSE;
+  const optionsRule = isTui ? OPTIONS_WHEN_USEFUL : OPTIONS_ON_EVERY_QUESTION;
+  return `${GATE_POLICY} ${contextRule} ${optionsRule} ${GATE_LIMITS}`;
 }
 
 // Paseo shows its native question form only for calls whose raw arguments match the

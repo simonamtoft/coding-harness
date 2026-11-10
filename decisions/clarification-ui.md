@@ -61,3 +61,10 @@ Decision ledger area. Entry ids use the `ASK-` prefix; see `../DECISIONS.md` for
 **Why:** A live PI-109 check in Paseo confirmed that its question form hides `details`, so the TUI rule "do not restate the details in prose" left the user deciding without context, which is ASK-08's revisit condition. Packing facts into question text makes long questions; prose everywhere would show context twice in the TUI, whose panel already renders `details`.
 **Revisit if:** Paseo starts rendering `details` (or another description field) in its question form, or the TUI stops showing `details`.
 **Evidence:** User reported "No, hidden" in Paseo and chose "Prose in RPC mode".
+
+### ASK-10 · Outside the TUI every question carries options
+`accepted` · 2026-11-10 · `01a1c486`
+**Decision:** Refines ASK-08. Outside the TUI the clarification gate requires two to four described options on every question, including open ones, where the model offers the most likely answers and the user can still write their own. The TUI keeps "options only when useful", and the schema still allows free-text-only questions. Rejected: requiring options in the schema for every client, and accepting the fallback.
+**Why:** Paseo's rpiv adapter validates the whole call and requires 2–4 options on each question, so one free-text-only question ("Past lessons" in an mdm-cleanup session) turned the whole call into generic Pi dialogs, which the user read as a regression to Pi's pop-up. The TUI panel handles free-text questions well, so a schema-wide rule would cost it for no gain.
+**Revisit if:** Paseo's adapter accepts questions without options, or open questions with guessed options prove unhelpful in Paseo.
+**Evidence:** User chose "Paseo prompt rule".
